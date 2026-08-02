@@ -1,25 +1,18 @@
 // PlanMode.cs — plan-ядро: HandlePlan, RunSavedPlan, ParsePathAndTask, лимиты контекста
 // New Era CLI v6.0 · partial class MainConsole
 // C# 5 / .NET Framework 4.x
-
 using System;
 using System.Collections.Generic;
 using System.IO;
 
 partial class MainConsole
 {
-    // ══════════════════════════════════════════════════════════
-    //  CONTEXT LIMITS
-    // ══════════════════════════════════════════════════════════
     const int MaxContextTotal = 120000;
     const int MaxContextFile  = 40000;
 
-    const int PlanMaxRetries   = 5;
+    const int PlanMaxRetries   = 10;
     const int PlanRetryDelayMs = 3000;
 
-    // ══════════════════════════════════════════════════════════
-    //  PARSE PATH + TASK
-    // ══════════════════════════════════════════════════════════
     static string[] ParsePathAndTask(string args)
     {
         string trimmed = (args ?? "").Trim();
@@ -47,7 +40,6 @@ partial class MainConsole
             string[] words = trimmed.Split(' ');
 
             path = words[0];
-
             task = words.Length > 1
                 ? string.Join(" ", words, 1, words.Length - 1)
                 : "";
@@ -61,7 +53,6 @@ partial class MainConsole
                     if (File.Exists(candidate) || Directory.Exists(candidate))
                     {
                         path = candidate;
-
                         task = i < words.Length
                             ? string.Join(" ", words, i, words.Length - i)
                             : "";
@@ -75,9 +66,6 @@ partial class MainConsole
         return new[] { path, task };
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  PLAN MODE
-    // ══════════════════════════════════════════════════════════
     static void HandlePlan(string input)
     {
         string NL = Environment.NewLine;
@@ -157,14 +145,12 @@ partial class MainConsole
             return;
         }
 
-        // ── v6.0: если dispatcher включён, план идёт через v6-маршрут ──
         if (DispatcherEnabled)
         {
             HandlePlanV6(fullPath, task, structure);
             return;
         }
 
-        // ── Прямой путь без dispatcher ──
         string prompt =
             "Составь план реализации задачи." + NL +
             "Задача: " + task + NL +
@@ -198,6 +184,9 @@ partial class MainConsole
         {
             string raw = PostMessage(prompt, LastResponseId);
             responseText = ParseSseAnswer(raw);
+
+            if (string.IsNullOrWhiteSpace(responseText))
+                responseText = ParseOrchestratorResponse(raw);
         }
         catch (Exception ex)
         {
@@ -229,9 +218,6 @@ partial class MainConsole
             PlanActionMenu(steps, fullPath, task, structure);
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  PLAN RUN
-    // ══════════════════════════════════════════════════════════
     static void RunSavedPlan(string planFileArg)
     {
         string NL = Environment.NewLine;
