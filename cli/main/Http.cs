@@ -1,7 +1,11 @@
 // Http.cs — парсинг ответов (SSE, orchestrator, JSON)
 // New Era CLI v6.0 · partial class MainConsole
-// C# 5 / .NET Framework 4.x
-
+// C# 5 / .NET Framework 4.x  (ВАЖНО: без out _ / без ?. / без $"")
+//
+// FIX v6.0: Qwen шлёт ответ инкрементально как
+//   data: {"choices":[{"delta":{"content":"кусок","phase":"answer"}}]}
+// ExtractSseText идёт по choices→delta→content и склеивает ВСЕ куски
+// по порядку, игнорируя фазы мышления (think/reason/summary/reflection).
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -11,16 +15,16 @@ using System.Web.Script.Serialization;
 partial class MainConsole
 {
     // ══════════════════════════════════════════════════════════
-    //  ORCHESTRATOR RESPONSE PARSER
+    //  ORCHESTRATOR / NON-STREAMING RESPONSE PARSER
     // ══════════════════════════════════════════════════════════
-
     static string ParseOrchestratorResponse(string raw)
     {
-        if (string.IsNullOrEmpty(raw)) return null;
+        if (string.IsNullOrEmpty(raw))
+            return null;
 
         string trimmed = raw.TrimStart();
 
-        // Non-streaming: ответ может быть единый JSON
+        // Non-streaming: ответ может прийти единым JSON.
         if (trimmed.StartsWith("{"))
         {
             try
@@ -32,33 +36,26 @@ partial class MainConsole
                 if (obj != null)
                 {
                     string t = ExtractSseText(obj);
-                    if (!string.IsNullOrWhiteSpace(t)) return t.Trim();
+                    if (!string.IsNullOrWhiteSpace(t))
+                        return t.Trim();
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
 
-        // Fallback: может быть SSE
+        // Может оказаться SSE.
         if (trimmed.Contains("data:"))
-        {
             return ParseSseAnswer(raw, false);
-        }
 
-        // Fallback 2: regex по content
-        Match cm = Regex.Match(raw, @"""content""\s*:\s*""((?:\\.|[^""\\])*)""");
-        if (cm.Success)
-        {
-            string part = UnescapeJson(cm.Groups[1].Value);
-            if (!string.IsNullOrWhiteSpace(part)) return part.Trim();
-        }
-
-        return null;
+        // Последний шанс: склеиваем ВСЕ content/delta/text через Matches.
+        return RegexGlueAll(raw);
     }
 
     // ══════════════════════════════════════════════════════════
     //  SSE PARSER
     // ══════════════════════════════════════════════════════════
-
     static string ParseSseAnswer(string raw)
     {
         return ParseSseAnswer(raw, true);
@@ -71,7 +68,8 @@ partial class MainConsole
 
     static string ParseSseAnswer(string raw, bool updateParent)
     {
-        if (string.IsNullOrEmpty(raw)) return null;
+        if (string.IsNullOrEmpty(raw))
+            return null;
 
         var parts = new StringBuilder();
         string newResponseId = null;
@@ -84,29 +82,37 @@ partial class MainConsole
         foreach (string rawLine in lines)
         {
             string t = rawLine.Trim();
-            if (!t.StartsWith("data:")) continue;
+            if (!t.StartsWith("data:"))
+                continue;
 
             string data = t.Substring(5).Trim();
-            if (data.Length == 0) continue;
-            if (data == "[DONE]") break;
+            if (data.Length == 0)
+                continue;
 
-            // response_id
-            if (data.Contains("response.created") || data.Contains("response_id"))
+            if (data == "[DONE]")
+                break;
+
+            // response_id (на верхнем уровне или внутри response.created)
+            if (data.Contains("response_id"))
             {
                 Match rid = Regex.Match(data, @"""response_id""\s*:\s*""([^""]+)""");
-                if (rid.Success) newResponseId = rid.Groups[1].Value;
+                if (rid.Success)
+                    newResponseId = rid.Groups[1].Value;
             }
 
+            // Финиш-маркеры: completed ИЛИ finished.
             bool isCompleted =
                 data.Contains("response.completed") ||
                 data.Contains("\"status\":\"completed\"") ||
-                data.Contains("\"status\": \"completed\"");
+                data.Contains("\"status\": \"completed\"") ||
+                data.Contains("\"status\":\"finished\"") ||
+                data.Contains("\"status\": \"finished\"");
 
             string piece = null;
 
-            // Основной путь: десериализуем SSE-объект и вытаскиваем текст через ExtractSseText.
-            // Это чинит ответы, где контент приходит не только в phase=answer,
-            // а также ответы с content_list / text / message.
+            // Основной путь: десериализуем и вытаскиваем текст.
+            // ExtractSseText понимает choices[].delta.content / message.content /
+            // content_list / content / text / output и пропускает фазы мышления.
             try
             {
                 object obj = ser.DeserializeObject(data);
@@ -114,11 +120,16 @@ partial class MainConsole
             }
             catch
             {
-                // Fallback, если JSON битый/неполный.
-                // Не вытаскиваем thinking/reason/summary/reflection.
-                if (!Regex.IsMatch(data, @"""phase""\s*:\s*""(think|thinking|reason|summary|reflection)"""))
+                // Fallback для битого/обрезанного JSON-куска:
+                // берём content/delta/text, но НЕ трогаем фазы мышления.
+                if (!Regex.IsMatch(
+                    data,
+                    @"""phase""\s*:\s*""[^""]*(think|thinking|reason|summary|reflection)[^""]*"""))
                 {
-                    Match cm = Regex.Match(data, @"""content""\s*:\s*""((?:\\.|[^""\\])*)""");
+                    Match cm = Regex.Match(
+                        data,
+                        @"""(?:content|delta|text)""\s*:\s*""((?:\\.|[^""\\])*)""");
+
                     if (cm.Success)
                         piece = UnescapeJson(cm.Groups[1].Value);
                 }
@@ -126,8 +137,7 @@ partial class MainConsole
 
             if (!string.IsNullOrEmpty(piece))
             {
-                // Если уже есть incremental-куски, а пришёл completed-объект с полным текстом,
-                // не дублируем его.
+                // Финиш-объект с полным текстом не дублируем поверх инкремента.
                 if (isCompleted && parts.Length > 0)
                 {
                     // skip duplicate final content
@@ -142,12 +152,15 @@ partial class MainConsole
         if (!string.IsNullOrEmpty(newResponseId) && updateParent)
             LastResponseId = newResponseId;
 
-        string result = parts.ToString().Trim();
+        string result = parts.ToString();
+        if (result != null)
+            result = result.Trim();
 
-        // Fallback 1: если весь ответ — один JSON, а не SSE.
+        // Fallback 1: весь ответ — один JSON, а не SSE.
         if (string.IsNullOrEmpty(result))
         {
             string trimmed = raw.TrimStart();
+
             if (trimmed.StartsWith("{"))
             {
                 try
@@ -159,30 +172,82 @@ partial class MainConsole
                     if (obj != null)
                     {
                         string t = ExtractSseText(obj);
-                        if (!string.IsNullOrWhiteSpace(t)) result = t.Trim();
+                        if (!string.IsNullOrWhiteSpace(t))
+                            result = t.Trim();
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
 
-        // Fallback 2: последний шанс через regex.
+        // Fallback 2: склеиваем ВСЕ фрагменты (Matches, не Match!).
         if (string.IsNullOrEmpty(result))
-        {
-            Match cm = Regex.Match(raw, @"""content""\s*:\s*""((?:\\.|[^""\\])*)""");
-            if (cm.Success)
-            {
-                string part = UnescapeJson(cm.Groups[1].Value);
-                if (!string.IsNullOrWhiteSpace(part)) result = part.Trim();
-            }
-        }
+            result = RegexGlueAll(raw);
 
         return result;
     }
 
+    // Склеивает все content/delta/text из сырого текста, пропуская фазы мышления.
+    static string RegexGlueAll(string raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+            return null;
+
+        var pieces = new List<string>();
+
+        // Идём построчно, чтобы корректно отфильтровать thinking-строки.
+        string[] lines = raw.Split(new[] { "\n" }, StringSplitOptions.None);
+
+        foreach (string rawLine in lines)
+        {
+            string line = rawLine.Trim();
+            if (line.Length == 0)
+                continue;
+
+            // Пропускаем строки, где контент относится к фазе мышления.
+            if (Regex.IsMatch(
+                line,
+                @"""phase""\s*:\s*""[^""]*(think|thinking|reason|summary|reflection)[^""]*"""))
+                continue;
+
+            foreach (Match cm in Regex.Matches(
+                line,
+                @"""(?:content|delta|text)""\s*:\s*""((?:\\.|[^""\\])*)"""))
+            {
+                string part = UnescapeJson(cm.Groups[1].Value);
+                if (!string.IsNullOrEmpty(part))
+                    pieces.Add(part);
+            }
+        }
+
+        // Если построчно ничего не нашли — пробуем по всему тексту разом.
+        if (pieces.Count == 0)
+        {
+            foreach (Match cm in Regex.Matches(
+                raw,
+                @"""(?:content|delta|text)""\s*:\s*""((?:\\.|[^""\\])*)"""))
+            {
+                string part = UnescapeJson(cm.Groups[1].Value);
+                if (!string.IsNullOrEmpty(part))
+                    pieces.Add(part);
+            }
+        }
+
+        if (pieces.Count == 0)
+            return null;
+
+        return string.Join("", pieces.ToArray()).Trim();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  JSON UNESCAPE
+    // ══════════════════════════════════════════════════════════
     static string UnescapeJson(string s)
     {
-        if (s == null) return "";
+        if (s == null)
+            return "";
 
         var sb = new StringBuilder();
 
@@ -194,14 +259,45 @@ partial class MainConsole
 
                 switch (next)
                 {
-                    case '"':  sb.Append('"');  i++; break;
-                    case '\\': sb.Append('\\'); i++; break;
-                    case '/':  sb.Append('/');  i++; break;
-                    case 'n':  sb.Append('\n'); i++; break;
-                    case 'r':  sb.Append('\r'); i++; break;
-                    case 't':  sb.Append('\t'); i++; break;
-                    case 'b':  sb.Append('\b'); i++; break;
-                    case 'f':  sb.Append('\f'); i++; break;
+                    case '"':
+                        sb.Append('"');
+                        i++;
+                        break;
+
+                    case '\\':
+                        sb.Append('\\');
+                        i++;
+                        break;
+
+                    case '/':
+                        sb.Append('/');
+                        i++;
+                        break;
+
+                    case 'n':
+                        sb.Append('\n');
+                        i++;
+                        break;
+
+                    case 'r':
+                        sb.Append('\r');
+                        i++;
+                        break;
+
+                    case 't':
+                        sb.Append('\t');
+                        i++;
+                        break;
+
+                    case 'b':
+                        sb.Append('\b');
+                        i++;
+                        break;
+
+                    case 'f':
+                        sb.Append('\f');
+                        i++;
+                        break;
 
                     case 'u':
                         if (i + 5 < s.Length)
@@ -209,7 +305,11 @@ partial class MainConsole
                             string hex = s.Substring(i + 2, 4);
                             int code;
 
-                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out code))
+                            if (int.TryParse(
+                                hex,
+                                System.Globalization.NumberStyles.HexNumber,
+                                null,
+                                out code))
                             {
                                 sb.Append((char)code);
                                 i += 5;
@@ -239,16 +339,32 @@ partial class MainConsole
         return sb.ToString();
     }
 
+    // ══════════════════════════════════════════════════════════
+    //  EXTRACT TEXT FROM PARSED JSON NODE
+    //  Понимает streaming-формат Qwen:
+    //    {"choices":[{"delta":{"content":"...","phase":"answer"}}]}
+    //  и non-streaming:
+    //    {"content_list":[{"content":"...","phase":"answer"}]}
+    //  Фазы мышления (think/reason/summary/reflection) игнорируются.
+    // ══════════════════════════════════════════════════════════
     static string ExtractSseText(object node)
     {
-        if (node == null) return null;
+        return ExtractSseTextCore(node, 0);
+    }
+
+    static string ExtractSseTextCore(object node, int depth)
+    {
+        if (node == null || depth > 16)
+            return null;
 
         string s = node as string;
-        if (s != null) return s;
+        if (s != null)
+            return s;
 
         Dictionary<string, object> dict = node as Dictionary<string, object>;
         if (dict != null)
         {
+            // Фаза мышления на этом уровне — текст не берём.
             if (dict.ContainsKey("phase"))
             {
                 string ph = dict["phase"] as string;
@@ -266,12 +382,26 @@ partial class MainConsole
                 }
             }
 
-            foreach (string key in new[] { "content_list", "content", "text", "message" })
+            // Порядок важен: choices/delta/message идут ПЕРВЫМИ,
+            // иначе верхний объект {choices:[...]} не раскроется.
+            string[] keys =
+            {
+                "choices",
+                "delta",
+                "message",
+                "content_list",
+                "content",
+                "text",
+                "output"
+            };
+
+            foreach (string key in keys)
             {
                 if (dict.ContainsKey(key))
                 {
-                    string t = ExtractSseText(dict[key]);
-                    if (!string.IsNullOrWhiteSpace(t)) return t;
+                    string t = ExtractSseTextCore(dict[key], depth + 1);
+                    if (t != null && t.Length > 0)
+                        return t;
                 }
             }
 
@@ -285,10 +415,11 @@ partial class MainConsole
 
             foreach (object el in arr)
             {
-                string t = ExtractSseText(el);
-                if (!string.IsNullOrWhiteSpace(t))
+                string t = ExtractSseTextCore(el, depth + 1);
+                if (t != null && t.Length > 0)
                 {
-                    if (sb.Length > 0) sb.Append("\n");
+                    // Инкрементальные куски склеиваем БЕЗ разделителя
+                    // (это части одной строки/токена).
                     sb.Append(t);
                 }
             }

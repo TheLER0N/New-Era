@@ -1,7 +1,13 @@
-// AiTest.cs — тестирование доступных ИИ / ролей
+// AiTest.cs — тестирование доступных ИИ
 // New Era CLI v6.0 · partial class MainConsole
 // C# 5 / .NET Framework 4.x
-
+//
+// В проекте ровно ДВА ИИ:
+//   [1] Primary · qwen3.8-max-preview · генератор кода
+//   [2] AI #2   · qwen3.7-max          · помощник-диспетчер
+//
+// AI #2 один выполняет все роли:
+//   enhance / select / compress / extract / validate
 using System;
 using System.Collections.Generic;
 
@@ -59,7 +65,6 @@ partial class MainConsole
         }
 
         string[] parts = args.Split(new[] { ' ' }, 2);
-
         string numRaw = parts[0].Trim().Trim('<', '>', '[', ']', '(', ')');
 
         int num;
@@ -83,7 +88,6 @@ partial class MainConsole
             }
 
             RunTestCustom(rest, num);
-
             return;
         }
 
@@ -91,7 +95,7 @@ partial class MainConsole
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Список ИИ
+    //  Список ИИ (ровно 2)
     // ══════════════════════════════════════════════════════════
     static void PrintTestList()
     {
@@ -117,6 +121,9 @@ partial class MainConsole
             Console.WriteLine();
         }
 
+        WriteColored(ConsoleColor.DarkGray,
+            "\nРоли AI #2 (один чат, последовательно): enhance · select · compress · extract · validate\n");
+
         WriteColored(ConsoleColor.DarkGray, "\nИспользование:\n");
         WriteColored(ConsoleColor.DarkGray, "    /test <текст>\n");
         WriteColored(ConsoleColor.DarkGray, "    /test quick\n");
@@ -127,30 +134,23 @@ partial class MainConsole
     static List<AiTestTarget> BuildAiTestList()
     {
         var list = new List<AiTestTarget>();
-
         int num = 1;
 
         string ai2Token = GetAi2Token();
         string ai2Api = GetAi2Api();
         string ai2Model = GetAi2Model();
-
         bool ai2Configured = IsAi2Configured();
 
         string ai2Note;
 
         if (ai2Configured)
-        {
-            ai2Note = "помощник";
-        }
+            ai2Note = "помощник (enhance/select/extract/compress)";
         else if (string.IsNullOrEmpty(Token2))
-        {
             ai2Note = "нет AI2_TOKEN";
-        }
         else
-        {
             ai2Note = "нет AI2_CHAT_ID";
-        }
 
+        // [1] Primary — генератор кода.
         list.Add(new AiTestTarget
         {
             Number = num++,
@@ -160,12 +160,13 @@ partial class MainConsole
             Token = Token,
             ChatId = ChatId,
             Configured = !string.IsNullOrEmpty(Token) && !string.IsNullOrEmpty(ChatId),
-            Note = "генератор",
+            Note = "генератор · qwen3.8-max-preview",
             RoleKind = "primary",
             SystemPrompt = null,
             QuickMessage = "Скажи привет."
         });
 
+        // [2] AI #2 — один второй ИИ во всех ролях диспетчера.
         list.Add(new AiTestTarget
         {
             Number = num++,
@@ -179,42 +180,6 @@ partial class MainConsole
             RoleKind = "ai2",
             SystemPrompt = null,
             QuickMessage = "Скажи привет."
-        });
-
-        list.Add(new AiTestTarget
-        {
-            Number = num++,
-            Name = "Dispatcher",
-            Model = ai2Model,
-            ApiUrl = ai2Api,
-            Token = ai2Token,
-            ChatId = ChatId2,
-            Configured = ai2Configured,
-            Note = DispatcherEnabled ? "dispatcher включён" : "dispatcher выключен",
-            RoleKind = "dispatcher",
-            SystemPrompt = DispatchPromptEnhance,
-            QuickMessage = "Перепиши задачу: добавь обработку ошибок."
-        });
-
-        list.Add(new AiTestTarget
-        {
-            Number = num++,
-            Name = "Extractor",
-            Model = ai2Model,
-            ApiUrl = ai2Api,
-            Token = ai2Token,
-            ChatId = ChatId2,
-            Configured = ai2Configured,
-            Note = ExtractEnabled ? "extractor включён" : "extractor выключен",
-            RoleKind = "extractor",
-            SystemPrompt = DispatchPromptExtract,
-            QuickMessage =
-                "Извлеки код:" + Environment.NewLine +
-                "FILE: demo.txt" + Environment.NewLine +
-                "ACTION: CREATE" + Environment.NewLine +
-                "CONTENT:" + Environment.NewLine +
-                "test" + Environment.NewLine +
-                "END_FILE"
         });
 
         return list;
@@ -236,7 +201,6 @@ partial class MainConsole
     static void RunTestWithMessage(string text, int onlyNumber, bool quick)
     {
         List<AiTestTarget> targets = BuildAiTestList();
-
         bool found = false;
 
         foreach (var t in targets)
@@ -285,7 +249,6 @@ partial class MainConsole
         {
             WriteColored(ConsoleColor.Yellow,
                 "  ⚠ пропуск: нет токена или chat_id\n");
-
             return;
         }
 
@@ -311,7 +274,6 @@ partial class MainConsole
             {
                 WriteColored(ConsoleColor.Yellow,
                     "  ⚠ Пустой ответ.\n");
-
                 return;
             }
 

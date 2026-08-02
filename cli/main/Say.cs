@@ -1,7 +1,6 @@
 // Say.cs — отправка сообщения в ИИ (v6.0)
 // New Era CLI v6.0 · partial class MainConsole
 // C# 5 / .NET Framework 4.x
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -46,7 +45,6 @@ partial class MainConsole
             {
                 WriteColored(ConsoleColor.Yellow,
                     "  ⚠ dispatcher: " + ex.Message + " — bypass\n");
-
                 finalPrompt = text;
             }
 
@@ -65,9 +63,14 @@ partial class MainConsole
             {
                 File.WriteAllText(DumpFile, raw ?? "", new UTF8Encoding(false));
             }
-            catch { }
+            catch
+            {
+            }
 
             responseText = ParseSseAnswer(raw);
+
+            if (string.IsNullOrWhiteSpace(responseText))
+                responseText = ParseOrchestratorResponse(raw);
         }
         catch (Exception ex)
         {
@@ -145,7 +148,6 @@ partial class MainConsole
                 continue;
 
             var op = new FileOperation();
-
             op.Path = kv.Key.Replace('\\', '/');
             op.Action = "MODIFY";
             op.Content = kv.Value;
@@ -254,7 +256,6 @@ partial class MainConsole
                         content += "\n";
 
                     File.WriteAllText(outPath, content, new UTF8Encoding(false));
-
                     WriteColored(ConsoleColor.Green, "  ✔ " + outPath + "\n");
                 }
 
@@ -265,13 +266,11 @@ partial class MainConsole
             {
                 WriteColored(ConsoleColor.Red,
                     "  ✖ " + outPath + ": " + ex.Message + "\n");
-
                 LogChange(outPath, op.Action ?? "MODIFY", "error");
             }
         }
 
         WriteColored(ConsoleColor.Green, "\n✔ Записано файлов: " + written + "\n");
-
         return written > 0;
     }
 }
