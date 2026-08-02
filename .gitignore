@@ -1,0 +1,21 @@
+# бинарники
+program_from_the_cli/
+*.exe
+*.dll
+*.pdb
+
+# отчёты и логи
+*_report.txt
+*.log
+
+# временные / IDE
+*.tmp
+Thumbs.db
+.vs/
+.vscode/
+
+# вспомогательные папки и файлы
+задача/
+информация о проекте/
+
+# new-era-excludes
