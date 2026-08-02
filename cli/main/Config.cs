@@ -23,7 +23,6 @@ partial class MainConsole
     static string ProjectPath = null;
     static bool Ai2ValidateEnabled = false;
     static bool ArcMode = false;
-
     const string DefaultAi2Model = "qwen3.7-max";
 
     // ══════════════════════════════════════════════════════════
@@ -93,7 +92,6 @@ partial class MainConsole
             return "";
 
         byte[] raw;
-
         try
         {
             raw = File.ReadAllBytes(path);
@@ -138,7 +136,6 @@ partial class MainConsole
         }
 
         string s;
-
         try
         {
             s = enc.GetString(raw, skip, raw.Length - skip);
@@ -207,7 +204,6 @@ partial class MainConsole
                 else if (t.StartsWith("AI2_LINK="))
                 {
                     string url = t.Substring(9).Trim();
-
                     if (url.StartsWith("http://") || url.StartsWith("https://"))
                     {
                         string tmpBase = ApiBaseUrl2;
@@ -216,7 +212,6 @@ partial class MainConsole
                         ParseChatLink(url, ref tmpBase, ref tmpId);
 
                         ApiBaseUrl2 = tmpBase;
-
                         if (!string.IsNullOrEmpty(tmpId))
                             ChatId2 = tmpId;
                     }
@@ -295,25 +290,19 @@ partial class MainConsole
     static string ResolveProjectDirectory(string preferredPath)
     {
         string candidate = preferredPath;
-
         if (string.IsNullOrWhiteSpace(candidate))
             candidate = ProjectPath;
 
-        if (!string.IsNullOrWhiteSpace(candidate))
+        string resolved = ResolveCandidateDirectory(candidate);
+        if (!string.IsNullOrEmpty(resolved))
+            return resolved;
+
+        if (!string.IsNullOrWhiteSpace(ProjectPath) &&
+            !string.Equals(ProjectPath, candidate, StringComparison.OrdinalIgnoreCase))
         {
-            try
-            {
-                string full = Path.GetFullPath(candidate.Trim('"'));
-
-                if (File.Exists(full))
-                    full = Path.GetDirectoryName(full);
-
-                if (!string.IsNullOrEmpty(full) && Directory.Exists(full))
-                    return full;
-            }
-            catch
-            {
-            }
+            resolved = ResolveCandidateDirectory(ProjectPath);
+            if (!string.IsNullOrEmpty(resolved))
+                return resolved;
         }
 
         try
@@ -327,6 +316,84 @@ partial class MainConsole
         }
 
         return BaseDir;
+    }
+
+    static string ResolveCandidateDirectory(string candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+            return null;
+
+        try
+        {
+            string full = Path.GetFullPath(candidate.Trim('"'));
+
+            if (File.Exists(full))
+                full = Path.GetDirectoryName(full);
+
+            return GetExistingDirectoryOrProjectRoot(full);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    static string GetExistingDirectoryOrProjectRoot(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        try
+        {
+            var dir = new DirectoryInfo(path);
+            string fallback = null;
+
+            while (dir != null)
+            {
+                if (dir.Exists)
+                {
+                    if (fallback == null)
+                        fallback = dir.FullName;
+
+                    if (LooksLikeProjectRoot(dir.FullName))
+                        return dir.FullName;
+                }
+
+                dir = dir.Parent;
+            }
+
+            return fallback;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    static bool LooksLikeProjectRoot(string dir)
+    {
+        try
+        {
+            if (Directory.GetFiles(dir, "*.csproj").Length > 0)
+                return true;
+
+            if (Directory.GetFiles(dir, "*.sln").Length > 0)
+                return true;
+
+            if (Directory.Exists(Path.Combine(dir, ".git")))
+                return true;
+
+            if (File.Exists(Path.Combine(dir, "plan.txt")))
+                return true;
+
+            if (File.Exists(Path.Combine(dir, "version.txt")))
+                return true;
+        }
+        catch
+        {
+        }
+
+        return false;
     }
 
     // ══════════════════════════════════════════════════════════
@@ -383,12 +450,10 @@ partial class MainConsole
         link = link.Trim();
 
         string extractedId = ExtractChatId(link);
-
         if (!string.IsNullOrEmpty(extractedId) && extractedId != link)
             chatId = extractedId;
 
         int cIdx = link.IndexOf("/c/", StringComparison.OrdinalIgnoreCase);
-
         if (cIdx > 0)
         {
             baseUrl = link.Substring(0, cIdx).TrimEnd('/');
@@ -403,6 +468,8 @@ partial class MainConsole
     // ══════════════════════════════════════════════════════════
     //  SAFE OUTPUT PATH
     //  Запрещает запись вне базовой папки.
+    //  Абсолютный путь внутри базовой папки разрешён и приводится
+    //  к относительному виду.
     // ══════════════════════════════════════════════════════════
     static bool TryResolveSafeOutputPath(string baseDir, string relativePath, out string safePath)
     {
@@ -414,26 +481,41 @@ partial class MainConsole
         if (string.IsNullOrEmpty(baseDir))
             baseDir = BaseDir;
 
-        string rel = relativePath.Replace('\\', '/').Trim();
-
-        while (rel.StartsWith("/"))
-            rel = rel.Substring(1);
-
-        if (string.IsNullOrWhiteSpace(rel))
-            return false;
-
-        if (Path.IsPathRooted(rel))
-            return false;
-
-        foreach (string seg in rel.Split('/'))
-        {
-            if (seg == "..")
-                return false;
-        }
-
         try
         {
             string fullBase = Path.GetFullPath(baseDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            string baseNoSlash = fullBase.TrimEnd(Path.DirectorySeparatorChar);
+
+            string rel = relativePath.Replace('\\', '/').Trim();
+
+            while (rel.StartsWith("/"))
+                rel = rel.Substring(1);
+
+            if (string.IsNullOrWhiteSpace(rel))
+                return false;
+
+            if (Path.IsPathRooted(rel))
+            {
+                string rootedFull = Path.GetFullPath(rel);
+
+                if (rootedFull.Equals(baseNoSlash, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                if (!rootedFull.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                rel = rootedFull.Substring(fullBase.Length);
+
+                if (string.IsNullOrWhiteSpace(rel))
+                    return false;
+            }
+
+            foreach (string seg in rel.Split('/'))
+            {
+                if (seg == "..")
+                    return false;
+            }
+
             string combined = Path.Combine(fullBase, rel.Replace('/', Path.DirectorySeparatorChar));
             string fullPath = Path.GetFullPath(combined);
 
