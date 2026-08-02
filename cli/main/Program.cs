@@ -1,11 +1,6 @@
 // Program.cs — точка входа, состояния, конфигурация
-// New Era CLI v5.3 · partial class MainConsole
+// New Era CLI v6.0
 // C# 5 / .NET Framework 4.x
-//
-// v5.3:
-//   - Добавлен OrchestratorChatId.
-//   - LoadOrchestratorConfig() теперь делает fallback на AI#2,
-//     если отдельный оркестратор не сконфигурирован.
 
 using System;
 using System.Collections.Generic;
@@ -33,16 +28,7 @@ partial class MainConsole
     static string ChatId       = null;
     static string ApiBaseUrl   = DefaultApiBase;
     static string CookieHeader = null;
-    static string AppVersion   = "4.2";
-
-    // ── Orchestrator (Dual-LLM) ───────────────────────────────
-    static bool   OrchestratorEnabled = false;
-    static string OrchestratorModel   = null;
-    static string OrchestratorApiUrl  = null;
-    static string OrchestratorToken   = null;
-    static string OrchestratorChatId  = null;
-
-    // ── Guardian / ArcMode: состояния объявлены в Config.cs ──
+    static string AppVersion   = "6.0";
 
     static readonly object PrintLock   = new object();
     static readonly object HistoryLock = new object();
@@ -70,11 +56,15 @@ partial class MainConsole
         try { Console.OutputEncoding = Encoding.UTF8; } catch { }
         try { Console.InputEncoding  = Encoding.UTF8; } catch { }
 
-        Console.Title = "New Era v5";
+        Console.Title = "New Era v6";
 
         try { Console.CursorVisible = true; } catch { }
 
-        try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | (SecurityProtocolType)768; }
+        try
+        {
+            ServicePointManager.SecurityProtocol =
+                (SecurityProtocolType)3072 | (SecurityProtocolType)768;
+        }
         catch { }
 
         Console.CancelKeyPress += delegate(object s, ConsoleCancelEventArgs e)
@@ -83,13 +73,10 @@ partial class MainConsole
             e.Cancel = false;
         };
 
-        try { LoadAppVersion(); }         catch { }
-        try { LoadConfig(); }             catch { }
-        try { LoadOrchestratorConfig(); } catch { }
-        try { LoadGuardianConfig(); }     catch { }
-        try { LoadHistory(); }            catch { }
-
-        try { Console.Clear(); }          catch { }
+        try { LoadAppVersion(); } catch { }
+        try { LoadConfig(); }     catch { }
+        try { LoadHistory(); }    catch { }
+        try { Console.Clear(); }  catch { }
 
         DrawBanner();
 
@@ -99,7 +86,10 @@ partial class MainConsole
 
         int exitCode = 0;
 
-        try { Repl(); }
+        try
+        {
+            Repl();
+        }
         catch (Exception ex)
         {
             WriteColored(ConsoleColor.Red, "  ✖ Критическая ошибка: " + ex.Message + "\n");
@@ -108,6 +98,7 @@ partial class MainConsole
         finally
         {
             StopLive();
+
             try { SaveHistory(); } catch { }
             try { Cts.Cancel(); }  catch { }
             try { listener.Join(1500); } catch { }
@@ -123,139 +114,12 @@ partial class MainConsole
             if (File.Exists(VersionFile))
             {
                 string v = ReadTextAuto(VersionFile).Trim();
-                if (v.Length > 0 && v.Length <= 20) AppVersion = v;
+                if (v.Length > 0 && v.Length <= 20)
+                    AppVersion = v;
             }
         }
-        catch { }
-    }
-
-    // ══════════════════════════════════════════════════════════
-    //  ORCHESTRATOR CONFIG
-    // ══════════════════════════════════════════════════════════
-    static void LoadOrchestratorConfig()
-    {
-        if (!File.Exists(ConfigFile)) return;
-
-        try
+        catch
         {
-            string[] lines = ReadTextAuto(ConfigFile).Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-
-            foreach (string line in lines)
-            {
-                string t = line.Trim();
-
-                if (t.StartsWith("MODEL="))
-                {
-                    string val = t.Substring(6).Trim();
-                    if (val.Length > 0) PrimaryModel = val;
-                }
-                else if (t.StartsWith("QWEN_VERSION="))
-                {
-                    string val = t.Substring(13).Trim();
-                    if (val.Length > 0) QwenVersion = val;
-                }
-                else if (t.StartsWith("ORCH_ENABLED="))
-                {
-                    string val = t.Substring(13).Trim().ToLowerInvariant();
-                    OrchestratorEnabled = (val == "1" || val == "true" || val == "on" || val == "yes");
-                }
-                else if (t.StartsWith("ORCH_LINK="))
-                {
-                    string url = t.Substring(10).Trim();
-                    if (url.StartsWith("http://") || url.StartsWith("https://"))
-                    {
-                        string tmpBase = OrchestratorApiUrl;
-                        string tmpId = OrchestratorChatId;
-                        ParseChatLink(url, ref tmpBase, ref tmpId);
-                        OrchestratorApiUrl = tmpBase;
-                        if (!string.IsNullOrEmpty(tmpId)) OrchestratorChatId = tmpId;
-                    }
-                }
-                else if (t.StartsWith("ORCH_CHAT_ID=") && string.IsNullOrEmpty(OrchestratorChatId))
-                {
-                    OrchestratorChatId = ExtractChatId(t.Substring(13).Trim());
-                }
-                else if (t.StartsWith("ORCH_MODEL="))
-                {
-                    string val = t.Substring(11).Trim();
-                    if (val.Length > 0) OrchestratorModel = val;
-                }
-                else if (t.StartsWith("ORCH_API_URL="))
-                {
-                    string val = t.Substring(13).Trim();
-                    if (val.StartsWith("http://") || val.StartsWith("https://")) OrchestratorApiUrl = val;
-                }
-                else if (t.StartsWith("ORCH_TOKEN="))
-                {
-                    string val = t.Substring(11).Trim();
-                    if (val.Length > 0) OrchestratorToken = val;
-                }
-            }
-
-            // ── Fallback на AI#2, если отдельный оркестратор не задан ──
-            // Это чинит ситуацию, когда "второй ИИ" сконфигурирован как AI#2,
-            // но оркестратор продолжал ходить в primary.
-            if (string.IsNullOrEmpty(OrchestratorToken) && !string.IsNullOrEmpty(Token2))
-                OrchestratorToken = Token2;
-
-            if ((string.IsNullOrEmpty(OrchestratorApiUrl) || OrchestratorApiUrl == DefaultApiBase)
-                && !string.IsNullOrEmpty(ApiBaseUrl2) && ApiBaseUrl2 != DefaultApiBase)
-            {
-                OrchestratorApiUrl = ApiBaseUrl2;
-            }
-
-            if (string.IsNullOrEmpty(OrchestratorChatId) && !string.IsNullOrEmpty(ChatId2))
-                OrchestratorChatId = ChatId2;
-
-            if (string.IsNullOrEmpty(OrchestratorModel) && !string.IsNullOrEmpty(Ai2Model))
-                OrchestratorModel = Ai2Model;
         }
-        catch { }
-    }
-
-    // ══════════════════════════════════════════════════════════
-    //  GUARDIAN CONFIG (SYSTEM_GUARDIAN + ArcMode)
-    //  Синхронизировано с LoadConfig() в Config.cs
-    // ══════════════════════════════════════════════════════════
-    static void LoadGuardianConfig()
-    {
-        if (!File.Exists(ConfigFile)) return;
-
-        try
-        {
-            string[] lines = ReadTextAuto(ConfigFile).Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-
-            foreach (string line in lines)
-            {
-                string t = line.Trim();
-
-                if (t.StartsWith("GUARDIAN_ENABLED="))
-                {
-                    string val = t.Substring(17).Trim().ToLowerInvariant();
-                    GuardianEnabled = (val == "1" || val == "true" || val == "on" || val == "yes");
-                }
-                else if (t.StartsWith("ARC_MODE="))
-                {
-                    string val = t.Substring(9).Trim().ToLowerInvariant();
-                    ArcMode = (val == "1" || val == "true" || val == "on" || val == "yes");
-                }
-                else if (t.StartsWith("GUARDIAN_MODEL="))
-                {
-                    string val = t.Substring(15).Trim();
-                    if (val.Length > 0) GuardianModel = val;
-                }
-                else if (t.StartsWith("GUARDIAN_API_URL="))
-                {
-                    string val = t.Substring(17).Trim();
-                    if (val.StartsWith("http://") || val.StartsWith("https://")) GuardianApiUrl = val;
-                }
-                else if (t.StartsWith("GUARDIAN_TOKEN="))
-                {
-                    string val = t.Substring(15).Trim();
-                    if (val.Length > 0) GuardianToken = val;
-                }
-            }
-        }
-        catch { }
     }
 }

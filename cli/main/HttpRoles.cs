@@ -1,71 +1,24 @@
-// HttpRoles.cs — PostOrchestratorMessage, PostGuardianMessage, PostCodeWriterMessage, ApplyAuth*
-// New Era CLI v5.3 · partial class MainConsole
-//
-// v5.3:
-//   - Добавлен универсальный PostRoleChatMessage().
-//   - Orchestrator/Guardian теперь используют streaming-запрос и отдельный chat_id.
-//   - Orchestrator больше не теряет AI#2.
+// HttpRoles.cs — HTTP для ролей AI #2: dispatcher, extractor, validator, test
+// New Era CLI v6.0 · partial class MainConsole
+// C# 5 / .NET Framework 4.x
 
 using System;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 partial class MainConsole
 {
-    const int OrchTimeoutMs = 90000;
-    const int OrchReadWriteTimeoutMs = 120000;
-
-    const int GuardianTimeoutMs = 60000;
-    const int GuardianReadWriteTimeoutMs = 90000;
-
-    const int RoleMaxRetries = 1;
+    const int RoleMaxRetries   = 1;
     const int RoleRetryDelayMs = 1500;
 
-    static string PostOrchestratorMessage(string systemPrompt, string userPrompt)
-    {
-        string orchBase  = string.IsNullOrEmpty(OrchestratorApiUrl) ? ApiBaseUrl : OrchestratorApiUrl;
-        string orchModel = string.IsNullOrEmpty(OrchestratorModel) ? PrimaryModel : OrchestratorModel;
-        string orchToken = string.IsNullOrEmpty(OrchestratorToken) ? Token : OrchestratorToken;
-        string orchChat  = string.IsNullOrEmpty(OrchestratorChatId) ? ChatId : OrchestratorChatId;
-
-        return PostRoleChatMessage(
-            "Orchestrator",
-            systemPrompt,
-            userPrompt,
-            orchModel,
-            orchBase,
-            orchToken,
-            orchChat,
-            OrchTimeoutMs,
-            OrchReadWriteTimeoutMs
-        );
-    }
-
-    static string PostGuardianMessage(string systemPrompt, string userPrompt)
-    {
-        string guardBase  = string.IsNullOrEmpty(GuardianApiUrl) ? ApiBaseUrl : GuardianApiUrl;
-        string guardModel = string.IsNullOrEmpty(GuardianModel) ? PrimaryModel : GuardianModel;
-        string guardToken = string.IsNullOrEmpty(GuardianToken) ? Token : GuardianToken;
-
-        string guardChat = ChatId;
-        if (!string.IsNullOrEmpty(GuardianToken) && GuardianToken == Token2 && !string.IsNullOrEmpty(ChatId2))
-            guardChat = ChatId2;
-
-        return PostRoleChatMessage(
-            "Guardian",
-            systemPrompt,
-            userPrompt,
-            guardModel,
-            guardBase,
-            guardToken,
-            guardChat,
-            GuardianTimeoutMs,
-            GuardianReadWriteTimeoutMs
-        );
-    }
-
+    // ══════════════════════════════════════════════════════════
+    //  POST ROLE CHAT MESSAGE
+    //  Универсальный HTTP-запрос для любой роли AI #2.
+    //  systemPrompt подмешивается в userPrompt.
+    // ══════════════════════════════════════════════════════════
     static string PostRoleChatMessage(
         string roleName,
         string systemPrompt,
@@ -90,9 +43,19 @@ partial class MainConsole
         if (string.IsNullOrEmpty(effectiveChat))
             throw new Exception(roleName + ": нет chat_id");
 
+        string fullPrompt = string.IsNullOrEmpty(systemPrompt)
+            ? userPrompt
+            : systemPrompt + "\n" + userPrompt;
+
+        bool isPrimaryChat = token == Token && effectiveChat == ChatId;
+        bool thinking = isPrimaryChat || ShouldUseThinkingForRole(effectiveModel);
+
+        string featureConfig = thinking
+            ? "\"feature_config\":{\"thinking_enabled\":true,\"output_schema\":\"phase\",\"research_mode\":\"normal\",\"auto_thinking\":false,\"thinking_mode\":\"Thinking\",\"thinking_format\":\"summary\",\"auto_search\":true}"
+            : "\"feature_config\":{\"thinking_enabled\":false,\"output_schema\":\"phase\",\"research_mode\":\"normal\",\"auto_thinking\":false,\"thinking_mode\":\"None\",\"thinking_format\":\"summary\",\"auto_search\":false}";
+
         string url = effectiveBase.TrimEnd('/') + "/api/v2/chat/completions";
-        if (!string.IsNullOrEmpty(effectiveChat))
-            url += "?chat_id=" + Uri.EscapeDataString(effectiveChat);
+        url += "?chat_id=" + Uri.EscapeDataString(effectiveChat);
 
         int ts = (int)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
         string msgId = Guid.NewGuid().ToString();
@@ -102,35 +65,24 @@ partial class MainConsole
         sb.Append(
             "{\"stream\":true,\"version\":\"3\",\"incremental_output\":true,\"chat_id\":" + JsonStr(effectiveChat) +
             ",\"chat_mode\":\"normal\",\"model\":" + JsonStr(effectiveModel) +
-            ",\"parent_id\":null,\"messages\":["
-        );
-
-        if (!string.IsNullOrEmpty(systemPrompt))
-        {
-            sb.Append(
-                "{\"fid\":\"" + Guid.NewGuid().ToString() + "\",\"parentId\":null,\"childrenIds\":[],\"role\":\"system\",\"content\":" + EscapeJson(systemPrompt) +
-                ",\"user_action\":\"chat\",\"files\":[],\"timestamp\":" + ts +
-                ",\"models\":[" + JsonStr(effectiveModel) +
-                "],\"chat_type\":\"t2t\",\"feature_config\":{\"thinking_enabled\":false,\"output_schema\":\"phase\",\"research_mode\":\"normal\",\"auto_thinking\":false,\"thinking_mode\":\"None\",\"thinking_format\":\"summary\",\"auto_search\":false},\"extra\":{\"meta\":{\"subChatType\":\"t2t\"}},\"sub_chat_type\":\"t2t\"},"
-            );
-        }
-
-        sb.Append(
-            "{\"fid\":\"" + msgId + "\",\"parentId\":null,\"childrenIds\":[],\"role\":\"user\",\"content\":" + EscapeJson(userPrompt) +
-            ",\"user_action\":\"chat\",\"files\":[],\"timestamp\":" + (ts + 1) +
+            ",\"parent_id\":null,\"messages\":[{\"fid\":\"" + msgId +
+            "\",\"parentId\":null,\"childrenIds\":[],\"role\":\"user\",\"content\":" + EscapeJson(fullPrompt) +
+            ",\"user_action\":\"chat\",\"files\":[],\"timestamp\":" + ts +
             ",\"models\":[" + JsonStr(effectiveModel) +
-            "],\"chat_type\":\"t2t\",\"feature_config\":{\"thinking_enabled\":false,\"output_schema\":\"phase\",\"research_mode\":\"normal\",\"auto_thinking\":false,\"thinking_mode\":\"None\",\"thinking_format\":\"summary\",\"auto_search\":false},\"extra\":{\"meta\":{\"subChatType\":\"t2t\"}},\"sub_chat_type\":\"t2t\"}],\"timestamp\":" + (ts + 2) + "}"
+            "],\"chat_type\":\"t2t\"," + featureConfig +
+            ",\"extra\":{\"meta\":{\"subChatType\":\"t2t\"}},\"sub_chat_type\":\"t2t\"}],\"timestamp\":" + (ts + 1) + "}"
         );
 
         byte[] bodyBytes = Encoding.UTF8.GetBytes(sb.ToString());
-
         Exception lastEx = null;
 
         for (int attempt = 0; attempt <= RoleMaxRetries; attempt++)
         {
             if (attempt > 0)
             {
-                if (StopRequested) break;
+                if (StopRequested)
+                    break;
+
                 Thread.Sleep(RoleRetryDelayMs * attempt);
             }
 
@@ -139,7 +91,6 @@ partial class MainConsole
             req.Method = "POST";
             req.Timeout = timeoutMs;
             req.ReadWriteTimeout = rwTimeoutMs;
-
             req.ContentType = "application/json";
             req.Accept = "application/json, text/plain, */*";
             req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
@@ -150,13 +101,10 @@ partial class MainConsole
             req.Headers["source"] = "web";
             req.Headers["Origin"] = "https://chat.qwen.ai";
             req.Referer = "https://chat.qwen.ai/c/" + (effectiveChat ?? "");
-
             req.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
-
             req.Headers["version"] = QwenVersion;
             req.Headers["x-accel-buffering"] = "no";
             req.Headers["x-request-id"] = Guid.NewGuid().ToString();
-
             req.Headers["timezone"] = "Europe/Moscow";
             req.Headers["Accept-Language"] = "ru-RU,ru;q=0.9,en;q=0.7";
             req.Headers["Cache-Control"] = "no-cache";
@@ -164,7 +112,6 @@ partial class MainConsole
             try { req.Headers["sec-ch-ua"] = "\"Chromium\";v=\"126\", \"Google Chrome\";v=\"126\", \"Not?A_Brand\";v=\"99\""; } catch { }
             try { req.Headers["sec-ch-ua-mobile"] = "?0"; } catch { }
             try { req.Headers["sec-ch-ua-platform"] = "\"Windows\""; } catch { }
-
             try { req.Headers["sec-fetch-dest"] = "empty"; } catch { }
             try { req.Headers["sec-fetch-mode"] = "cors"; } catch { }
             try { req.Headers["sec-fetch-site"] = "same-origin"; } catch { }
@@ -194,7 +141,6 @@ partial class MainConsole
             catch (WebException wex)
             {
                 HttpWebResponse r = wex.Response as HttpWebResponse;
-
                 int code = -1;
                 string errBody = "";
 
@@ -234,22 +180,36 @@ partial class MainConsole
                 if (code == 429 || code >= 500 || code == -1)
                 {
                     lastEx = new Exception(roleName + " HTTP " + code);
-                    if (attempt < RoleMaxRetries) continue;
+
+                    if (attempt < RoleMaxRetries)
+                        continue;
+
                     throw lastEx;
                 }
 
                 string head = (errBody ?? "").Replace("\r", " ").Replace("\n", " ");
-                if (head.Length > 200) head = head.Substring(0, 200) + "...";
+
+                if (head.Length > 200)
+                    head = head.Substring(0, 200) + "...";
 
                 throw new Exception(roleName + " HTTP " + code + " " + head);
             }
+
+            try
+            {
+                File.WriteAllText(DumpFile, response ?? "", new UTF8Encoding(false));
+            }
+            catch { }
 
             string trimmed = (response ?? "").TrimStart();
 
             if (trimmed.Length == 0)
             {
                 lastEx = new Exception(roleName + ": сервер вернул пустое тело");
-                if (attempt < RoleMaxRetries) continue;
+
+                if (attempt < RoleMaxRetries)
+                    continue;
+
                 throw lastEx;
             }
 
@@ -263,18 +223,30 @@ partial class MainConsole
 
             if (trimmed.StartsWith("{") && trimmed.Contains("\"error\""))
             {
-                string snippet = trimmed.Length > 400 ? trimmed.Substring(0, 400) + "..." : trimmed;
+                string snippet = trimmed.Length > 400
+                    ? trimmed.Substring(0, 400) + "..."
+                    : trimmed;
+
                 throw new Exception(roleName + " API: " + snippet);
             }
 
             string parsed = ParseRoleAnswer(response);
+
             if (string.IsNullOrWhiteSpace(parsed))
                 parsed = ParseOrchestratorResponse(response);
 
             if (string.IsNullOrWhiteSpace(parsed))
             {
+                string apiErr = TryExtractApiErrorMessage(response);
+
+                if (!string.IsNullOrEmpty(apiErr))
+                    throw new Exception(roleName + " API: " + apiErr);
+
                 lastEx = new Exception(roleName + ": ответ получен, но текст не извлечён");
-                if (attempt < RoleMaxRetries) continue;
+
+                if (attempt < RoleMaxRetries)
+                    continue;
+
                 throw lastEx;
             }
 
@@ -284,49 +256,51 @@ partial class MainConsole
         throw lastEx ?? new Exception(roleName + ": не удалось отправить запрос");
     }
 
-    static string PostCodeWriterMessage(string prompt)
+    // ══════════════════════════════════════════════════════════
+    //  THINKING MODE
+    // ══════════════════════════════════════════════════════════
+    static bool ShouldUseThinkingForRole(string model)
     {
-        if (string.IsNullOrEmpty(prompt))
-            throw new Exception("CodeWriter: пустой промпт");
+        string m = (model ?? "").ToLowerInvariant();
+        string p = (PrimaryModel ?? "").ToLowerInvariant();
 
-        WriteColored(ConsoleColor.DarkGray, "    [CW-http] Отправка: " + prompt.Length + " символов\n");
+        if (m.Length == 0)
+            return true;
 
-        string raw = PostMessageWithTimeout(
-            prompt,
-            LastResponseId,
-            PrimaryModel,
-            ApiBaseUrl,
-            CodeWriterTimeoutMs,
-            CodeWriterReadWriteTimeoutMs
-        );
+        if (m == p)
+            return true;
 
-        string result = ParseSseAnswer(raw);
+        if (m.Contains("3.8"))
+            return true;
 
-        WriteColored(ConsoleColor.DarkGray,
-            "    [CW-http] Получено: " + (raw != null ? raw.Length : 0) + " raw, " +
-            (result != null ? result.Length : 0) + " parsed\n");
+        if (m.Contains("preview"))
+            return true;
 
-        try { File.WriteAllText(DumpFile, raw ?? "", new UTF8Encoding(false)); } catch { }
-
-        return result;
+        return false;
     }
 
-    static string PostCodeWriterMessage(string prompt, string model, string apiBase)
+    // ══════════════════════════════════════════════════════════
+    //  ERROR MESSAGE EXTRACTION
+    // ══════════════════════════════════════════════════════════
+    static string TryExtractApiErrorMessage(string raw)
     {
-        if (string.IsNullOrEmpty(prompt))
-            throw new Exception("CodeWriter: пустой промпт");
+        if (string.IsNullOrEmpty(raw))
+            return null;
 
-        string effectiveModel = string.IsNullOrEmpty(model) ? PrimaryModel : model;
-        string effectiveBase  = string.IsNullOrEmpty(apiBase) ? ApiBaseUrl : apiBase;
+        if (!raw.Contains("\"error\""))
+            return null;
 
-        string raw = PostMessage(prompt, LastResponseId, effectiveModel, effectiveBase);
-        string result = ParseSseAnswer(raw);
+        Match m = Regex.Match(raw, @"""message""\s*:\s*""((?:\\.|[^""\\])*)""");
 
-        try { File.WriteAllText(DumpFile, raw ?? "", new UTF8Encoding(false)); } catch { }
+        if (m.Success)
+            return UnescapeJson(m.Groups[1].Value);
 
-        return result;
+        return null;
     }
 
+    // ══════════════════════════════════════════════════════════
+    //  AUTH
+    // ══════════════════════════════════════════════════════════
     static void ApplyAuth(HttpWebRequest req)
     {
         ApplyAuth(req, ApiBaseUrl);
@@ -334,15 +308,22 @@ partial class MainConsole
 
     static void ApplyAuth(HttpWebRequest req, string apiBase)
     {
-        if (string.IsNullOrEmpty(Token)) return;
+        if (string.IsNullOrEmpty(Token))
+            return;
 
         req.Headers[HttpRequestHeader.Authorization] = "Bearer " + Token;
 
-        string cookieValue = !string.IsNullOrEmpty(CookieHeader) ? CookieHeader : ("token=" + Token);
+        string cookieValue = !string.IsNullOrEmpty(CookieHeader)
+            ? CookieHeader
+            : ("token=" + Token);
 
         if (!string.IsNullOrEmpty(CookieHeader))
         {
-            try { req.Headers[HttpRequestHeader.Cookie] = cookieValue; return; }
+            try
+            {
+                req.Headers[HttpRequestHeader.Cookie] = cookieValue;
+                return;
+            }
             catch { }
         }
 
@@ -361,9 +342,9 @@ partial class MainConsole
 
     static void ApplyAuthForRole(HttpWebRequest req, string apiBase, string token)
     {
-        if (string.IsNullOrEmpty(token)) return;
+        if (string.IsNullOrEmpty(token))
+            return;
 
-        // Если это основной токен и есть браузерные cookie — используем их.
         if (token == Token && !string.IsNullOrEmpty(CookieHeader))
         {
             ApplyAuth(req, apiBase);
@@ -373,56 +354,6 @@ partial class MainConsole
         req.Headers[HttpRequestHeader.Authorization] = "Bearer " + token;
 
         string cookieValue = "token=" + token;
-
-        try
-        {
-            var cc = new CookieContainer();
-            cc.SetCookies(new Uri(apiBase), cookieValue);
-            req.CookieContainer = cc;
-        }
-        catch
-        {
-            try { req.Headers[HttpRequestHeader.Cookie] = cookieValue; }
-            catch { }
-        }
-    }
-
-    static void ApplyAuthForOrchestrator(HttpWebRequest req, string apiBase, string orchToken)
-    {
-        string effectiveToken = string.IsNullOrEmpty(orchToken) ? Token : orchToken;
-        if (string.IsNullOrEmpty(effectiveToken)) return;
-
-        req.Headers[HttpRequestHeader.Authorization] = "Bearer " + effectiveToken;
-
-        string cookieValue = "token=" + effectiveToken;
-
-        try
-        {
-            var cc = new CookieContainer();
-            cc.SetCookies(new Uri(apiBase), cookieValue);
-            req.CookieContainer = cc;
-        }
-        catch
-        {
-            try { req.Headers[HttpRequestHeader.Cookie] = cookieValue; }
-            catch { }
-        }
-    }
-
-    static void ApplyAuthForGuardian(HttpWebRequest req, string apiBase, string guardToken)
-    {
-        string effectiveToken = string.IsNullOrEmpty(guardToken) ? Token : guardToken;
-        if (string.IsNullOrEmpty(effectiveToken)) return;
-
-        req.Headers[HttpRequestHeader.Authorization] = "Bearer " + effectiveToken;
-
-        if (!string.IsNullOrEmpty(CookieHeader))
-        {
-            try { req.Headers[HttpRequestHeader.Cookie] = CookieHeader; return; }
-            catch { }
-        }
-
-        string cookieValue = "token=" + effectiveToken;
 
         try
         {

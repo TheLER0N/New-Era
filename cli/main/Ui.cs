@@ -1,9 +1,6 @@
 // Ui.cs — баннер, промпт, help, WriteColored
-// New Era CLI v5.3 · partial class MainConsole
+// New Era CLI v6.0 · partial class MainConsole
 // C# 5 / .NET Framework 4.x
-//
-// v5.3:
-//   - В help добавлены команды /test.
 
 using System;
 
@@ -18,84 +15,82 @@ partial class MainConsole
         {
             int winW;
 
-            try { winW = Console.WindowWidth; } catch { winW = 80; }
+            try { winW = Console.WindowWidth; }
+            catch { winW = 80; }
 
-            if (winW < 40) winW = 40;
+            if (winW < 40)
+                winW = 40;
 
             Console.WriteLine();
 
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine("  ╭" + new string('─', winW - 4) + "╮");
 
-            Console.Write("  │  ");
+            string left = "  │  ";
+            string brand = "███  NEW ERA";
+            string ver = "  v" + AppVersion;
+            string sep = "  ·  Qwen CLI  ·  ";
+
+            bool online = !string.IsNullOrEmpty(ChatId) && !string.IsNullOrEmpty(Token);
+            string onlineText = online ? "● online" : "● offline";
+
+            string indicators = "";
+
+            if (DispatcherEnabled)
+                indicators += "  ◆ dispatcher";
+
+            if (CompressEnabled)
+                indicators += "  ◆ compress";
+
+            if (ExtractEnabled)
+                indicators += "  ◆ extract";
+
+            if (ArcMode)
+                indicators += "  ◆ arc";
+
+            int used =
+                DisplayWidth(left) +
+                DisplayWidth(brand) +
+                DisplayWidth(ver) +
+                DisplayWidth(sep) +
+                DisplayWidth(onlineText) +
+                DisplayWidth(indicators);
+
+            int pad = winW - used - 1;
+
+            if (pad < 1)
+                pad = 1;
+
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
+            Console.Write(left);
 
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.Write("███");
-
-            Console.ForegroundColor = ConsoleColor.DarkCyan;
-            Console.Write("  ");
-
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.Write("NEW ERA");
+            Console.Write(brand);
 
             Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.Write("  v" + AppVersion);
+            Console.Write(ver);
 
             Console.ForegroundColor = ConsoleColor.DarkCyan;
-            Console.Write("  ·  Qwen CLI  ·  ");
+            Console.Write(sep);
 
-            Console.ForegroundColor = string.IsNullOrEmpty(ChatId) ? ConsoleColor.Yellow : ConsoleColor.Green;
-            Console.Write(string.IsNullOrEmpty(ChatId) ? "● offline" : "● online");
+            Console.ForegroundColor = online ? ConsoleColor.Green : ConsoleColor.Yellow;
+            Console.Write(onlineText);
 
-            // Dual-LLM индикатор
-            if (OrchestratorEnabled)
+            if (indicators.Length > 0)
             {
-                Console.ForegroundColor = ConsoleColor.DarkCyan;
-                Console.Write("  ");
-
                 Console.ForegroundColor = ConsoleColor.Magenta;
-                Console.Write("◆ dual-llm");
-            }
-
-            // Guardian индикатор
-            if (GuardianEnabled)
-            {
-                Console.ForegroundColor = ConsoleColor.DarkCyan;
-                Console.Write("  ");
-
-                Console.ForegroundColor = ConsoleColor.Magenta;
-                Console.Write("◆ guardian");
-            }
-
-            // Аркест индикатор
-            if (ArcMode)
-            {
-                Console.ForegroundColor = ConsoleColor.DarkCyan;
-                Console.Write("  ");
-
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.Write("◆ arc");
+                Console.Write(indicators);
             }
 
             Console.ForegroundColor = ConsoleColor.DarkCyan;
-
-            int pad = winW - 4 - 2 - 3 - 3 - 7 - 4 - 18
-                      - (string.IsNullOrEmpty(ChatId) ? 9 : 8)
-                      - (OrchestratorEnabled ? 12 : 0)
-                      - (GuardianEnabled ? 12 : 0)
-                      - (ArcMode ? 7 : 0);
-
-            if (pad < 1) pad = 1;
-
             Console.Write(new string(' ', pad));
             Console.WriteLine("│");
 
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine("  ├" + new string('─', winW - 4) + "┤");
-
             Console.ResetColor();
 
-            if (string.IsNullOrEmpty(ChatId))
+            if (!online)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine("  │  ⚠ Заполни qwen_config.txt (CHAT_ID, TOKEN)");
@@ -128,7 +123,10 @@ partial class MainConsole
             Console.ForegroundColor = ConsoleColor.DarkGray;
             Console.Write("  ");
 
-            Console.ForegroundColor = string.IsNullOrEmpty(Token) ? ConsoleColor.Yellow : ConsoleColor.Green;
+            Console.ForegroundColor = string.IsNullOrEmpty(Token)
+                ? ConsoleColor.Yellow
+                : ConsoleColor.Green;
+
             Console.Write("❯");
 
             Console.ForegroundColor = ConsoleColor.DarkGray;
@@ -147,15 +145,16 @@ partial class MainConsole
         {
             int winW;
 
-            try { winW = Console.WindowWidth; } catch { winW = 80; }
+            try { winW = Console.WindowWidth; }
+            catch { winW = 80; }
 
-            if (winW < 40) winW = 40;
+            if (winW < 40)
+                winW = 40;
 
             Console.WriteLine();
 
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine("  ╭─ ▸ КОМАНДЫ " + new string('─', Math.Max(1, winW - 18)) + "╮");
-
             Console.ResetColor();
 
             Console.ForegroundColor = ConsoleColor.Cyan;
@@ -171,9 +170,19 @@ partial class MainConsole
 
             WriteHelpLine("/edit <файл> <з>", "ИИ правит файл");
             WriteHelpLine("/edit <ф> N-M <з>", "править строки N-M");
-            WriteHelpLine("/edit <папка> <з>", "создать файл(ы)");
+            WriteHelpLine("/edit <папка> <з>", "создать/изменить файлы");
             WriteHelpLine("/plan <путь> <з>", "план реализации");
             WriteHelpLine("/scan <папка>", "отчёт по структуре");
+
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine("  │  ── Dispatcher v6.0 ──");
+            Console.ResetColor();
+
+            WriteHelpLine("/dispatcher on|off", "вкл/выкл v6-диспетчер");
+            WriteHelpLine("/dispatcher status", "статус dispatcher");
+            WriteHelpLine("/compress on|off", "сжатие контекста");
+            WriteHelpLine("/extract on|off", "извлечение кода AI #2");
+            WriteHelpLine("/arc on|off", "авто-применение (Аркест)");
 
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("  │  ── История ──");
@@ -185,13 +194,6 @@ partial class MainConsole
             WriteHelpLine("/live  /tail", "слежение за чатом");
             WriteHelpLine("/stop", "остановить live");
 
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("  │  ── Оркестратор ──");
-            Console.ResetColor();
-
-            WriteHelpLine("/orch on|off", "вкл/выкл dual-LLM");
-            WriteHelpLine("/orch status", "статус оркестратора");
-
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("  │  ── Тест ИИ ──");
             Console.ResetColor();
@@ -201,14 +203,6 @@ partial class MainConsole
             WriteHelpLine("/test quick", "быстрый тест заготовленной фразой");
             WriteHelpLine("/test <номер> <т>", "тест конкретного ИИ");
             WriteHelpLine("/test <номер> quick", "быстрый тест конкретного ИИ");
-
-            Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.WriteLine("  │  ── Двухуровневое редактирование ──");
-            Console.ResetColor();
-
-            WriteHelpLine("/guardian on|off", "вкл/выкл Guardian");
-            WriteHelpLine("/guardian status", "статус Guardian + rollback");
-            WriteHelpLine("/arc on|off", "авто-применение (Аркест)");
 
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("  │  ── Настройки ──");

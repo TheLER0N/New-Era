@@ -1,5 +1,5 @@
 // AiTest.cs — тестирование доступных ИИ / ролей
-// New Era CLI v5.3 · partial class MainConsole
+// New Era CLI v6.0 · partial class MainConsole
 // C# 5 / .NET Framework 4.x
 
 using System;
@@ -17,6 +17,9 @@ partial class MainConsole
         public string ChatId;
         public bool Configured;
         public string Note;
+        public string RoleKind;
+        public string SystemPrompt;
+        public string QuickMessage;
     }
 
     // ══════════════════════════════════════════════════════════
@@ -24,12 +27,13 @@ partial class MainConsole
     // ══════════════════════════════════════════════════════════
     static void HandleTest(string input)
     {
-        // input приходит без ведущего slash, например: "test quick"
         string args = input.Length > 5 ? input.Substring(5).Trim() : "";
 
         if (string.IsNullOrEmpty(args))
         {
-            WriteColored(ConsoleColor.DarkGray, "  ◌ Введи тестовый текст (пустая строка — быстрый тест):\n");
+            WriteColored(ConsoleColor.DarkGray,
+                "  ◌ Введи тестовый текст (пустая строка — быстрый тест):\n");
+
             string text = ReadMultiline();
 
             if (string.IsNullOrWhiteSpace(text))
@@ -55,9 +59,12 @@ partial class MainConsole
         }
 
         string[] parts = args.Split(new[] { ' ' }, 2);
+
+        string numRaw = parts[0].Trim().Trim('<', '>', '[', ']', '(', ')');
+
         int num;
 
-        if (int.TryParse(parts[0], out num))
+        if (int.TryParse(numRaw, out num))
         {
             string rest = parts.Length > 1 ? parts[1].Trim() : "";
 
@@ -76,6 +83,7 @@ partial class MainConsole
             }
 
             RunTestCustom(rest, num);
+
             return;
         }
 
@@ -89,7 +97,7 @@ partial class MainConsole
     {
         List<AiTestTarget> targets = BuildAiTestList();
 
-        WriteColored(ConsoleColor.DarkGray, "\n  ── Список ИИ для теста ──\n");
+        WriteColored(ConsoleColor.DarkGray, "\n── Список ИИ для теста ──\n");
 
         foreach (var t in targets)
         {
@@ -109,19 +117,40 @@ partial class MainConsole
             Console.WriteLine();
         }
 
-        WriteColored(ConsoleColor.DarkGray, "\n  Использование:\n");
+        WriteColored(ConsoleColor.DarkGray, "\nИспользование:\n");
         WriteColored(ConsoleColor.DarkGray, "    /test <текст>\n");
         WriteColored(ConsoleColor.DarkGray, "    /test quick\n");
         WriteColored(ConsoleColor.DarkGray, "    /test <номер> <текст>\n");
-        WriteColored(ConsoleColor.DarkGray, "    /test <номер> quick\n\n");
+        WriteColored(ConsoleColor.DarkGray, "    /test <номер> quick\n");
     }
 
     static List<AiTestTarget> BuildAiTestList()
     {
         var list = new List<AiTestTarget>();
+
         int num = 1;
 
-        // 1. Primary
+        string ai2Token = GetAi2Token();
+        string ai2Api = GetAi2Api();
+        string ai2Model = GetAi2Model();
+
+        bool ai2Configured = IsAi2Configured();
+
+        string ai2Note;
+
+        if (ai2Configured)
+        {
+            ai2Note = "помощник";
+        }
+        else if (string.IsNullOrEmpty(Token2))
+        {
+            ai2Note = "нет AI2_TOKEN";
+        }
+        else
+        {
+            ai2Note = "нет AI2_CHAT_ID";
+        }
+
         list.Add(new AiTestTarget
         {
             Number = num++,
@@ -131,77 +160,61 @@ partial class MainConsole
             Token = Token,
             ChatId = ChatId,
             Configured = !string.IsNullOrEmpty(Token) && !string.IsNullOrEmpty(ChatId),
-            Note = "основной ИИ"
+            Note = "генератор",
+            RoleKind = "primary",
+            SystemPrompt = null,
+            QuickMessage = "Скажи привет."
         });
-
-        // 2. AI #2 (если задан)
-        if (!string.IsNullOrEmpty(Token2))
-        {
-            string api2 = (string.IsNullOrEmpty(ApiBaseUrl2) || ApiBaseUrl2 == DefaultApiBase)
-                ? ApiBaseUrl
-                : ApiBaseUrl2;
-
-            string chat2 = string.IsNullOrEmpty(ChatId2) ? ChatId : ChatId2;
-
-            list.Add(new AiTestTarget
-            {
-                Number = num++,
-                Name = "AI #2",
-                Model = string.IsNullOrEmpty(Ai2Model) ? PrimaryModel : Ai2Model,
-                ApiUrl = api2,
-                Token = Token2,
-                ChatId = chat2,
-                Configured = !string.IsNullOrEmpty(Token2) && !string.IsNullOrEmpty(chat2),
-                Note = "второй ИИ"
-            });
-        }
-
-        // 3. Orchestrator
-        string orchModel = string.IsNullOrEmpty(OrchestratorModel) ? PrimaryModel : OrchestratorModel;
-        string orchApi   = string.IsNullOrEmpty(OrchestratorApiUrl) ? ApiBaseUrl : OrchestratorApiUrl;
-        string orchToken = string.IsNullOrEmpty(OrchestratorToken) ? Token : OrchestratorToken;
-        string orchChat  = string.IsNullOrEmpty(OrchestratorChatId) ? ChatId : OrchestratorChatId;
-
-        string orchNote = OrchestratorEnabled ? "dual-LLM включён" : "dual-LLM выключен";
-
-        if (orchToken == Token2 && !string.IsNullOrEmpty(Token2))
-            orchNote += " · использует AI #2";
 
         list.Add(new AiTestTarget
         {
             Number = num++,
-            Name = "Orchestrator",
-            Model = orchModel,
-            ApiUrl = orchApi,
-            Token = orchToken,
-            ChatId = orchChat,
-            Configured = !string.IsNullOrEmpty(orchToken) && !string.IsNullOrEmpty(orchChat),
-            Note = orchNote
+            Name = "AI #2",
+            Model = ai2Model,
+            ApiUrl = ai2Api,
+            Token = ai2Token,
+            ChatId = ChatId2,
+            Configured = ai2Configured,
+            Note = ai2Note,
+            RoleKind = "ai2",
+            SystemPrompt = null,
+            QuickMessage = "Скажи привет."
         });
-
-        // 4. Guardian
-        string guardModel = string.IsNullOrEmpty(GuardianModel) ? PrimaryModel : GuardianModel;
-        string guardApi   = string.IsNullOrEmpty(GuardianApiUrl) ? ApiBaseUrl : GuardianApiUrl;
-        string guardToken = string.IsNullOrEmpty(GuardianToken) ? Token : GuardianToken;
-
-        string guardChat = ChatId;
-        if (guardToken == Token2 && !string.IsNullOrEmpty(ChatId2))
-            guardChat = ChatId2;
-
-        string guardNote = GuardianEnabled ? "guardian включён" : "guardian выключен";
-        if (guardToken == Token2 && !string.IsNullOrEmpty(Token2))
-            guardNote += " · использует AI #2";
 
         list.Add(new AiTestTarget
         {
             Number = num++,
-            Name = "Guardian",
-            Model = guardModel,
-            ApiUrl = guardApi,
-            Token = guardToken,
-            ChatId = guardChat,
-            Configured = !string.IsNullOrEmpty(guardToken) && !string.IsNullOrEmpty(guardChat),
-            Note = guardNote
+            Name = "Dispatcher",
+            Model = ai2Model,
+            ApiUrl = ai2Api,
+            Token = ai2Token,
+            ChatId = ChatId2,
+            Configured = ai2Configured,
+            Note = DispatcherEnabled ? "dispatcher включён" : "dispatcher выключен",
+            RoleKind = "dispatcher",
+            SystemPrompt = DispatchPromptEnhance,
+            QuickMessage = "Перепиши задачу: добавь обработку ошибок."
+        });
+
+        list.Add(new AiTestTarget
+        {
+            Number = num++,
+            Name = "Extractor",
+            Model = ai2Model,
+            ApiUrl = ai2Api,
+            Token = ai2Token,
+            ChatId = ChatId2,
+            Configured = ai2Configured,
+            Note = ExtractEnabled ? "extractor включён" : "extractor выключен",
+            RoleKind = "extractor",
+            SystemPrompt = DispatchPromptExtract,
+            QuickMessage =
+                "Извлеки код:" + Environment.NewLine +
+                "FILE: demo.txt" + Environment.NewLine +
+                "ACTION: CREATE" + Environment.NewLine +
+                "CONTENT:" + Environment.NewLine +
+                "test" + Environment.NewLine +
+                "END_FILE"
         });
 
         return list;
@@ -223,6 +236,7 @@ partial class MainConsole
     static void RunTestWithMessage(string text, int onlyNumber, bool quick)
     {
         List<AiTestTarget> targets = BuildAiTestList();
+
         bool found = false;
 
         foreach (var t in targets)
@@ -232,9 +246,18 @@ partial class MainConsole
 
             found = true;
 
-            string message = quick
-                ? "Скажи привет ии под номером " + t.Number + "."
-                : text;
+            string message;
+
+            if (quick)
+            {
+                message = !string.IsNullOrEmpty(t.QuickMessage)
+                    ? t.QuickMessage
+                    : "Скажи привет ии под номером " + t.Number + ".";
+            }
+            else
+            {
+                message = text;
+            }
 
             SendTest(t, message);
 
@@ -245,19 +268,24 @@ partial class MainConsole
         if (!found)
         {
             if (onlyNumber != 0)
-                WriteColored(ConsoleColor.Red, "  ✖ ИИ с номером " + onlyNumber + " не найден. Смотри /test list\n");
+                WriteColored(ConsoleColor.Red,
+                    "  ✖ ИИ с номером " + onlyNumber + " не найден. Смотри /test list\n");
             else
-                WriteColored(ConsoleColor.Red, "  ✖ Нет доступных ИИ для теста.\n");
+                WriteColored(ConsoleColor.Red,
+                    "  ✖ Нет доступных ИИ для теста.\n");
         }
     }
 
     static void SendTest(AiTestTarget t, string message)
     {
-        WriteColored(ConsoleColor.Cyan, "\n ▸ Тест #" + t.Number + " · " + t.Name + " · " + (t.Model ?? "?") + "\n");
+        WriteColored(ConsoleColor.Cyan,
+            "\n▸ Тест #" + t.Number + " · " + t.Name + " · " + (t.Model ?? "?") + "\n");
 
         if (!t.Configured)
         {
-            WriteColored(ConsoleColor.Yellow, "  ⚠ пропуск: нет токена или chat_id\n");
+            WriteColored(ConsoleColor.Yellow,
+                "  ⚠ пропуск: нет токена или chat_id\n");
+
             return;
         }
 
@@ -267,7 +295,7 @@ partial class MainConsole
         {
             string response = PostRoleChatMessage(
                 t.Name,
-                null,
+                t.SystemPrompt,
                 message,
                 t.Model,
                 t.ApiUrl,
@@ -281,7 +309,9 @@ partial class MainConsole
 
             if (string.IsNullOrWhiteSpace(response))
             {
-                WriteColored(ConsoleColor.Yellow, "  ⚠ Пустой ответ.\n");
+                WriteColored(ConsoleColor.Yellow,
+                    "  ⚠ Пустой ответ.\n");
+
                 return;
             }
 
@@ -290,7 +320,9 @@ partial class MainConsole
         catch (Exception ex)
         {
             StopSpinner();
-            WriteColored(ConsoleColor.Red, "  ✖ Ошибка: " + ex.Message + "\n");
+
+            WriteColored(ConsoleColor.Red,
+                "  ✖ Ошибка: " + ex.Message + "\n");
         }
     }
 }

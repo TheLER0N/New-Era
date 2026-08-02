@@ -52,6 +52,9 @@ class QwenMessageFetcher
     static string Token2 = null;
     static string ApiBaseUrl2 = DefaultApiBase;
 
+    static string ChatId2 = null;
+    static string Ai2Link = null;
+
     static bool NoPause = false;
     static bool WatchMode = false;
     static bool TailMode = false;
@@ -86,7 +89,11 @@ class QwenMessageFetcher
         // Позиционные: [0]=ссылка AI#1, [1]=токен AI#1, [2]=ссылка AI#2, [3]=токен AI#2
         if (positional.Count >= 1) ParseChatLink(positional[0], ref ApiBaseUrl, ref ChatId);
         if (positional.Count >= 2) Token = positional[1];
-        if (positional.Count >= 3) ParseChatLink(positional[2], ref ApiBaseUrl2, ref ChatId);
+        if (positional.Count >= 3)
+        {
+           Ai2Link = positional[2];
+             ParseChatLink(positional[2], ref ApiBaseUrl2, ref ChatId2);
+        }
         if (positional.Count >= 4) Token2 = positional[3];
 
         if (string.IsNullOrEmpty(Token))
@@ -136,22 +143,30 @@ class QwenMessageFetcher
             Token = (input != null) ? input.Trim() : null;
         }
 
-        if (ApiBaseUrl2 == DefaultApiBase)
+        if (ApiBaseUrl2 == DefaultApiBase || string.IsNullOrEmpty(ChatId2))
+{
+    Console.ForegroundColor = ConsoleColor.DarkGray;
+    Console.Write("  AI #2 ссылка: ");
+    Console.ResetColor();
+
+    string input = Console.ReadLine();
+    if (input != null && input.Trim().Length > 0)
+    {
+        string url = input.Trim();
+        if (url.StartsWith("http://") || url.StartsWith("https://"))
         {
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.Write("  AI #2 \u0441\u0441\u044B\u043B\u043A\u0430: ");
-            Console.ResetColor();
-            string input = Console.ReadLine();
-            if (input != null && input.Trim().Length > 0)
-            {
-                string url = input.Trim();
-                if (url.StartsWith("http://") || url.StartsWith("https://"))
-                {
-                    string tmpId = null;
-                    ParseChatLink(url, ref ApiBaseUrl2, ref tmpId);
-                }
-            }
+            Ai2Link = url;
+
+            string tmpBase = ApiBaseUrl2;
+            string tmpId = ChatId2;
+
+            ParseChatLink(url, ref tmpBase, ref tmpId);
+
+            ApiBaseUrl2 = tmpBase;
+            ChatId2 = tmpId;
         }
+    }
+}
 
         if (string.IsNullOrEmpty(Token2))
         {
@@ -816,6 +831,26 @@ class QwenMessageFetcher
                         string url = t.Substring(12).Trim();
                         if (url.StartsWith("http://") || url.StartsWith("https://")) ApiBaseUrl2 = url;
                     }
+                    else if (t.StartsWith("AI2_LINK="))
+{
+    string url = t.Substring(9).Trim();
+    if (url.StartsWith("http://") || url.StartsWith("https://"))
+    {
+        Ai2Link = url;
+
+        string tmpBase = ApiBaseUrl2;
+        string tmpId = ChatId2;
+
+        ParseChatLink(url, ref tmpBase, ref tmpId);
+
+        ApiBaseUrl2 = tmpBase;
+        if (!string.IsNullOrEmpty(tmpId)) ChatId2 = tmpId;
+    }
+}
+else if (t.StartsWith("AI2_CHAT_ID=") && string.IsNullOrEmpty(ChatId2))
+{
+    ChatId2 = ExtractChatId(t.Substring(12).Trim());
+}
                 }
                 return;
             }
@@ -833,8 +868,21 @@ class QwenMessageFetcher
             sb.AppendLine("TOKEN=" + (Token ?? ""));
             sb.AppendLine("API_URL=" + (ApiBaseUrl ?? DefaultApiBase));
             if (!string.IsNullOrEmpty(CookieHeader)) sb.AppendLine("COOKIE=" + CookieHeader);
-            if (!string.IsNullOrEmpty(Token2)) sb.AppendLine("AI2_TOKEN=" + Token2);
-            if (ApiBaseUrl2 != DefaultApiBase) sb.AppendLine("AI2_API_URL=" + ApiBaseUrl2);
+            if (!string.IsNullOrEmpty(Ai2Link))
+{
+    sb.AppendLine("AI2_LINK=" + Ai2Link);
+}
+else
+{
+    if (!string.IsNullOrEmpty(ChatId2))
+        sb.AppendLine("AI2_CHAT_ID=" + ChatId2);
+
+    if (ApiBaseUrl2 != DefaultApiBase)
+        sb.AppendLine("AI2_API_URL=" + ApiBaseUrl2);
+}
+
+if (!string.IsNullOrEmpty(Token2))
+    sb.AppendLine("AI2_TOKEN=" + Token2);
             File.WriteAllText(ConfigFile, sb.ToString(), new UTF8Encoding(false));
         }
         catch { }
