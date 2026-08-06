@@ -1,5 +1,5 @@
-// Config.cs — конфиг, ReadTextAuto, ParseChatLink, safe paths, JSON
-// New Era v7.1
+// Config.cs — загрузка/сохранение конфигурации, AI#2 хелперы
+// New Era v7.2
 using System;
 using System.IO;
 using System.Text;
@@ -8,58 +8,28 @@ using System.Threading;
 
 partial class MainConsole
 {
-    // ══════════════════════════════════════════════
-    //  READ TEXT AUTO (определение кодировки)
-    // ══════════════════════════════════════════════
-    static string ReadTextAuto(string path)
-    {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return "";
-
-        byte[] raw;
-        try { raw = File.ReadAllBytes(path); } catch { return ""; }
-        if (raw == null || raw.Length == 0) return "";
-
-        Encoding enc; int skip = 0;
-
-        if (raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF) { enc = Encoding.UTF8; skip = 3; }
-        else if (raw.Length >= 2 && raw[0] == 0xFF && raw[1] == 0xFE) { enc = Encoding.Unicode; skip = 2; }
-        else if (raw.Length >= 2 && raw[0] == 0xFE && raw[1] == 0xFF) { enc = Encoding.BigEndianUnicode; skip = 2; }
-        else if (raw.Length >= 2 && raw[0] != 0 && raw[1] == 0) { enc = Encoding.Unicode; }
-        else if (raw.Length >= 2 && raw[0] == 0 && raw[1] != 0) { enc = Encoding.BigEndianUnicode; }
-        else { enc = Encoding.UTF8; }
-
-        string s;
-        try { s = enc.GetString(raw, skip, raw.Length - skip); }
-        catch { s = Encoding.UTF8.GetString(raw, skip, raw.Length - skip); }
-
-        if (s.Length > 0 && s[0] == '\uFEFF') s = s.Substring(1);
-        return s.Replace("\0", "");
-    }
-
-    // ══════════════════════════════════════════════
-    //  LOAD CONFIG (P1: retry + новые ключи)
-    // ══════════════════════════════════════════════
     static void LoadConfig()
     {
         if (!File.Exists(ConfigFile)) return;
-
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
                 string[] lines = ReadTextAuto(ConfigFile).Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-
                 foreach (string line in lines) {
                     string t = line.Trim();
                     if (t.StartsWith("#")) continue;
-
-                    if (t.StartsWith("MODEL="))          { string v = t.Substring(6).Trim();  if (v.Length > 0) PrimaryModel = v; }
-                    else if (t.StartsWith("QWEN_VERSION=")) { string v = t.Substring(13).Trim(); if (v.Length > 0) QwenVersion = v; }
+                    if (t.StartsWith("MODEL=")) { string v = t.Substring(6).Trim(); if (v.Length > 0) PrimaryModel = v; }
                     else if (t.StartsWith("CHAT_ID=") && string.IsNullOrEmpty(ChatId)) ChatId = ExtractChatId(t.Substring(8).Trim());
-                    else if (t.StartsWith("TOKEN=") && string.IsNullOrEmpty(Token))    Token = t.Substring(6).Trim();
+                    else if (t.StartsWith("TOKEN=") && string.IsNullOrEmpty(Token)) Token = t.Substring(6).Trim();
                     else if (t.StartsWith("API_URL=") && ApiBaseUrl == DefaultApiBase) {
                         string url = t.Substring(8).Trim();
                         if (url.StartsWith("http://") || url.StartsWith("https://")) ApiBaseUrl = url;
                     }
                     else if (t.StartsWith("COOKIE=") && string.IsNullOrEmpty(CookieHeader)) CookieHeader = t.Substring(7).Trim();
+                    else if (t.StartsWith("AI2_TOKEN=") && string.IsNullOrEmpty(Token2)) Token2 = t.Substring(10).Trim();
+                    else if (t.StartsWith("AI2_API_URL=") && ApiBaseUrl2 == DefaultApiBase) {
+                        string url = t.Substring(12).Trim();
+                        if (url.StartsWith("http://") || url.StartsWith("https://")) ApiBaseUrl2 = url;
+                    }
                     else if (t.StartsWith("AI2_LINK=")) {
                         string url = t.Substring(9).Trim();
                         if (url.StartsWith("http://") || url.StartsWith("https://")) {
@@ -70,25 +40,19 @@ partial class MainConsole
                         }
                     }
                     else if (t.StartsWith("AI2_CHAT_ID=") && string.IsNullOrEmpty(ChatId2)) ChatId2 = ExtractChatId(t.Substring(12).Trim());
-                    else if (t.StartsWith("AI2_TOKEN=") && string.IsNullOrEmpty(Token2))    Token2 = t.Substring(10).Trim();
-                    else if (t.StartsWith("AI2_API_URL=") && ApiBaseUrl2 == DefaultApiBase) {
-                        string url = t.Substring(12).Trim();
-                        if (url.StartsWith("http://") || url.StartsWith("https://")) ApiBaseUrl2 = url;
-                    }
-                    else if (t.StartsWith("AI2_MODEL=") && string.IsNullOrEmpty(Ai2Model)) Ai2Model = t.Substring(10).Trim();
-                    else if (t.StartsWith("AI2_DISPATCHER=")) DispatcherEnabled  = ParseBool(t.Substring(15));
-                    else if (t.StartsWith("AI2_COMPRESS="))   CompressEnabled    = ParseBool(t.Substring(13));
-                    else if (t.StartsWith("AI2_EXTRACT="))    ExtractEnabled     = ParseBool(t.Substring(12));
-                    else if (t.StartsWith("AI2_VALIDATE="))   Ai2ValidateEnabled = ParseBool(t.Substring(13));
-                    else if (t.StartsWith("PROJECT_PATH="))   { string v = t.Substring(13).Trim(); if (v.Length > 0) ProjectPath = v; }
-                    else if (t.StartsWith("ARC_MODE="))       ArcMode = ParseBool(t.Substring(9));
-
-                    // P3: настраиваемые лимиты
-                    else if (t.StartsWith("MAX_CONTEXT_TOTAL="))   MaxContextTotal   = ParseInt(t.Substring(18), MaxContextTotal);
-                    else if (t.StartsWith("MAX_CONTEXT_FILE="))    MaxContextFile    = ParseInt(t.Substring(17), MaxContextFile);
-                    else if (t.StartsWith("MAX_HISTORY_ENTRIES=")) MaxHistoryEntries = ParseInt(t.Substring(20), MaxHistoryEntries);
-                    else if (t.StartsWith("PLAN_MAX_RETRIES="))    PlanMaxRetries    = ParseInt(t.Substring(17), PlanMaxRetries);
-                    else if (t.StartsWith("PLAN_RETRY_DELAY_MS=")) PlanRetryDelayMs  = ParseInt(t.Substring(20), PlanRetryDelayMs);
+                    else if (t.StartsWith("QWEN_VERSION=")) { string v = t.Substring(13).Trim(); if (v.Length > 0) QwenVersion = v; }
+                    else if (t.StartsWith("AI2_MODEL=")) { string v = t.Substring(10).Trim(); if (v.Length > 0) Ai2Model = v; }
+                    else if (t.StartsWith("AI2_DISPATCHER=")) DispatcherEnabled = ParseBool(t.Substring(15));
+                    else if (t.StartsWith("AI2_COMPRESS=")) CompressEnabled = ParseBool(t.Substring(13));
+                    else if (t.StartsWith("AI2_EXTRACT=")) ExtractEnabled = ParseBool(t.Substring(12));
+                    else if (t.StartsWith("AI2_VALIDATE=")) Ai2ValidateEnabled = ParseBool(t.Substring(13));
+                    else if (t.StartsWith("PROJECT_PATH=")) { string v = t.Substring(13).Trim(); if (v.Length > 0) ProjectPath = v; }
+                    else if (t.StartsWith("ARC_MODE=")) ArcMode = ParseBool(t.Substring(9));
+                    else if (t.StartsWith("MAX_CONTEXT_TOTAL=")) MaxContextTotal = ParseInt(t.Substring(18), MaxContextTotal);
+                    else if (t.StartsWith("MAX_CONTEXT_FILE=")) MaxContextFile = ParseInt(t.Substring(17), MaxContextFile);
+                    else if (t.StartsWith("MAX_HISTORY_ENTRIES=")) MaxHistoryEntries = ParseInt(t.Substring(19), MaxHistoryEntries);
+                    else if (t.StartsWith("PLAN_MAX_RETRIES=")) PlanMaxRetries = ParseInt(t.Substring(17), PlanMaxRetries);
+                    else if (t.StartsWith("PLAN_RETRY_DELAY_MS=")) PlanRetryDelayMs = ParseInt(t.Substring(20), PlanRetryDelayMs);
                 }
                 return;
             } catch (IOException) {
@@ -99,31 +63,16 @@ partial class MainConsole
         }
     }
 
-    static bool ParseBool(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return false;
-        string v = s.Trim().ToLowerInvariant();
-        return v == "1" || v == "true" || v == "on" || v == "yes";
-    }
-
-    static int ParseInt(string s, int fallback)
-    {
-        int v;
-        if (int.TryParse((s ?? "").Trim(), out v) && v > 0) return v;
-        return fallback;
-    }
-
     // ══════════════════════════════════════════════
-    //  CHAT LINK / CHAT ID
+    //  HELPERS (ранее были только в helper.cs)
     // ══════════════════════════════════════════════
+
     static string ExtractChatId(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return null;
         input = input.Trim();
-
         if (Regex.IsMatch(input, @"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))
             return input;
-
         Match m = Regex.Match(input, @"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
         return m.Success ? m.Groups[1].Value : input;
     }
@@ -132,24 +81,41 @@ partial class MainConsole
     {
         if (string.IsNullOrWhiteSpace(link)) return;
         link = link.Trim();
-
         string extractedId = ExtractChatId(link);
         if (!string.IsNullOrEmpty(extractedId) && extractedId != link) chatId = extractedId;
-
         int cIdx = link.IndexOf("/c/", StringComparison.OrdinalIgnoreCase);
         if (cIdx > 0) baseUrl = link.Substring(0, cIdx).TrimEnd('/');
         else if (link.StartsWith("http://") || link.StartsWith("https://")) baseUrl = link.TrimEnd('/');
     }
 
     // ══════════════════════════════════════════════
+    //  PARSE HELPERS
+    // ══════════════════════════════════════════════
+
+    static int ParseInt(string s, int fallback)
+    {
+        if (string.IsNullOrEmpty(s)) return fallback;
+        int v;
+        if (int.TryParse(s.Trim(), out v)) return v;
+        return fallback;
+    }
+
+    static bool ParseBool(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return false;
+        string t = s.Trim().ToLowerInvariant();
+        return t == "1" || t == "true" || t == "yes" || t == "on" || t == "y";
+    }
+
+    // ══════════════════════════════════════════════
     //  AI #2 HELPERS
     // ══════════════════════════════════════════════
+
     static string GetAi2Token() { return Token2; }
 
     static string GetAi2Api()
     {
-        return (!string.IsNullOrEmpty(ApiBaseUrl2) && ApiBaseUrl2 != DefaultApiBase)
-            ? ApiBaseUrl2 : ApiBaseUrl;
+        return (!string.IsNullOrEmpty(ApiBaseUrl2) && ApiBaseUrl2 != DefaultApiBase) ? ApiBaseUrl2 : ApiBaseUrl;
     }
 
     static string GetAi2Model()
@@ -160,164 +126,5 @@ partial class MainConsole
     static bool IsAi2Configured()
     {
         return !string.IsNullOrEmpty(Token2) && !string.IsNullOrEmpty(ChatId2);
-    }
-
-    // ══════════════════════════════════════════════
-    //  JSON HELPERS
-    // ══════════════════════════════════════════════
-    static string EscapeJson(string s)
-    {
-        if (s == null) return "\"\"";
-        var sb = new StringBuilder("\"");
-        foreach (char c in s) {
-            switch (c) {
-                case '"':  sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\n': sb.Append("\\n");  break;
-                case '\r': sb.Append("\\r");  break;
-                case '\t': sb.Append("\\t");  break;
-                default:
-                    if (c < 0x20) sb.Append("\\u" + ((int)c).ToString("x4"));
-                    else sb.Append(c);
-                    break;
-            }
-        }
-        sb.Append("\"");
-        return sb.ToString();
-    }
-
-    static string JsonStr(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return "null";
-        return EscapeJson(s);
-    }
-
-    // ══════════════════════════════════════════════
-    //  SAFE OUTPUT PATH (P2: symlink/junction защита)
-    // ══════════════════════════════════════════════
-    static bool TryResolveSafeOutputPath(string baseDir, string relativePath, out string safePath)
-    {
-        safePath = null;
-        if (string.IsNullOrWhiteSpace(relativePath)) return false;
-        if (string.IsNullOrEmpty(baseDir)) baseDir = BaseDir;
-
-        try {
-            string fullBase = Path.GetFullPath(baseDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            string rel = relativePath.Replace('\\', '/').Trim();
-
-            // P2: отбрасываем long path prefix
-            if (rel.StartsWith("//?/")) rel = rel.Substring(4);
-            if (rel.StartsWith("/??/")) rel = rel.Substring(4);
-
-            while (rel.StartsWith("/")) rel = rel.Substring(1);
-            if (string.IsNullOrWhiteSpace(rel)) return false;
-
-            if (Path.IsPathRooted(rel)) {
-                string rootedFull = Path.GetFullPath(rel);
-                if (!rootedFull.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase)) return false;
-                rel = rootedFull.Substring(fullBase.Length);
-                if (string.IsNullOrWhiteSpace(rel)) return false;
-            }
-
-            foreach (string seg in rel.Split('/'))
-                if (seg == "..") return false;
-
-            string fullPath = Path.GetFullPath(Path.Combine(fullBase, rel.Replace('/', Path.DirectorySeparatorChar)));
-
-            if (!fullPath.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase)) return false;
-
-            // P2: проверка symlink/junction по сегментам
-            string[] segments = fullPath.Substring(fullBase.Length).Split(Path.DirectorySeparatorChar);
-            string current = fullBase.TrimEnd(Path.DirectorySeparatorChar);
-
-            foreach (string seg in segments) {
-                current = Path.Combine(current, seg);
-                if (IsReparsePoint(current)) return false;
-            }
-
-            safePath = fullPath;
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
-    static bool IsReparsePoint(string path)
-    {
-        try {
-            FileAttributes attrs;
-            if (File.Exists(path)) attrs = File.GetAttributes(path);
-            else if (Directory.Exists(path)) attrs = new DirectoryInfo(path).Attributes;
-            else return false;
-
-            return (attrs & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint;
-        } catch {
-            return false;
-        }
-    }
-
-    // ══════════════════════════════════════════════
-    //  PROJECT PATH
-    // ══════════════════════════════════════════════
-    static string ResolveProjectDirectory(string preferredPath)
-    {
-        string candidate = !string.IsNullOrWhiteSpace(preferredPath) ? preferredPath : ProjectPath;
-        string resolved = ResolveCandidateDirectory(candidate);
-        if (!string.IsNullOrEmpty(resolved)) return resolved;
-
-        try {
-            string cwd = Directory.GetCurrentDirectory();
-            if (!string.IsNullOrEmpty(cwd) && Directory.Exists(cwd)) return cwd;
-        } catch { }
-
-        return BaseDir;
-    }
-
-    static string ResolveCandidateDirectory(string candidate)
-    {
-        if (string.IsNullOrWhiteSpace(candidate)) return null;
-
-        try {
-            string full = Path.GetFullPath(candidate.Trim('"'));
-            if (File.Exists(full)) full = Path.GetDirectoryName(full);
-            if (string.IsNullOrEmpty(full)) return null;
-
-            var dir = new DirectoryInfo(full);
-            string fallback = null;
-
-            while (dir != null) {
-                if (dir.Exists) {
-                    if (fallback == null) fallback = dir.FullName;
-                    if (LooksLikeProjectRoot(dir.FullName)) return dir.FullName;
-                }
-                dir = dir.Parent;
-            }
-
-            return fallback;
-        } catch {
-            return null;
-        }
-    }
-
-    static bool LooksLikeProjectRoot(string dir)
-    {
-        try {
-            if (Directory.GetFiles(dir, "*.csproj").Length > 0) return true;
-            if (Directory.GetFiles(dir, "*.sln").Length > 0) return true;
-            if (Directory.Exists(Path.Combine(dir, ".git"))) return true;
-            if (File.Exists(Path.Combine(dir, "plan.txt"))) return true;
-        } catch { }
-        return false;
-    }
-
-    static string MakeRelativePath(string baseDir, string fullPath)
-    {
-        try {
-            string b = Path.GetFullPath(baseDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            string f = Path.GetFullPath(fullPath);
-            if (f.StartsWith(b, StringComparison.OrdinalIgnoreCase))
-                return f.Substring(b.Length).Replace(Path.DirectorySeparatorChar, '/');
-        } catch { }
-        return fullPath.Replace(Path.DirectorySeparatorChar, '/');
     }
 }

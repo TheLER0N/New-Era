@@ -1,5 +1,5 @@
 // Program.cs — точка входа, состояние, REPL, watchdog helper.exe
-// New Era v7.1 · C# 5 / .NET 4.x
+// New Era v7.2 · C# 5 / .NET 4.x
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -11,8 +11,7 @@ partial class MainConsole
 {
 const string PipeName = "NewEraMainPipe";
 const string DefaultApiBase = "https://chat.qwen.ai";
-// P3: лимиты вынесены в конфиг (значения по умолчанию)
-// ВАЖНО: это static int (не const), чтобы Config.cs мог их перезаписать
+// P3: лимиты вынесены в конфиг. ВАЖНО: static int, НЕ const!
 static int MaxHistoryEntries = 200;
 static int MaxContextTotal   = 120000;
 static int MaxContextFile    = 40000;
@@ -32,7 +31,7 @@ static string ApiBaseUrl   = DefaultApiBase;
 static string CookieHeader = null;
 static string PrimaryModel = "qwen3.8-max-preview";
 static string QwenVersion  = "0.2.66";
-static string AppVersion   = "7.1";
+static string AppVersion   = "7.2";
 
 // ── AI #2 ──
 static string Token2      = null;
@@ -50,14 +49,13 @@ static bool ArcMode            = true;
 static string ProjectPath      = null;
 
 // ── Состояние ──
-// P0: единый порядок захвата: сначала HistoryLock, потом PrintLock
 static readonly object PrintLock   = new object();
 static readonly object HistoryLock = new object();
 static readonly CancellationTokenSource Cts = new CancellationTokenSource();
 static Process liveHelper = null;
 static volatile bool StopRequested = false;
 
-// P0: watchdog для helper.exe
+// P0: watchdog для helper.exe + поля, которые нужны Pipe.cs
 static volatile bool WatchdogEnabled = false;
 static volatile bool LiveRequested   = false;
 static string LastLiveArgs           = null;
@@ -72,15 +70,15 @@ static Thread SpinnerThread        = null;
 static bool AnimationsEnabled = true;
 static bool ShowThinking      = false;
 
+// P1: Rollback & ChangeLog
+const int MaxChangeLogEntries = 100;
+const int MaxRollbackEntries = 20;
+static readonly List<string> ChangeLog = new List<string>();
+static readonly List<RollbackEntry> RollbackHistory = new List<RollbackEntry>();
+
 static int Main(string[] args)
 {
     try { Console.OutputEncoding = Encoding.UTF8; } catch { }
-    
-    // FIX: Убрано принудительное Console.InputEncoding = Encoding.UTF8.
-    // В cmd.exe (CP866) это ломало чтение русских путей и сообщений.
-    // .NET сам использует текущую кодировку консоли, что гарантирует 
-    // корректное чтение строк (пути, чат) и правильную конвертацию в UTF8 для API.
-    
     Console.Title = "New Era v7";
 
     try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | (SecurityProtocolType)768; } catch { }
@@ -92,11 +90,9 @@ static int Main(string[] args)
 
     try { LoadAppVersion(); } catch { }
 
-    // P0: не падать, если qwen_config.txt отсутствует
     try {
         if (!File.Exists(ConfigFile)) {
-            WriteColored(ConsoleColor.Yellow, 
-                "  \u26A0 qwen_config.txt не найден. Создан шаблон.\n");
+            WriteColored(ConsoleColor.Yellow, "  \u26A0 qwen_config.txt не найден. Создан шаблон.\n");
             TryCreateDefaultConfig();
         }
         LoadConfig();
@@ -105,14 +101,13 @@ static int Main(string[] args)
     try { LoadHistory(); }    catch { }
     try { InitParentIds(); }  catch { }
     try { Console.Clear(); }  catch { }
-    
+
     DrawBanner();
 
     Thread listener = new Thread(delegate() { PipeListener(Cts.Token); });
     listener.IsBackground = true;
     listener.Start();
 
-    // P0: watchdog для helper.exe
     StartHelperWatchdog();
 
     int exitCode = 0;
@@ -128,7 +123,6 @@ static int Main(string[] args)
         try { Cts.Cancel(); }  catch { }
         try { listener.Join(3000); } catch { }
     }
-
     return exitCode;
 }
 
@@ -169,9 +163,6 @@ static void LoadAppVersion()
     }
 }
 
-// ══════════════════════════════════════════════
-//  HELPER WATCHDOG (P0)
-// ══════════════════════════════════════════════
 static void StartHelperWatchdog()
 {
     lock (HelperLock) {
@@ -191,19 +182,16 @@ static void WatchdogLoop()
             if (LiveRequested && !IsLiveRunning()) {
                 failCount++;
                 if (failCount <= 5) {
-                    WriteColored(ConsoleColor.Yellow, 
-                        "  \u26A0 watchdog: helper.exe не отвечает — перезапуск (" + failCount + "/5)\n");
+                    WriteColored(ConsoleColor.Yellow, "  \u26A0 watchdog: helper.exe не отвечает — перезапуск (" + failCount + "/5)\n");
                     RestartLiveHelper();
                 } else {
-                    WriteColored(ConsoleColor.Red, 
-                        "  \u2716 watchdog: helper.exe не перезапускается. /live остановлен.\n");
+                    WriteColored(ConsoleColor.Red, "  \u2716 watchdog: helper.exe не перезапускается. /live остановлен.\n");
                     LiveRequested = false;
                 }
             } else {
                 failCount = 0;
             }
         } catch { }
-
         int slept = 0;
         while (slept < 5000 && WatchdogEnabled && !StopRequested) {
             Thread.Sleep(250);
@@ -221,9 +209,6 @@ static void RestartLiveHelper()
     } catch { }
 }
 
-// ══════════════════════════════════════════════
-//  REPL
-// ══════════════════════════════════════════════
 static void Repl()
 {
     while (!StopRequested) {
@@ -253,20 +238,26 @@ static void Repl()
         if (lower == "anim on")   { AnimationsEnabled = true;  WriteColored(ConsoleColor.Green, "  \u2714 Анимации: ON\n"); continue; }
         if (lower == "anim off")  { AnimationsEnabled = false; WriteColored(ConsoleColor.DarkGray, "  \u2714 Анимации: OFF\n"); continue; }
         if (lower == "dispatcher status") { DrawDispatcherStatus(); continue; }
-        
+
         if (lower.StartsWith("test") && (lower == "test" || lower.StartsWith("test "))) { HandleTest(cmd); continue; }
         if (lower.StartsWith("scan") && (lower == "scan" || lower.StartsWith("scan "))) { HandleScan(cmd); continue; }
         if (lower.StartsWith("plan") && (lower == "plan" || lower.StartsWith("plan "))) { HandlePlan(cmd); continue; }
         if (lower.StartsWith("edit") && (lower == "edit" || lower.StartsWith("edit "))) { HandleEdit(cmd); continue; }
+        if (lower.StartsWith("idea") && (lower == "idea" || lower.StartsWith("idea "))) { HandleIdea(cmd); continue; }
 
-        // Чат
         string message = trimmed;
         if (lower.StartsWith("say "))  message = trimmed.Substring(trimmed.StartsWith("/") ? 5 : 4).Trim();
         else if (lower.StartsWith("send ")) message = trimmed.Substring(trimmed.StartsWith("/") ? 6 : 5).Trim();
-        
+
         if (message.Length == 0) continue;
         Say(message);
     }
     WriteColored(ConsoleColor.DarkGray, "\r  \u25C2 выход.\n");
 }
+}
+class RollbackEntry
+{
+public string Path;
+public string Content;
+public DateTime Time;
 }
