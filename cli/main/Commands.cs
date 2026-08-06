@@ -51,24 +51,27 @@ static void HandleIdea(string input)
         string responseText = null;
         try { responseText = PostMessageWithRetry(pb.ToString(), LastResponseId); } catch (Exception ex) { StopSpinner(); WriteColored(ConsoleColor.Red, "  \u2716 " + ex.Message + "\n"); return; }
         StopSpinner();
+
         if (string.IsNullOrWhiteSpace(responseText)) return;
         AddHistory("assistant", responseText);
 
         IdeaResponse ideaResp = ParseIdeaResponse(responseText);
         if (ideaResp == null) {
             RenderAssistantMessage(responseText);
-            WriteColored(ConsoleColor.DarkGray, "\n  \u25CC Правки (пусто = выход):\n");
+            WriteColored(ConsoleColor.DarkGray, "\n\u25CC Правки (пусто = выход):\n");
             string manual = ReadMultiline();
             if (string.IsNullOrWhiteSpace(manual)) { finalIdea = responseText; break; }
             conversationLog.Append("Ответ: " + responseText + "\nПравки: " + manual + "\n"); continue;
         }
+
         if (ideaResp.status == "idea_ready" && !string.IsNullOrWhiteSpace(ideaResp.idea)) { finalIdea = ideaResp.idea; break; }
+
         if (ideaResp.status == "questions" && ideaResp.questions != null && ideaResp.questions.Length > 0) {
             conversationLog.Append("Ответ: [вопросы]\n");
-            lock (PrintLock) { Console.ForegroundColor = ConsoleColor.Cyan; Console.WriteLine("\n  \u256D\u2500 \u25B8 УТОЧНЕНИЯ " + new string('\u2500', 20) + "\u256E"); Console.ResetColor(); }
+            lock (PrintLock) { Console.ForegroundColor = ConsoleColor.Cyan; Console.WriteLine("\n\u256D\u2500 \u25B8 УТОЧНЕНИЯ " + new string('\u2500', 20) + "\u256E"); Console.ResetColor(); }
             for (int qi = 0; qi < ideaResp.questions.Length; qi++) {
                 IdeaQuestion q = ideaResp.questions[qi]; if (q == null) continue;
-                WriteColored(ConsoleColor.White, "\n  " + (qi + 1) + ". " + q.text + "\n");
+                WriteColored(ConsoleColor.White, "\n" + (qi + 1) + ". " + q.text + "\n");
                 if (q.options != null) for (int oi = 0; oi < q.options.Length; oi++) WriteColored(ConsoleColor.DarkGray, "     [" + (oi + 1) + "] " + q.options[oi] + "\n");
                 Console.ForegroundColor = ConsoleColor.Yellow; Console.Write("     \u276F Выбор: "); Console.ResetColor();
                 string ans = Console.ReadLine(); if (ans == null) ans = ""; ans = ans.Trim();
@@ -81,18 +84,20 @@ static void HandleIdea(string input)
             lock (PrintLock) { Console.ForegroundColor = ConsoleColor.Cyan; Console.WriteLine("  \u2570" + new string('\u2500', 44) + "\u256F\n"); Console.ResetColor(); }
         } else { finalIdea = !string.IsNullOrWhiteSpace(ideaResp.idea) ? ideaResp.idea : responseText; break; }
     }
+
     if (string.IsNullOrWhiteSpace(finalIdea)) return;
     string ideasFile = Path.Combine(fullPath, "ideas.md");
     try {
         var sb = new StringBuilder();
         if (File.Exists(ideasFile)) { string ex = ReadTextAuto(ideasFile); sb.Append(ex); if (!ex.EndsWith("\n")) sb.Append("\n"); }
-        sb.Append("\n---\n## \u2728 Идея \u00B7 " + DateTime.Now.ToString("dd.MM.yyyy HH:mm") + "\n\n" + finalIdea + "\n");
+        sb.Append("\n---\n## \u2728 Идея \u00B7 " + DateTime.Now.ToString("dd.MM.yyyy HH:mm") + "\n" + finalIdea + "\n");
         File.WriteAllText(ideasFile, sb.ToString(), new UTF8Encoding(false));
         WriteColored(ConsoleColor.Green, "  \u2714 Сохранено: " + ideasFile + "\n");
     } catch {}
+
     RenderAssistantMessage(finalIdea);
     lock (PrintLock) {
-        Console.ForegroundColor = ConsoleColor.DarkCyan; Console.WriteLine("\n  \u256D\u2500 \u25C6 ДЕЙСТВИЯ " + new string('\u2500', 30) + "\u256E"); Console.ResetColor();
+        Console.ForegroundColor = ConsoleColor.DarkCyan; Console.WriteLine("\n\u256D\u2500 \u25C6 ДЕЙСТВИЯ " + new string('\u2500', 30) + "\u256E"); Console.ResetColor();
         Console.ForegroundColor = ConsoleColor.Green; Console.WriteLine("  \u2502   [1] \u2708 Реализовать через /plan");
         Console.ForegroundColor = ConsoleColor.Green; Console.WriteLine("  \u2502   [2] \u2692 Реализовать через /edit");
         Console.ForegroundColor = ConsoleColor.Gray;  Console.WriteLine("  \u2502   [3] \u2708 Выйти");
@@ -186,34 +191,44 @@ static void EditFileV6(string filePath, string rangeStr, string task)
     bool fileExists = File.Exists(filePath);
     string fileContent = ReadTextAuto(filePath) ?? ""; fileContent = fileContent.Replace("\r\n", "\n").TrimEnd('\r', '\n');
     string action = fileExists ? "MODIFY" : "CREATE";
+
     WriteColored(ConsoleColor.Magenta, "  \u25C6 v7: edit \u00B7 " + fileName + "\n");
     AddHistory("user", "[edit] " + filePath + " " + task);
+
     DispatchResult dispatch = DispatchRequest(task, projectPath);
     string enhancedTask = !string.IsNullOrWhiteSpace(dispatch.EnhancedPrompt) ? dispatch.EnhancedPrompt : task;
+
     var sb = new StringBuilder();
     sb.Append("Ты — генератор кода. Файл: " + relPath + "\n");
     if (!string.IsNullOrEmpty(dispatch.ContextSummary)) sb.Append("\nCONTEXT:\n" + dispatch.ContextSummary + "\n");
-    sb.Append("\nЗадача: " + enhancedTask + "\n\n=== FILE: " + relPath + " ===\n" + (fileContent.Length > MaxContextTotal ? fileContent.Substring(0, MaxContextTotal) : fileContent) + "\n=== END ===\n");
+    sb.Append("\nЗадача: " + enhancedTask + "\n=== FILE: " + relPath + " ===\n" + (fileContent.Length > MaxContextTotal ? fileContent.Substring(0, MaxContextTotal) : fileContent) + "\n=== END ===\n");
     sb.Append("\nВерни блок:\nFILE: " + relPath + "\nACTION: " + action + "\nCONTENT:\n...\nEND_FILE\n");
+
     PauseBeforePrimary("edit"); StartSpinner("v7 edit");
     string responseText = null;
     try { responseText = PostMessageWithRetry(sb.ToString(), LastResponseId); } catch (Exception ex) { StopSpinner(); WriteColored(ConsoleColor.Red, "  \u2716 " + ex.Message + "\n"); return; }
     StopSpinner();
+
     if (string.IsNullOrWhiteSpace(responseText)) return;
     AddHistory("assistant", responseText);
+
     CodeWriterResult result = ExtractCodeOrLocal(responseText);
     if (result != null && !result.IsEmpty) { NormalizeSingleFileOperation(result, filePath, projectPath); ApplyValidatedFiles(result, projectPath, ArcMode); return; }
+
     WriteColored(ConsoleColor.DarkGray, "  \u25CC fallback: прямая правка\n");
     string[] allLines = fileContent.Split(new[] { "\n" }, StringSplitOptions.None);
     for (int i = 0; i < allLines.Length; i++) allLines[i] = allLines[i].TrimEnd('\r');
     int startLine = 0, endLine = allLines.Length - 1;
     if (rangeStr != null) { string[] rp = rangeStr.Split('-'); int.TryParse(rp[0], out startLine); int.TryParse(rp[1], out endLine); startLine = Math.Max(0, startLine - 1); endLine = Math.Min(allLines.Length - 1, endLine - 1); if (startLine > endLine) { int tmp = startLine; startLine = endLine; endLine = tmp; } }
+
     string stripped = StripMarkdownFences(responseText);
     string[] newLines = stripped.Split(new[] { "\n" }, StringSplitOptions.None);
     ShowDiff(allLines, startLine, endLine, newLines);
+
     bool doWrite = ArcMode;
     if (!doWrite) { Console.ForegroundColor = ConsoleColor.Yellow; Console.Write("  \u2753 Записать? [y/N] "); Console.ResetColor(); string confirm = Console.ReadLine(); doWrite = confirm != null && confirm.Trim().ToLowerInvariant() == "y"; }
     if (!doWrite) return;
+
     try {
         var finalLines = new List<string>();
         for (int i = 0; i < startLine; i++) finalLines.Add(allLines[i]);
@@ -244,10 +259,12 @@ static void EditFolderV6(string folderPath, string task)
     if (string.IsNullOrEmpty(payload)) payload = BuildContextPayload(folderPath, MaxContextTotal, MaxContextFile);
     if (!string.IsNullOrEmpty(payload)) sb.Append("\nCurrent files:\n" + payload + "\n");
     sb.Append("\nВерни FILE/ACTION/CONTENT/END_FILE.\n");
+
     PauseBeforePrimary("edit folder"); StartSpinner("v7 edit folder");
     string responseText = null;
     try { responseText = PostMessageWithRetry(sb.ToString(), LastResponseId); } catch (Exception ex) { StopSpinner(); WriteColored(ConsoleColor.Red, "  \u2716 " + ex.Message + "\n"); return; }
     StopSpinner();
+
     if (string.IsNullOrWhiteSpace(responseText)) return;
     AddHistory("assistant", responseText);
     CodeWriterResult result = ExtractCodeOrLocal(responseText);
@@ -271,6 +288,7 @@ static void HandlePlan(string input)
     if (Directory.Exists(fullPath)) structure = ScanDirectory(fullPath, 0);
     else if (File.Exists(fullPath)) structure = "FILE: " + fullPath;
     else { WriteColored(ConsoleColor.Red, "  \u2716 Путь не найден.\n"); return; }
+
     DispatchResult dispatch = DispatchRequest(task, fullPath);
     string effectiveTask = !string.IsNullOrWhiteSpace(dispatch.EnhancedPrompt) ? dispatch.EnhancedPrompt : task;
     string prompt = "Составь план. Задача: " + effectiveTask + "\nСтруктура:\n" + structure + "\nФормат: N. [ДЕЙСТВИЕ] Файл — описание\n";
@@ -278,10 +296,12 @@ static void HandlePlan(string input)
     if (dispatch.SelectedFiles != null && dispatch.SelectedFiles.Count > 0) codePayload = BuildSelectivePayload(dispatch.SelectedFiles, fullPath);
     if (string.IsNullOrEmpty(codePayload)) codePayload = BuildContextPayload(fullPath, MaxContextTotal, MaxContextFile);
     if (!string.IsNullOrEmpty(codePayload)) prompt += "\nCurrent files:\n" + codePayload;
+
     PauseBeforePrimary("plan"); AddHistory("user", "[plan] " + path + " " + task); StartSpinner("план");
     string responseText = null;
     try { responseText = PostMessageWithRetry(prompt, LastResponseId); } catch (Exception ex) { StopSpinner(); WriteColored(ConsoleColor.Red, "  \u2716 " + ex.Message + "\n"); return; }
     StopSpinner();
+
     if (string.IsNullOrWhiteSpace(responseText)) return;
     AddHistory("assistant", responseText);
     List<string> steps = ParsePlanSteps(responseText);
@@ -341,6 +361,7 @@ static bool ExecutePlanStep(string step, string projectPath, string originalTask
     if (targetFile != null && File.Exists(targetFile) && !IsDeleteAction(action)) SaveRollbackSnapshot(targetFile);
     if (IsDeleteAction(action)) return ExecuteDeleteStep(targetFile ?? stepFile, projectPath, ArcMode);
     if (targetFile != null && IsEditableAction(action)) { EditFileV6(targetFile, null, stepTask); return true; }
+
     var sb = new StringBuilder();
     DispatchResult dispatch = DispatchRequest(step, projectPath);
     string effectiveStep = !string.IsNullOrWhiteSpace(dispatch.EnhancedPrompt) ? dispatch.EnhancedPrompt : step;
@@ -352,10 +373,12 @@ static bool ExecutePlanStep(string step, string projectPath, string originalTask
     if (string.IsNullOrEmpty(payload)) payload = BuildContextPayload(projectPath, MaxContextTotal, MaxContextFile);
     if (!string.IsNullOrEmpty(payload)) sb.Append("\nCurrent files:\n" + payload);
     sb.Append("\nВерни FILE/ACTION/CONTENT/END_FILE.\n");
+
     PauseBeforePrimary("plan step"); AddHistory("user", sb.ToString()); StartSpinner("plan step");
     string responseText = null;
     try { responseText = PostMessageWithRetry(sb.ToString(), LastResponseId); } catch { StopSpinner(); return false; }
     StopSpinner();
+
     if (string.IsNullOrWhiteSpace(responseText)) return false;
     AddHistory("assistant", responseText);
     CodeWriterResult result = ExtractCodeOrLocal(responseText);
@@ -386,10 +409,12 @@ static void ExecutePlanOneRequest(List<string> steps, string projectPath, string
     if (dispatch.SelectedFiles != null && dispatch.SelectedFiles.Count > 0) payload = BuildSelectivePayload(dispatch.SelectedFiles, projectPath);
     if (string.IsNullOrEmpty(payload)) payload = BuildContextPayload(projectPath, MaxContextTotal, MaxContextFile);
     if (!string.IsNullOrEmpty(payload)) sb.Append("\nТекущие файлы:\n" + payload);
+
     PauseBeforePrimary("plan"); AddHistory("user", "[plan-exec] " + originalTask); StartSpinner("plan");
     string responseText = null;
     try { responseText = PostMessageWithRetry(sb.ToString(), LastResponseId); } catch { StopSpinner(); return; }
     StopSpinner();
+
     if (string.IsNullOrWhiteSpace(responseText)) return;
     AddHistory("assistant", responseText);
     CodeWriterResult result = ExtractCodeOrLocal(responseText);
@@ -464,7 +489,6 @@ static void PrintTestList()
 
 static void RunTestQuick(int n) { RunTestWithMessage("Скажи привет.", n); }
 static void RunTestCustom(string t, int n) { RunTestWithMessage(t, n); }
-
 static void RunTestWithMessage(string message, int onlyNumber)
 {
     if (onlyNumber == 0 || onlyNumber == 1) {
@@ -621,5 +645,6 @@ static string ScanDirectory(string path, int depth)
     return sb.ToString();
 }
 }
+
 class IdeaQuestion { public int id; public string text; public string[] options; }
 class IdeaResponse { public string status; public IdeaQuestion[] questions; public string idea; }
