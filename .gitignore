@@ -1,0 +1,21 @@
+# binarniki i sobrannoe
+program_from_the_cli/
+*.exe
+*.dll
+*.pdb
+
+# otchety i logi
+*_report.txt
+*.log
+
+# vspomogatelnye papki i fajly
+задача/
+информация о проекте/
+
+# vremennye / IDE
+*.tmp
+Thumbs.db
+.vs/
+.vscode/
+
+# new-era-excludes
