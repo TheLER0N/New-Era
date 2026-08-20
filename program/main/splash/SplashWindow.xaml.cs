@@ -29,7 +29,6 @@ public SplashWindow()
 FxIntensity = 0.7;
 UseFadeIn = false;
 InitializeComponent();
-// Браузер стартует СРАЗУ в offscreen-окне, не мешая заставке.
 QwenBrowserPane.EnsureOffscreen();
 Loaded += OnLoaded;
 _typeTimer.Tick += OnTypeTick;
@@ -53,8 +52,6 @@ base.OnKeyDown(e);
 private void OnLoaded(object sender, RoutedEventArgs e)
 {
 Theme.PowerOn(this);
-// CRT-слой ПОВЕРХ непрозрачного терминала и на ВЕСЬ RootGrid —
-// квадратики доходят до краёв окна (раньше обрезались Margin'ом TermGrid).
 RootGrid.Children.Add(Theme.MakeFx(0.7));
 _ = GatewayLauncher.EnsureRunningAsync();
 _ = QwenBrowserPane.Shared.ReadyTask.ContinueWith(t =>
@@ -106,7 +103,7 @@ StartGreet();
 private void StartGreet()
 {
 _stage = Stage.Greet;
-TypeLine($"LERON CLI приветствует пользователя {UserProfile.Nick}!", () =>
+TypeLine($"LERON GUI приветствует пользователя {UserProfile.Nick}!", () =>
 {
 _stage = Stage.Loading;
 BarText.Visibility = Visibility.Visible;

@@ -17,22 +17,18 @@ private readonly HttpClient _http = new()
 {
 Timeout = System.Threading.Timeout.InfiniteTimeSpan
 };
-private string? _selectedRole = null;
+private string? _selectedRole = "coder";
 private readonly HashSet<string> _boundRoles = new();
 private Dictionary<string, List<ChatMessage>> _history = new();
 private bool _waiting;
 private readonly DispatcherTimer _waitTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 private DateTime _waitStart;
-// Режимы: chat | plan | edit | auto | yolo
 private readonly string? _projectPath;
 private readonly string? _projectName;
 private string _mode;
 private bool _think;
-private Button _modeAutoBtn = null!;
-private Button _modeYoloBtn = null!;
-private Button _thinkBtn = null!;
-// Браузер один на всё приложение — берём общий экземпляр и монтируем в хост.
 private readonly QwenBrowserPane _browserPane = QwenBrowserPane.Shared;
+private static readonly FontFamily Mono = new("Consolas");
 private string HistoryKey => _projectPath != null
 ? HistoryStore.ProjectKey(_projectPath)
 : (_selectedRole ?? "unknown");
@@ -40,12 +36,6 @@ public MainWindow(string? projectPath = null, string? projectName = null)
 {
 InitializeComponent();
 _browserPane.MountIn(BrowserPaneHost);
-Closed += (_, _) =>
-{
-QwenBrowserPane.ParkOffscreen();
-// Кроме offscreen-окна браузера никого не осталось — гасим приложение.
-if (Application.Current?.Windows.Count == 1) Application.Current.Shutdown();
-};
 _browserPane.CaptchaDetected += () =>
 {
 if (BrowserColumn.Width.Value < 1) OnToggleBrowserClick(this, new RoutedEventArgs());
@@ -55,9 +45,8 @@ _projectPath = projectPath;
 _projectName = projectName;
 _mode = projectPath != null ? "edit" : "chat";
 LoadHistoryFromDisk();
-SetupModeButtons();
-if (RolesList.SelectedIndex < 0)
-RolesList.SelectedIndex = 0;
+InputBox.TextChanged += (_, _) =>
+InputPlaceholder.Visibility = string.IsNullOrEmpty(InputBox.Text) ? Visibility.Visible : Visibility.Collapsed;
 KeyDown += OnMainWindowKeyDown;
 _waitTimer.Tick += (_, _) =>
 {
@@ -71,62 +60,23 @@ statusTimer.Start();
 LoadRolesStatus();
 RenderHistory();
 UpdateModeButtons();
+SessionProjectText.Text = _projectName ?? "—";
 }
+private static SolidColorBrush B(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
 private void OnToggleBrowserClick(object sender, RoutedEventArgs e)
 {
 bool show = BrowserColumn.Width.Value < 1;
 BrowserColumn.Width = show ? new GridLength(500) : new GridLength(0);
 ToggleBrowserBtn.Content = show ? "🌐 браузер: показан" : "🌐 браузер: скрыт";
 }
-private void SetupModeButtons()
-{
-ModeChatBtn.Content = "💬 чат";
-ModeChatBtn.ToolTip = "Обычный разговор без проекта";
-ModeProjectBtn.Content = "📋 планирование";
-ModeProjectBtn.ToolTip = "ИИ читает и обсуждает проект, но не меняет файлы";
-ModeEditBtn.Content = "✏️ аккуратный";
-ModeEditBtn.ToolTip = "ИИ правит файлы, каждое действие с подтверждением";
-_modeAutoBtn = new Button
-{
-Content = "🧠 авто",
-ToolTip = "Подтвердил действие один раз — похожие дальше идут сами",
-Margin = new Thickness(0, 0, 6, 0),
-Padding = new Thickness(8, 4, 8, 4)
-};
-_modeAutoBtn.Click += (_, _) => SetMode("auto");
-_modeYoloBtn = new Button
-{
-Content = "⚡ агрессивный",
-ToolTip = "YOLO: все действия без подтверждений",
-Margin = new Thickness(0, 0, 14, 0),
-Padding = new Thickness(8, 4, 8, 4)
-};
-_modeYoloBtn.Click += (_, _) => SetMode("yolo");
-_thinkBtn = new Button
-{
-Content = "⚡ быстро",
-ToolTip = "Режим ответа ИИ: быстро или с мышлением (Ctrl+6)",
-Margin = new Thickness(0, 0, 14, 0),
-Padding = new Thickness(8, 4, 8, 4)
-};
-_thinkBtn.Click += (_, _) => ToggleThink();
-var panel = (StackPanel)ModeEditBtn.Parent;
-int idx = panel.Children.IndexOf(ModeEditBtn);
-panel.Children.Remove(ModeEditBtn);
-panel.Children.Remove(ModeChatBtn);
-panel.Children.Remove(ModeProjectBtn);
-panel.Children.Insert(idx, ModeChatBtn);
-panel.Children.Insert(idx + 1, ModeProjectBtn);
-panel.Children.Insert(idx + 2, ModeEditBtn);
-panel.Children.Insert(idx + 3, _modeAutoBtn);
-panel.Children.Insert(idx + 4, _modeYoloBtn);
-panel.Children.Insert(idx + 5, _thinkBtn);
-}
+private void OnModeAutoClick(object sender, RoutedEventArgs e) => SetMode("auto");
+private void OnModeYoloClick(object sender, RoutedEventArgs e) => SetMode("yolo");
+private void OnThinkClick(object sender, RoutedEventArgs e) => ToggleThink();
 private void ToggleThink()
 {
 _think = !_think;
-_thinkBtn.Content = _think ? "🧠 мышление" : "⚡ быстро";
-StyleModeButton(_thinkBtn, _think);
+ThinkBtn.Content = _think ? "🧠 мышление" : "⚡ быстро";
+UpdateModeButtons();
 ApplyRoleSelection();
 _browserPane.SetThinkMode(_think);
 }
@@ -141,36 +91,26 @@ new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 if (status == null) return;
 _boundRoles.Clear();
 if (status.Roles != null)
-{
 foreach (var r in status.Roles)
 _boundRoles.Add(r);
-}
-_selectedRole = "coder";
-foreach (var item in RolesList.Items)
+Dispatcher.InvokeAsync(() =>
 {
-if (item is ListBoxItem lbi && lbi.Tag is string tag)
-{
-var baseName = "💻 Кодер";
-lbi.Content = _boundRoles.Contains(tag)
-? baseName + " ✅"
-: baseName + " — не закреплён";
-}
-}
+OnlineDot.Fill = B("#00ff88");
+OnlineText.Text = "онлайн";
+AgentStatusText.Text = "онлайн · готов к работе";
+});
 if (_selectedRole != null && !_waiting)
 ApplyRoleSelection();
 }
 catch
 {
+Dispatcher.InvokeAsync(() =>
+{
+OnlineDot.Fill = B("#e94560");
+OnlineText.Text = "офлайн";
+AgentStatusText.Text = "офлайн · gateway недоступен";
 RoleStatus.Text = "⚠️ Gateway не запущен";
-}
-}
-private void OnRoleSelected(object sender, SelectionChangedEventArgs e)
-{
-if (RolesList.SelectedItem is ListBoxItem item)
-{
-_selectedRole = item.Tag?.ToString();
-ApplyRoleSelection();
-RenderHistory();
+});
 }
 }
 private void ApplyRoleSelection()
@@ -188,12 +128,18 @@ var proj = _projectPath != null
 ? $" · 📁 {_projectName ?? _projectPath}"
 : "";
 RoleStatus.Text = $"Роль: {_selectedRole} · {ModeLabel()} · {(_think ? "🧠 мышление" : "⚡ быстро")}{proj}";
+SessionRoleText.Text = _selectedRole;
+var label = ModeLabel();
+var sp = label.IndexOf(' ');
+SessionStyleText.Text = sp >= 0 ? label.Substring(sp + 1) : label;
+SessionSpeedText.Text = _think ? "мышление" : "быстро";
+SessionProjectText.Text = _projectName ?? "—";
 }
 private string ModeLabel() => _mode switch
 {
 "plan" => "📋 планирование",
 "edit" => "✏️ аккуратный",
-"auto" => "🧠 авто",
+"auto" => "🔄 авто",
 "yolo" => "⚡ агрессивный",
 _ => "💬 чат"
 };
@@ -252,13 +198,12 @@ UpdateModeButtons();
 }
 private void UpdateModeButtons()
 {
-if (ModeEditBtn == null) return;
 StyleModeButton(ModeChatBtn, _mode == "chat");
 StyleModeButton(ModeProjectBtn, _mode == "plan");
 StyleModeButton(ModeEditBtn, _mode == "edit");
-StyleModeButton(_modeAutoBtn, _mode == "auto");
-StyleModeButton(_modeYoloBtn, _mode == "yolo");
-StyleModeButton(_thinkBtn, _think);
+StyleModeButton(ModeAutoBtn, _mode == "auto");
+StyleModeButton(ModeYoloBtn, _mode == "yolo");
+StyleModeButton(ThinkBtn, _think);
 }
 private static void StyleModeButton(Button btn, bool active)
 {
@@ -327,36 +272,75 @@ AddMessageBlock(author, text, bgColor);
 private void AddMessageBlock(string author, string text, string bgColor)
 {
 var isUser = bgColor == "#0f3460";
-var borderColor = isUser ? "#00ff88" : "#1a3a2a";
-var bg = isUser ? "#0f1f17" : "#0a1410";
-var authorColor = isUser ? "#00ff88" : "#4a7a5a";
-var block = new Border
+var isCancel = text.StartsWith("⏹");
+var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
+row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+var avatar = new Border
 {
-Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(bg)),
-BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(borderColor)),
+Width = 38,
+Height = 38,
+CornerRadius = new CornerRadius(19),
+Background = B("#0d2418"),
+BorderBrush = B(isUser ? "#00ff88" : "#1d5c3d"),
 BorderThickness = new Thickness(1),
-CornerRadius = new CornerRadius(6),
-Padding = new Thickness(14, 10, 14, 10),
-Margin = new Thickness(0, 4, 0, 4)
+Margin = new Thickness(0, 2, 10, 0),
+VerticalAlignment = VerticalAlignment.Top,
+Visibility = isCancel ? Visibility.Collapsed : Visibility.Visible
+};
+avatar.Child = new TextBlock
+{
+Text = ">_",
+FontFamily = Mono,
+FontSize = 13,
+Foreground = B("#00ff88"),
+HorizontalAlignment = HorizontalAlignment.Center,
+VerticalAlignment = VerticalAlignment.Center
+};
+Grid.SetColumn(avatar, 0);
+var time = new TextBlock
+{
+Text = DateTime.Now.ToString("HH:mm"),
+FontFamily = Mono,
+FontSize = 12,
+Foreground = B("#447a5a"),
+Margin = new Thickness(0, 8, 12, 0),
+VerticalAlignment = VerticalAlignment.Top
+};
+Grid.SetColumn(time, 1);
+var bubble = new Border
+{
+Background = B(isCancel ? "#0a1410" : isUser ? "#0f241a" : "#0a1410"),
+BorderBrush = B(isCancel ? "#1a3a2a" : isUser ? "#00ff88" : "#1a3a2a"),
+BorderThickness = new Thickness(1),
+CornerRadius = new CornerRadius(8),
+Padding = new Thickness(12, 8, 12, 8)
 };
 var stack = new StackPanel();
 stack.Children.Add(new TextBlock
 {
 Text = author.ToUpper(),
-Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(authorColor)),
-FontSize = 12,
+FontFamily = Mono,
+FontSize = 11,
 FontWeight = FontWeights.Bold,
+Foreground = B(isUser ? "#00ff88" : "#4a7a5a"),
 Margin = new Thickness(0, 0, 0, 4)
 });
 stack.Children.Add(new TextBlock
 {
 Text = text,
-Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#c8ffd8")),
+Foreground = B(isCancel ? "#447a5a" : "#c8ffd8"),
+FontStyle = isCancel ? FontStyles.Italic : FontStyles.Normal,
 TextWrapping = TextWrapping.Wrap,
-FontSize = 15
+FontSize = 14
 });
-block.Child = stack;
-ChatMessages.Children.Add(block);
+bubble.Child = stack;
+Grid.SetColumn(bubble, 2);
+row.Children.Add(avatar);
+row.Children.Add(time);
+row.Children.Add(bubble);
+ChatMessages.Children.Add(row);
 ChatScroll.ScrollToEnd();
 }
 private void OnInputKeyDown(object sender, KeyEventArgs e)
@@ -445,7 +429,7 @@ finally
 {
 _waiting = false;
 _waitTimer.Stop();
-SendBtn.Content = "Отправить";
+SendBtn.Content = "Отправить ➤";
 SendBtn.IsEnabled = true;
 ApplyRoleSelection();
 }

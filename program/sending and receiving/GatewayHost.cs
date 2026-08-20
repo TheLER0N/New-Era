@@ -579,7 +579,7 @@ void ShowBrowserForCaptcha()
                     return (true, await tcs.Task);
                 }
                 if (done == cancelTask) return (false, "cancelled");
-                return (false, "Браузер не ответил за 120 секунд.");
+                return (false, "Браузер не ответил за 300 секунд.");
             }
             finally
             {
@@ -638,7 +638,7 @@ void ShowBrowserForCaptcha()
                     prompt = BrowserInstruction(s) + userText;
                 }
                 AgentLog($"[BROWSER] шаг {step}: {Truncate(prompt, 200)}");
-                var (ok, text) = await SendToBrowserAndWait(s.Role, prompt, s.Think, 120000, httpAbort);
+                var (ok, text) = await SendToBrowserAndWait(s.Role, prompt, s.Think, 300000, httpAbort);
                 if (!ok)
                 {
                     AgentLog($"[BROWSER ERROR] {text}");
@@ -921,7 +921,7 @@ void ShowBrowserForCaptcha()
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (req == null || string.IsNullOrEmpty(req.Role))
                 return Results.BadRequest(new { error = "role is required" });
-            var result = await SendToBrowserAndWait(req.Role, req.Text, req.Think, 120000, ctx.RequestAborted);
+            var result = await SendToBrowserAndWait(req.Role, req.Text, req.Think, 300000, ctx.RequestAborted);
             if (!result.ok)
                 return Results.BadRequest(new { error = result.text });
             return Results.Ok(new { role = req.Role, response = result.text });

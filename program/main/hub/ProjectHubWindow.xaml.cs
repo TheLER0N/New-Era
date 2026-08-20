@@ -22,14 +22,11 @@ Loaded += (_, _) =>
 {
 if (Current != null && Current != this) Current.Close();
 Current = this;
-// Браузер НЕ монтируем в хаб: WebView2 (HwndHost) рисуется поверх WPF-UI
-// и закрывал список проектов. Пока открыт хаб — панель ждёт в offscreen-окне.
 _ = GatewayLauncher.EnsureRunningAsync();
 };
 Closed += (_, _) =>
 {
 if (Current == this) Current = null;
-// Кроме offscreen-окна браузера никого не осталось — гасим приложение.
 if (Application.Current?.Windows.Count == 1) Application.Current.Shutdown();
 };
 _projects = ProjectStore.Load();
@@ -54,8 +51,8 @@ Background = Brush("#0c1710"),
 BorderBrush = Brush("#142a1e"),
 BorderThickness = new Thickness(1),
 CornerRadius = new CornerRadius(10),
-Margin = new Thickness(0, 0, 0, 14),
-Padding = new Thickness(16),
+Margin = new Thickness(0, 0, 0, 16),
+Padding = new Thickness(18),
 Cursor = Cursors.Hand,
 Tag = i
 };
@@ -69,36 +66,36 @@ grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 var preview = GetFilesPreview(p.Path);
 var iconBox = new System.Windows.Controls.Border
 {
-Width = 46,
-Height = 46,
+Width = 54,
+Height = 54,
 CornerRadius = new CornerRadius(10),
 Background = Brush("#123020"),
 BorderBrush = Brush("#1d5c3d"),
 BorderThickness = new Thickness(1),
-Margin = new Thickness(0, 0, 14, 0)
+Margin = new Thickness(0, 0, 16, 0)
 };
 iconBox.Child = new TextBlock
 {
 Text = "📁",
-FontSize = 20,
+FontSize = 24,
 HorizontalAlignment = HorizontalAlignment.Center,
 VerticalAlignment = VerticalAlignment.Center
 };
 Grid.SetColumn(iconBox, 0);
 var texts = new StackPanel();
-texts.Children.Add(new TextBlock { Text = p.Name, Foreground = Brush("#4ade80"), FontSize = 16, FontWeight = FontWeights.Bold });
-texts.Children.Add(new TextBlock { Text = p.Path, Foreground = Brush("#4a7a5a"), FontSize = 12, Margin = new Thickness(0, 5, 0, 0) });
+texts.Children.Add(new TextBlock { Text = p.Name, Foreground = Brush("#4ade80"), FontSize = 18, FontWeight = FontWeights.Bold });
+texts.Children.Add(new TextBlock { Text = p.Path, Foreground = Brush("#4a7a5a"), FontSize = 13, Margin = new Thickness(0, 5, 0, 0) });
 texts.Children.Add(new TextBlock
 {
 Text = "○ " + preview.Line,
 Foreground = Brush("#3d6a4d"),
-FontSize = 11,
+FontSize = 12,
 Margin = new Thickness(0, 4, 0, 0),
 TextTrimming = TextTrimming.CharacterEllipsis
 });
 Grid.SetColumn(texts, 1);
 var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-right.Children.Add(new TextBlock { Text = FormatRelative(p.LastOpened), Foreground = Brush("#4a7a5a"), FontSize = 12, Margin = new Thickness(0, 0, 14, 0) });
+right.Children.Add(new TextBlock { Text = FormatRelative(p.LastOpened), Foreground = Brush("#4a7a5a"), FontSize = 13, Margin = new Thickness(0, 0, 14, 0) });
 var badge = new System.Windows.Controls.Border
 {
 Background = Brush("#123020"),
@@ -106,7 +103,7 @@ CornerRadius = new CornerRadius(8),
 Padding = new Thickness(12, 7, 12, 7),
 ToolTip = preview.ToolTip
 };
-badge.Child = new TextBlock { Text = preview.Badge, Foreground = Brush("#7dffa8"), FontSize = 12 };
+badge.Child = new TextBlock { Text = preview.Badge, Foreground = Brush("#7dffa8"), FontSize = 13 };
 right.Children.Add(badge);
 var del = new Button
 {
@@ -116,7 +113,7 @@ Background = Brush("#1a0f14"),
 Foreground = Brush("#e94560"),
 BorderThickness = new Thickness(0),
 Cursor = Cursors.Hand,
-FontSize = 13,
+FontSize = 14,
 Padding = new Thickness(9, 4, 9, 4),
 Margin = new Thickness(12, 0, 0, 0),
 VerticalAlignment = VerticalAlignment.Center
@@ -205,7 +202,7 @@ if (i < 0 || i >= _projects.Count) return;
 var p = _projects[i];
 var res = MessageBox.Show(
 $"Убрать \"{p.Name}\" из списка проектов?\nПапка и файлы останутся на диске.\nИстория чата этого проекта будет стёрта.",
-"LERON CLI",
+"LERON GUI",
 MessageBoxButton.YesNo,
 MessageBoxImage.Question);
 if (res != MessageBoxResult.Yes) return;

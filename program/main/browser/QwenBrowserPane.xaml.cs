@@ -32,12 +32,15 @@ public Task<bool> ReadyTask => _readyTcs.Task;
 public event Action<string>? BootStatusChanged;
 private readonly DispatcherTimer _bootBarTimer = new() { Interval = TimeSpan.FromMilliseconds(110) };
 private int _bootTick;
+// Бридж: полный текст берём из SSE-стрима; DOM-захват — только фолбэк.
+// __LERON_STREAMING__ блокирует DOM-захват во время генерации, чтобы не резать текст.
 private const string BridgeScript = """
 (function(){
 if (window.__LERON_BRIDGE__) return;
 window.__LERON_BRIDGE__ = true;
 var lastText = '';
 var lastChange = 0;
+window.__LERON_STREAMING__ = false;
 function assistantEls(){
 var candidates = [
 '[data-testid="assistant-message"]',
@@ -91,15 +94,14 @@ window.chrome.webview.postMessage({ action: 'aiResponse', text: text });
 }
 function check(){
 if (!window.__LERON_EXPECT__) return;
+if (window.__LERON_STREAMING__) return;
+if (findStopButton()) return;
 var els = assistantEls();
 if (els.length === 0) return;
 var cur = extractText(els[els.length-1]);
 if (cur !== lastText){ lastText = cur; lastChange = Date.now(); }
-if ((Date.now() - lastChange) < 2000) return;
+if ((Date.now() - lastChange) < 3500) return;
 if (!cur || cur === window.__LERON_LAST_AI__) return;
-if (findStopButton()) return;
-var norm = cur.toLowerCase().trim();
-if (norm==='думаю...' || norm==='думаю' || norm==='thinking...' || norm==='thinking') return;
 window.__LERON_EXPECT__ = false;
 reportAi(cur);
 }
@@ -115,6 +117,7 @@ window.fetch = async function(){
 var response = await origFetch.apply(this, arguments);
 var url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url || '');
 if (response.ok && (url.indexOf('/chat')>=0 || url.indexOf('/completion')>=0)) {
+window.__LERON_STREAMING__ = true;
 try {
 var clone = response.clone();
 var reader = clone.body.getReader();
@@ -126,7 +129,8 @@ try {
 while(true){
 var r = await reader.read();
 if (r.done){
-if (window.__LERON_EXPECT__){
+window.__LERON_STREAMING__ = false;
+if (window.__LERON_EXPECT__ && full){
 window.__LERON_EXPECT__ = false;
 reportAi(full);
 }
@@ -150,9 +154,9 @@ window.chrome.webview.postMessage({ action: 'aiStream', text: full, delta: delta
 }
 }
 }
-} catch(e){}
+} catch(e){ window.__LERON_STREAMING__ = false; }
 })();
-} catch(e){}
+} catch(e){ window.__LERON_STREAMING__ = false; }
 }
 return response;
 };
@@ -450,30 +454,56 @@ return $"https://chat.qwen.ai/c/{cid.GetString()}";
 catch { }
 return "https://chat.qwen.ai/";
 }
+// Единый тон фона во всём встроенном чате: ВСЕ фоновые переменные = #04150c,
+// элементы различаются только бордерами (#123626). Селекторы — по реальному DOM Qwen.
 private async Task InjectCrtCss()
 {
 const string css = @"
 :root {
 --bg-main: #04150c !important;
---bg-sidebar: #081711 !important;
+--bg-sidebar: #04150c !important;
+--bg-panel: #04150c !important;
 --text-primary: #c8ffd8 !important;
 --text-secondary: #78b98f !important;
 --accent: #00ff88 !important;
 --border: #123626 !important;
 }
-body, [class*='sidebar'], [class*='nav'], header {
+html, body, #root, .app, .desktop-layout, .desktop-layout-content, .desktop-layout-content-inner,
+.splitter-container, .splitter-container-left-panel, .home-page-layout-main, .main-content,
+header, .header-desktop, .header-content, footer,
+[class*='sidebar'], [class*='nav'], [class*='layout'], [class*='wrapper'],
+[class*='panel'], [class*='chat'], [class*='session'], [class*='dialog'],
+[class*='placeholder'], [class*='folder'], [class*='project'], [class*='library'] {
 background-color: var(--bg-main) !important;
 color: var(--text-primary) !important;
 }
-[class*='message'], [class*='chat'], [class*='input'], textarea {
-background-color: #0a1a12 !important;
+.sidebar, .sidebar-wrapper, .sidebar-side, .mask {
+background-color: var(--bg-main) !important;
+}
+[class*='message'], [class*='input'], textarea, [class*='composer'], [class*='editor'],
+.message-input, .message-input-wrapper, .message-input-container,
+.search-container, .chat-search, [class*='dropdown'], [class*='trigger'], [class*='selector'] {
+background-color: var(--bg-panel) !important;
 color: var(--text-primary) !important;
 border-color: var(--border) !important;
 }
-button, [class*='btn'] { border-color: var(--border) !important; }
-::-webkit-scrollbar { width: 6px; }
+[class*='markdown'], [class*='prose'], [class*='message'] *,
+[class*='chat-item'] *, [class*='placeholder'] * {
+color: var(--text-primary) !important;
+}
+a, [class*='link'], .project-item-text, .folder-name,
+.chat-item-drag-link-content-tip, .user-menu-btn-text {
+color: var(--text-secondary) !important;
+}
+button, [class*='btn'], [role='button'] { border-color: var(--border) !important; }
+[role='button']:hover, button:hover, .chat-item-drag:hover, .project-item:hover,
+.sidebar-entry-list-content:hover {
+background-color: #0f241a !important;
+}
+::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: #04150c; }
-::-webkit-scrollbar-thumb { background: #1d5c3d; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #1d5c3d; border-radius: 4px; }
+::selection { background: #123626; color: #c8ffd8; }
 ";
 var js = "(function(){var css=" + JsonSerializer.Serialize(css) +
 ";function add(){var t=document.head||document.documentElement;" +
