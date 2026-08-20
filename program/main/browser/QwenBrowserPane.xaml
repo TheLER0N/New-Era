@@ -1,0 +1,44 @@
+<UserControl x:Class="MainApp.QwenBrowserPane"
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+Background="#04150c" FontFamily="Consolas">
+<Grid Background="#04150c">
+<Grid.RowDefinitions>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="*"/>
+<RowDefinition Height="Auto"/>
+</Grid.RowDefinitions>
+<Border Grid.Row="0" Background="#081711" Padding="12,8" BorderBrush="#123626" BorderThickness="0,0,0,1">
+<Grid>
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="Auto"/>
+<ColumnDefinition Width="*"/>
+<ColumnDefinition Width="Auto"/>
+</Grid.ColumnDefinitions>
+<StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+<TextBlock Text="QWEN·LINK" Foreground="#00ff88" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
+<TextBlock Text=" │ " Foreground="#1d5c3d" FontSize="14" VerticalAlignment="Center"/>
+<Button Content="←" Width="38" Height="30" Margin="0,0,4,0" Click="OnBackClick" ToolTip="Назад" FontSize="14" Padding="2,2"/>
+<Button Content="→" Width="38" Height="30" Margin="0,0,4,0" Click="OnForwardClick" ToolTip="Вперёд" FontSize="14" Padding="2,2"/>
+<Button Content="⟳" Width="38" Height="30" Click="OnReloadClick" ToolTip="Обновить" FontSize="14" Padding="2,2"/>
+</StackPanel>
+<TextBlock Grid.Column="1" x:Name="StatusText" Text="Загрузка..." Foreground="#447a5a" FontSize="14"
+VerticalAlignment="Center" Margin="12,0,0,0" TextTrimming="CharacterEllipsis"/>
+<Ellipse Grid.Column="2" x:Name="LinkDot" Width="9" Height="9" Fill="#1d5c3d" VerticalAlignment="Center"
+ToolTip="Связь с gateway"/>
+</Grid>
+</Border>
+<wv2:WebView2 x:Name="WebView" Grid.Row="1"/>
+<Border Grid.Row="2" Background="#081711" Padding="14,8" BorderBrush="#123626" BorderThickness="0,1,0,0">
+<TextBlock x:Name="ConnectionStatus" Text="Инициализация..." FontSize="13" Foreground="#9fe8bb" TextWrapping="Wrap"/>
+</Border>
+<Grid Grid.RowSpan="3" x:Name="BootOverlay" Background="#04150c">
+<StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+<TextBlock Text="LERON·LINK" FontSize="24" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center"/>
+<TextBlock x:Name="BootText" Text="подключение..." FontSize="14" Foreground="#7dffa8" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+<TextBlock x:Name="BootBar" Text="" FontSize="14" Foreground="#2f6a4a" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+</StackPanel>
+</Grid>
+</Grid>
+</UserControl>

@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+logs/
+program/sending and receiving/logs/
+config.json
+*.exe
+Thumbs.db

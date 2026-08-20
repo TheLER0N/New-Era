@@ -1,0 +1,4988 @@
+﻿================================================================
+  PROJECT REPORT : cli
+  GENERATED      : 20.08.2026 23:16:28
+  PATH           : C:\Users\Пользователь\Desktop\cli
+================================================================
+
+==================== STRUCTURE ====================
+
+C:\Users\Пользователь\Desktop\cli
++---.gitignore
++---AGENT_GUIDE.md
++---CLI result
++---logs
+|   \---messages_20260820.log
++---program
+|   +---assets
+|   +---main
+|   |   +---App.xaml
+|   |   +---App.xaml.cs
+|   |   +---browser
+|   |   |   +---BrowserLauncher.cs
+|   |   |   +---QwenBrowserPane.xaml
+|   |   |   \---QwenBrowserPane.xaml.cs
+|   |   +---chat
+|   |   |   +---MainWindow.xaml
+|   |   |   \---MainWindow.xaml.cs
+|   |   +---ChromeWindow.cs
+|   |   +---hub
+|   |   |   +---ProjectHubWindow.xaml
+|   |   |   \---ProjectHubWindow.xaml.cs
+|   |   +---MainApp.csproj
+|   |   +---roles
+|   |   |   +---RolePickWindow.xaml
+|   |   |   \---RolePickWindow.xaml.cs
+|   |   +---splash
+|   |   |   +---SplashWindow.xaml
+|   |   |   \---SplashWindow.xaml.cs
+|   |   \---Theme.cs
+|   +---roles
+|   |   +---assistant
+|   |   +---coder
+|   |   \---designer
+|   \---sending and receiving
+|       +---config.json
+|       +---GatewayHost.cs
+|       +---history.json
+|       \---logs
+|           +---agent_20260819.log
+|           +---agent_20260820.log
+|           +---assistant_20260817.log
+|           +---assistant_20260818.log
+|           +---coder_20260817.log
+|           +---coder_20260818.log
+|           +---coder_20260819.log
+|           +---coder_20260820.log
+|           +---designer_20260817.log
+|           +---designer_20260818.log
+|           +---unknown_20260817.log
+|           +---unknown_20260818.log
+|           \---unknown_20260819.log
++---push-to-github.bat
++---start.bat
+\---инструменты
+    +---check.bat
+    +---diagnostic.bat
+    \---diagnostic_messages.bat
+
+==================== SOURCE FILES ====================
+
+------------------------------------------------
+FILE: .gitignore
+SIZE: 101 bytes
+------------------------------------------------
+bin/
+obj/
+.vs/
+*.user
+logs/
+program/sending and receiving/logs/
+config.json
+*.exe
+Thumbs.db
+
+
+------------------------------------------------
+FILE: AGENT_GUIDE.md
+SIZE: 785 bytes
+------------------------------------------------
+--append-system-prompt "Ты русскоязычный coding agent. Always treat ${PROJECT_ROOT} as the only project root. Resolve all relative paths against ${PROJECT_ROOT}. The helper folder ${TOOL_DIR} contains Qwen launch files; do not edit it unless the user explicitly asks. Never create, read, or modify files outside ${PROJECT_ROOT} unless the user explicitly asks for an absolute path outside the project. Всегда отвечай на русском языке, если пользователь явно не попросил другой язык. Если пользователь пишет на русском, не переходи на английский. Не добавляй HTML-блоки, details, summary, Response ID или Request ID в ответы."
+
+
+------------------------------------------------
+FILE: push-to-github.bat
+SIZE: 2001 bytes
+------------------------------------------------
+@echo off
+chcp 65001 >nul 2>&1
+setlocal enabledelayedexpansion
+
+cd /d "C:\Users\Пользователь\Desktop\cli"
+
+echo.
+echo ================================================================
+echo   LERON CLI · PUSH TO GITHUB
+echo ================================================================
+echo.
+echo   Репо: https://github.com/TheLER0N/New-Era
+echo.
+echo   [1] Полная перезапись (force push) — удалит старую историю
+echo   [2] Обновление — обычный коммит поверх истории
+echo   [3] Отмена
+echo.
+
+set /p "CHOICE=  Выбери действие [1/2/3] > "
+
+if "%CHOICE%"=="3" goto :end
+if "%CHOICE%"=="1" goto :full_rewrite
+if "%CHOICE%"=="2" goto :normal_push
+goto :end
+
+:full_rewrite
+echo.
+echo   [!] Удаляю старую историю (.git)...
+if exist ".git" rmdir /s /q ".git"
+git init -b main
+git remote add origin https://github.com/TheLER0N/New-Era.git 2>nul
+goto :commit
+
+:normal_push
+echo.
+echo   [i] Обновление существующей истории...
+if not exist ".git" (
+    git init -b main
+    git remote add origin https://github.com/TheLER0N/New-Era.git 2>nul
+)
+goto :commit
+
+:commit
+:: Создаём .gitignore если его нет
+if not exist ".gitignore" (
+    (
+        echo bin/
+        echo obj/
+        echo .vs/
+        echo *.user
+        echo logs/
+        echo program/sending and receiving/logs/
+        echo config.json
+        echo *.exe
+        echo Thumbs.db
+    ) > ".gitignore"
+)
+
+git add -A
+
+echo.
+set /p "MSG=  Сообщение коммита [LERON CLI update] > "
+
+if "!MSG!"=="" set "MSG=LERON CLI update"
+
+git commit -m "!MSG!"
+
+if "%CHOICE%"=="1" (
+    echo.
+    echo   [!] Force push в origin main...
+    git push -f -u origin main
+) else (
+    echo.
+    echo   [i] Push в origin main...
+    git push -u origin main
+)
+
+:end
+echo.
+echo   Готово.
+pause
+
+
+------------------------------------------------
+FILE: start.bat
+SIZE: 942 bytes
+------------------------------------------------
+@echo off
+chcp 65001 >nul 2>&1
+set "ROOT=%~dp0"
+set "EXE=%ROOT%program\main\bin\Debug\net10.0-windows\LeronCli.exe"
+echo.
+echo ================================================================
+echo   LERON CLI
+echo ================================================================
+echo.
+echo   Гашу старый gateway на порту 51234 (если завис)...
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":51234" ^| findstr "LISTENING"') do (
+    taskkill /PID %%P /F >nul 2>&1
+)
+timeout /t 1 >nul
+echo   Собираю (после первого раза — быстро, инкрементально)...
+dotnet build "%ROOT%program\main\MainApp.csproj" -v q --nologo
+if not exist "%EXE%" (
+    echo   [XX] Сборка не удалась — покажи мне вывод.
+    pause
+    exit /b 1
+)
+echo   Запускаю LERON CLI...
+start "LERON CLI" /d "%ROOT%program\main" "%EXE%"
+timeout /t 5
+
+
+------------------------------------------------
+FILE: program\main\App.xaml
+SIZE: 3827 bytes
+------------------------------------------------
+<Application x:Class="MainApp.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="splash/SplashWindow.xaml">
+    <Application.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="#c8ffd8"/>
+            <Setter Property="Background" Value="#0b1d14"/>
+            <Setter Property="BorderBrush" Value="#1d5c3d"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#123726"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="#c8ffd8"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bd"
+                                Background="#0a1a12"
+                                BorderBrush="#123626"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#123626"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Application.Resources>
+</Application>
+
+
+------------------------------------------------
+FILE: program\main\App.xaml.cs
+SIZE: 1140 bytes
+------------------------------------------------
+using System;
+using System.IO;
+using System.Windows;
+using System.Windows.Threading;
+
+namespace MainApp;
+
+public partial class App : Application
+{
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        DispatcherUnhandledException += OnDispatcherUnhandled;
+        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandled;
+        base.OnStartup(e);
+    }
+
+    private void OnDispatcherUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        Report(e.Exception);
+        e.Handled = true;
+        Shutdown(1);
+    }
+
+    private void OnAppDomainUnhandled(object sender, UnhandledExceptionEventArgs e)
+    {
+        Report(e.ExceptionObject as Exception);
+    }
+
+    private static void Report(Exception? ex)
+    {
+        string text = ex?.ToString() ?? "ошибка без исключения";
+        try { File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "startup_error.txt"), text); } catch { }
+        try { MessageBox.Show(text, "LERON CLI — ошибка запуска", MessageBoxButton.OK, MessageBoxImage.Error); } catch { }
+    }
+}
+
+
+------------------------------------------------
+FILE: program\main\ChromeWindow.cs
+SIZE: 4114 bytes
+------------------------------------------------
+using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
+using System.Windows.Threading;
+
+namespace MainApp;
+
+public class ChromeWindow : Window
+{
+    public bool StartFullscreen = true;
+    // Сплэш выключает: его вход даёт PowerOn, а не дорогой фейд всего окна.
+    public bool UseFadeIn = true;
+    protected double FxIntensity = 0.5;
+    private bool _full;
+
+    public ChromeWindow()
+    {
+        WindowStyle = WindowStyle.None;
+        ResizeMode = ResizeMode.CanResize;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Background = Theme.B("#04150c");
+        Foreground = Theme.B("#c8ffd8");
+        FontFamily = Theme.Font();
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+        Loaded += OnChromeLoaded;
+    }
+
+    private void OnChromeLoaded(object sender, RoutedEventArgs e)
+    {
+        InjectFx();
+        if (StartFullscreen) GoFull();
+        if (UseFadeIn) FadeIn();
+        Focus();
+    }
+
+    private void InjectFx()
+    {
+        Grid? g = Content as Grid ?? (Content as Border)?.Child as Grid;
+        if (g == null) return;
+        g.Background = Theme.B("#04150c");
+        for (int i = g.Children.Count - 1; i >= 0; i--)
+        {
+            if (g.Children[i] is Rectangle r && r.Fill is RadialGradientBrush)
+                g.Children.RemoveAt(i);
+        }
+        var fx = Theme.MakeFx(FxIntensity);
+        g.Children.Insert(0, fx);
+        if (g.RowDefinitions.Count > 0)
+            Grid.SetRowSpan(fx, g.RowDefinitions.Count);
+    }
+
+    // Переход без зазора: старое окно непрозрачно, пока новое не отрисовано
+    // (ContentRendered) и не стало полностью непрозрачным поверх.
+    protected void SwapTo(Window next)
+    {
+        if (next is ChromeWindow cw) cw.UseFadeIn = false;
+        next.Opacity = 0;
+        bool started = false;
+        DispatcherTimer? fallback = null;
+        Action startFade = null!;
+        startFade = () =>
+        {
+            if (started) return;
+            started = true;
+            fallback?.Stop();
+            var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+            fade.Completed += (_, _) => Close();
+            next.BeginAnimation(OpacityProperty, fade);
+        };
+        fallback = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        fallback.Tick += (_, _) => startFade();
+        next.ContentRendered += (_, _) => startFade();
+        next.Show();
+    }
+
+    public void GoFull()
+    {
+        Left = 0;
+        Top = 0;
+        Width = SystemParameters.PrimaryScreenWidth;
+        Height = SystemParameters.PrimaryScreenHeight;
+        _full = true;
+    }
+
+    public void ToggleSize(object sender, RoutedEventArgs e)
+    {
+        if (_full)
+        {
+            var wa = SystemParameters.WorkArea;
+            Left = wa.Left + 120;
+            Top = wa.Top + 90;
+            Width = Math.Max(640, wa.Width - 240);
+            Height = Math.Max(480, wa.Height - 180);
+            _full = false;
+        }
+        else GoFull();
+    }
+
+    public void CloseClick(object sender, RoutedEventArgs e) => Close();
+
+    public void DragWindow(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState != MouseButtonState.Pressed) return;
+        if (e.ClickCount == 2) { ToggleSize(sender, e); return; }
+        if (!_full) DragMove();
+    }
+
+    public void FadeIn()
+    {
+        Opacity = 0;
+        BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(450))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
+    }
+}
+
+
+------------------------------------------------
+FILE: program\main\MainApp.csproj
+SIZE: 790 bytes
+------------------------------------------------
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LeronCli</AssemblyName>
+    <RootNamespace>MainApp</RootNamespace>
+    <Product>LERON CLI</Product>
+    <AssemblyTitle>LERON CLI</AssemblyTitle>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+    <Compile Include="..\sending and receiving\GatewayHost.cs" Link="GatewayHost.cs" />
+  </ItemGroup>
+</Project>
+
+
+------------------------------------------------
+FILE: program\main\Theme.cs
+SIZE: 12765 bytes
+------------------------------------------------
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
+
+namespace MainApp;
+
+public static class Theme
+{
+    public static SolidColorBrush B(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
+
+    // Кэш: перебор системных шрифтов — дорогая операция, делаем её один раз.
+    private static FontFamily? _font;
+    public static FontFamily Font()
+    {
+        if (_font != null) return _font;
+        try
+        {
+            if (Fonts.SystemFontFamilies.Any(f => f.Source.Equals("JetBrains Mono", StringComparison.OrdinalIgnoreCase)))
+                _font = new FontFamily("JetBrains Mono");
+        }
+        catch { }
+        _font ??= new FontFamily("Consolas");
+        return _font;
+    }
+
+    // Единый слой "старого монитора". Минимум полноэкранных проходов.
+    public static Grid MakeFx(double intensity)
+    {
+        var grid = new Grid { IsHitTestVisible = false, Opacity = intensity };
+        var rnd = new Random();
+
+        // 1. Мягкое широкое свечение.
+        var ambienceBrush = new RadialGradientBrush
+        {
+            GradientOrigin = new Point(0.5, 0.5),
+            Center = new Point(0.5, 0.5),
+            GradientStops = new GradientStopCollection
+            {
+                new GradientStop(Color.FromArgb(12, 0, 255, 136), 0.0),
+                new GradientStop(Color.FromArgb(5, 0, 255, 136), 0.55),
+                new GradientStop(Color.FromArgb(0, 0, 255, 136), 1.0)
+            }
+        };
+        ambienceBrush.Freeze();
+        grid.Children.Add(new Rectangle { Fill = ambienceBrush });
+
+        // 2. Сканлайны + сетка ОДНИМ слоем. Клетки 64×64 — квадраты.
+        var scanGeom = new GeometryGroup();
+        for (int y = 0; y < 192; y += 3)
+            scanGeom.Children.Add(new RectangleGeometry(new Rect(0, y, 64, 1)));
+        var gridGeom = new GeometryGroup();
+        gridGeom.Children.Add(new RectangleGeometry(new Rect(63, 0, 1, 192)));
+        for (int y = 63; y < 192; y += 64)
+            gridGeom.Children.Add(new RectangleGeometry(new Rect(0, y, 64, 1)));
+        var scanSolid = new SolidColorBrush(Color.FromArgb(22, 0, 0, 0));
+        scanSolid.Freeze();
+        var gridSolid = new SolidColorBrush(Color.FromArgb(18, 0, 255, 136));
+        gridSolid.Freeze();
+        var crtDrawing = new DrawingGroup();
+        crtDrawing.Children.Add(new GeometryDrawing(scanSolid, null, scanGeom));
+        crtDrawing.Children.Add(new GeometryDrawing(gridSolid, null, gridGeom));
+        var crtBrush = new DrawingBrush(crtDrawing)
+        {
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, 64, 192),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Stretch = Stretch.None
+        };
+        crtBrush.Freeze();
+        grid.Children.Add(new Rectangle { Fill = crtBrush });
+
+        // 3. Пыль — 28 частиц, движение через RenderTransform.
+        var canvas = new Canvas();
+        grid.Children.Add(canvas);
+        var parts = new List<(TranslateTransform tr, double y, double v)>();
+        void Seed()
+        {
+            canvas.Children.Clear();
+            parts.Clear();
+            double W = canvas.ActualWidth, H = canvas.ActualHeight;
+            if (W < 10 || H < 10) return;
+            for (int i = 0; i < 28; i++)
+            {
+                double s = 1 + rnd.NextDouble() * 2;
+                double y = rnd.NextDouble() * H;
+                var tr = new TranslateTransform(0, y);
+                var fill = new SolidColorBrush(Color.FromArgb((byte)(16 + rnd.Next(40)), 0, 255, 136));
+                fill.Freeze();
+                var el = new Ellipse { Width = s, Height = s, Fill = fill, RenderTransform = tr };
+                Canvas.SetLeft(el, rnd.NextDouble() * W);
+                canvas.Children.Add(el);
+                parts.Add((tr, y, 6 + rnd.NextDouble() * 14));
+            }
+        }
+        canvas.SizeChanged += (_, _) => Seed();
+
+        // 4. Регенерация — широкий медленный дрейф света.
+        var bandBrush = new LinearGradientBrush
+        {
+            StartPoint = new Point(0.5, 0),
+            EndPoint = new Point(0.5, 1),
+            GradientStops = new GradientStopCollection
+            {
+                new GradientStop(Color.FromArgb(0, 0, 255, 136), 0.0),
+                new GradientStop(Color.FromArgb(3, 0, 255, 136), 0.3),
+                new GradientStop(Color.FromArgb(5, 0, 255, 136), 0.5),
+                new GradientStop(Color.FromArgb(3, 0, 255, 136), 0.7),
+                new GradientStop(Color.FromArgb(0, 0, 255, 136), 1.0)
+            }
+        };
+        bandBrush.Freeze();
+        var band = new Rectangle
+        {
+            Height = 360,
+            VerticalAlignment = VerticalAlignment.Top,
+            Fill = bandBrush,
+            RenderTransform = new TranslateTransform(0, -420)
+        };
+        grid.Children.Add(band);
+
+        // 5. Равномерное дыхание люминофора.
+        var glowBrush = B("#00ff88");
+        glowBrush.Freeze();
+        var glow = new Rectangle { Fill = glowBrush, Opacity = 0.028 };
+        grid.Children.Add(glow);
+
+        // 6. Виньетка.
+        var vigBrush = new RadialGradientBrush
+        {
+            GradientOrigin = new Point(0.5, 0.5),
+            Center = new Point(0.5, 0.5),
+            GradientStops = new GradientStopCollection
+            {
+                new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.55),
+                new GradientStop(Color.FromArgb(55, 0, 0, 0), 1.0)
+            }
+        };
+        vigBrush.Freeze();
+        grid.Children.Add(new Rectangle { Fill = vigBrush });
+
+        var last = DateTime.Now;
+        var start = DateTime.Now;
+        void Tick(object? s, EventArgs e)
+        {
+            var now = DateTime.Now;
+            double dt = (now - last).TotalSeconds;
+            last = now;
+            double t = (now - start).TotalSeconds;
+            double H = canvas.ActualHeight;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                var p = parts[i];
+                p.y -= p.v * dt;
+                if (p.y < -4) p.y = H + 4;
+                p.tr.Y = p.y;
+                parts[i] = p;
+            }
+            if (H > 10)
+            {
+                double bandY = ((t * 55) % (H + 800)) - 420;
+                ((TranslateTransform)band.RenderTransform).Y = bandY;
+            }
+            glow.Opacity = 0.026 + 0.008 * Math.Sin(t * 1.7) + 0.005 * Math.Sin(t * 4.3 + 1.2);
+        }
+        grid.Loaded += (_, _) => CompositionTarget.Rendering += Tick;
+        grid.Unloaded += (_, _) => CompositionTarget.Rendering -= Tick;
+        return grid;
+    }
+
+    // "Включение" ЭЛТ: чёрный экран → вспышка линии → раскрытие из центра.
+    public static void PowerOn(Window w)
+    {
+        void TryRun()
+        {
+            var g = w.Content as Grid ?? (w.Content as Border)?.Child as Grid;
+            if (g == null) return;
+            if (g.ActualHeight >= 10) RunPowerOn(g, g.ActualHeight);
+            else
+            {
+                SizeChangedEventHandler? onSize = null;
+                onSize = (_, _) =>
+                {
+                    if (g.ActualHeight < 10) return;
+                    g.SizeChanged -= onSize;
+                    RunPowerOn(g, g.ActualHeight);
+                };
+                g.SizeChanged += onSize;
+            }
+        }
+        if (w.IsLoaded) TryRun();
+        else w.Loaded += (_, _) => TryRun();
+    }
+
+    private static void RunPowerOn(Grid g, double H)
+    {
+        var overlay = new Grid { IsHitTestVisible = false };
+        var black = B("#000000"); black.Freeze();
+        var top = new Rectangle { Fill = black, Height = H, VerticalAlignment = VerticalAlignment.Top, RenderTransform = new TranslateTransform(0, 0) };
+        var bot = new Rectangle { Fill = black, Height = H, VerticalAlignment = VerticalAlignment.Bottom, RenderTransform = new TranslateTransform(0, 0) };
+        var lineFill = B("#d8ffe9"); lineFill.Freeze();
+        var line = new Rectangle { Fill = lineFill, Height = 2.5, VerticalAlignment = VerticalAlignment.Center, Opacity = 0 };
+        overlay.Children.Add(top);
+        overlay.Children.Add(bot);
+        overlay.Children.Add(line);
+        g.Children.Add(overlay);
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
+        line.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)));
+        var aTop = new DoubleAnimation(0, -H, TimeSpan.FromMilliseconds(520)) { BeginTime = TimeSpan.FromMilliseconds(150), EasingFunction = ease };
+        var aBot = new DoubleAnimation(0, H, TimeSpan.FromMilliseconds(520)) { BeginTime = TimeSpan.FromMilliseconds(150), EasingFunction = ease };
+        aTop.Completed += (_, _) =>
+        {
+            line.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(280)));
+            var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(220)) { BeginTime = TimeSpan.FromMilliseconds(280) };
+            fade.Completed += (_, _) => g.Children.Remove(overlay);
+            overlay.BeginAnimation(UIElement.OpacityProperty, fade);
+        };
+        ((TranslateTransform)top.RenderTransform).BeginAnimation(TranslateTransform.YProperty, aTop);
+        ((TranslateTransform)bot.RenderTransform).BeginAnimation(TranslateTransform.YProperty, aBot);
+    }
+
+    // "Выключение" ЭЛТ: шторки схлопываются к центру, луч сжимается в точку.
+    public static void PowerOff(Window w, Action onDone)
+    {
+        var g = w.Content as Grid ?? (w.Content as Border)?.Child as Grid;
+        if (g == null) { onDone(); return; }
+        double H = g.ActualHeight, W = g.ActualWidth;
+        if (H < 10 || W < 10) { onDone(); return; }
+        var overlay = new Grid { IsHitTestVisible = false };
+        var black = B("#000000"); black.Freeze();
+        var top = new Rectangle { Fill = black, Height = 0, VerticalAlignment = VerticalAlignment.Top };
+        var bot = new Rectangle { Fill = black, Height = 0, VerticalAlignment = VerticalAlignment.Bottom };
+        var lineFill = B("#d8ffe9"); lineFill.Freeze();
+        var line = new Rectangle
+        {
+            Fill = lineFill,
+            Height = 2.5,
+            Width = W,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = 0
+        };
+        var dot = new Ellipse
+        {
+            Fill = lineFill,
+            Width = 6,
+            Height = 6,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = 0
+        };
+        overlay.Children.Add(top);
+        overlay.Children.Add(bot);
+        overlay.Children.Add(line);
+        overlay.Children.Add(dot);
+        g.Children.Add(overlay);
+        var easeIn = new QuadraticEase { EasingMode = EasingMode.EaseIn };
+        var aTop = new DoubleAnimation(0, H / 2, TimeSpan.FromMilliseconds(320)) { EasingFunction = easeIn };
+        var aBot = new DoubleAnimation(0, H / 2, TimeSpan.FromMilliseconds(320)) { EasingFunction = easeIn };
+        aTop.Completed += (_, _) =>
+        {
+            line.Opacity = 1;
+            var aLine = new DoubleAnimation(W, 0, TimeSpan.FromMilliseconds(300)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } };
+            aLine.Completed += (_, _) =>
+            {
+                dot.Opacity = 1;
+                var aDot = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(260));
+                aDot.Completed += (_, _) =>
+                {
+                    g.Children.Remove(overlay);
+                    onDone();
+                };
+                dot.BeginAnimation(UIElement.OpacityProperty, aDot);
+            };
+            line.BeginAnimation(FrameworkElement.WidthProperty, aLine);
+        };
+        top.BeginAnimation(FrameworkElement.HeightProperty, aTop);
+        bot.BeginAnimation(FrameworkElement.HeightProperty, aBot);
+    }
+}
+
+
+------------------------------------------------
+FILE: program\main\browser\BrowserLauncher.cs
+SIZE: 1906 bytes
+------------------------------------------------
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
+
+namespace MainApp;
+
+// Раньше запускал внешний Chrome/Edge с плагином. Теперь браузер встроен
+// (WebView2-панель), поэтому здесь остались только путь к config и старт gateway.
+public static class BrowserLauncher
+{
+    public static string? GetConfigPath()
+    {
+        var candidates = new[]
+        {
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "sending and receiving", "config.json")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "sending and receiving", "config.json")),
+            Path.Combine(AppContext.BaseDirectory, "config.json")
+        };
+        foreach (var p in candidates)
+        {
+            try { if (File.Exists(p)) return p; } catch { }
+        }
+        return null;
+    }
+}
+
+public static class GatewayLauncher
+{
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(2) };
+    private static bool _startRequested;
+
+    public static async Task<bool> EnsureRunningAsync()
+    {
+        if (await IsRunningAsync()) return true;
+        if (!_startRequested)
+        {
+            _startRequested = true;
+            _ = Task.Run(() => { try { GatewayHost.Start(); } catch { } });
+        }
+        for (int i = 0; i < 120; i++)
+        {
+            await Task.Delay(500);
+            if (await IsRunningAsync()) return true;
+        }
+        return false;
+    }
+
+    private static async Task<bool> IsRunningAsync()
+    {
+        try
+        {
+            var text = await Http.GetStringAsync("http://localhost:51234/status");
+            return !string.IsNullOrWhiteSpace(text);
+        }
+        catch { return false; }
+    }
+}
+
+
+------------------------------------------------
+FILE: program\main\browser\QwenBrowserPane.xaml
+SIZE: 2653 bytes
+------------------------------------------------
+<UserControl x:Class="MainApp.QwenBrowserPane"
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+Background="#04150c" FontFamily="Consolas">
+<Grid Background="#04150c">
+<Grid.RowDefinitions>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="*"/>
+<RowDefinition Height="Auto"/>
+</Grid.RowDefinitions>
+<Border Grid.Row="0" Background="#081711" Padding="12,8" BorderBrush="#123626" BorderThickness="0,0,0,1">
+<Grid>
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="Auto"/>
+<ColumnDefinition Width="*"/>
+<ColumnDefinition Width="Auto"/>
+</Grid.ColumnDefinitions>
+<StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+<TextBlock Text="QWEN·LINK" Foreground="#00ff88" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
+<TextBlock Text=" │ " Foreground="#1d5c3d" FontSize="14" VerticalAlignment="Center"/>
+<Button Content="←" Width="38" Height="30" Margin="0,0,4,0" Click="OnBackClick" ToolTip="Назад" FontSize="14" Padding="2,2"/>
+<Button Content="→" Width="38" Height="30" Margin="0,0,4,0" Click="OnForwardClick" ToolTip="Вперёд" FontSize="14" Padding="2,2"/>
+<Button Content="⟳" Width="38" Height="30" Click="OnReloadClick" ToolTip="Обновить" FontSize="14" Padding="2,2"/>
+</StackPanel>
+<TextBlock Grid.Column="1" x:Name="StatusText" Text="Загрузка..." Foreground="#447a5a" FontSize="14"
+VerticalAlignment="Center" Margin="12,0,0,0" TextTrimming="CharacterEllipsis"/>
+<Ellipse Grid.Column="2" x:Name="LinkDot" Width="9" Height="9" Fill="#1d5c3d" VerticalAlignment="Center"
+ToolTip="Связь с gateway"/>
+</Grid>
+</Border>
+<wv2:WebView2 x:Name="WebView" Grid.Row="1"/>
+<Border Grid.Row="2" Background="#081711" Padding="14,8" BorderBrush="#123626" BorderThickness="0,1,0,0">
+<TextBlock x:Name="ConnectionStatus" Text="Инициализация..." FontSize="13" Foreground="#9fe8bb" TextWrapping="Wrap"/>
+</Border>
+<Grid Grid.RowSpan="3" x:Name="BootOverlay" Background="#04150c">
+<StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+<TextBlock Text="LERON·LINK" FontSize="24" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center"/>
+<TextBlock x:Name="BootText" Text="подключение..." FontSize="14" Foreground="#7dffa8" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+<TextBlock x:Name="BootBar" Text="" FontSize="14" Foreground="#2f6a4a" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+</StackPanel>
+</Grid>
+</Grid>
+</UserControl>
+
+
+------------------------------------------------
+FILE: program\main\browser\QwenBrowserPane.xaml.cs
+SIZE: 22118 bytes
+------------------------------------------------
+using System;
+using System.IO;
+using System.Media;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Threading;
+using Microsoft.Web.WebView2.Core;
+namespace MainApp;
+public partial class QwenBrowserPane : UserControl
+{
+// Единственный экземпляр на всё приложение.
+public static QwenBrowserPane Shared { get; } = new();
+// Offscreen-окно для прелоада: WebView2 (HwndHost) нельзя накрыть WPF-слоем,
+// поэтому пока браузер не нужен — он живёт и грузится в окне за экраном.
+private static Window? _host;
+private ClientWebSocket? _ws;
+private bool _wsConnected;
+private readonly DispatcherTimer _wsReconnectTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+private string _currentChatId = "";
+private int _navRetries;
+private bool _lastThink;
+private bool _webInitialized;
+private readonly SemaphoreSlim _uiLock = new(1, 1);
+private readonly TaskCompletionSource<bool> _readyTcs = new();
+public Task<bool> ReadyTask => _readyTcs.Task;
+public event Action<string>? BootStatusChanged;
+private readonly DispatcherTimer _bootBarTimer = new() { Interval = TimeSpan.FromMilliseconds(110) };
+private int _bootTick;
+private const string BridgeScript = """
+(function(){
+if (window.__LERON_BRIDGE__) return;
+window.__LERON_BRIDGE__ = true;
+var lastText = '';
+var lastChange = 0;
+function assistantEls(){
+var candidates = [
+'[data-testid="assistant-message"]',
+'[data-message-role="assistant"]',
+'[class*="message-assistant"]',
+'[class*="assistant-message"]',
+'[class*="response-message"]',
+'.assistant-message',
+'[data-role="assistant"]',
+'[class*="bot-message"]',
+'[class*="ai-message"]',
+'[class*="markdown-body"]'
+];
+for (var i=0;i<candidates.length;i++){
+var els = document.querySelectorAll(candidates[i]);
+if (els.length > 0) return Array.prototype.slice.call(els);
+}
+var containers = document.querySelectorAll('[class*="chat-message"], [class*="message-item"]');
+var out = [];
+for (var j=0;j<containers.length;j++){
+var cls = (typeof containers[j].className === 'string' ? containers[j].className : '').toLowerCase();
+if (cls.indexOf('user')>=0 || cls.indexOf('human')>=0) continue;
+if (containers[j].querySelector('[class*="markdown"], [class*="prose"], [class*="content"]'))
+out.push(containers[j]);
+}
+return out;
+}
+function extractText(el){
+var inner = el.querySelector('[class*="markdown"]') || el.querySelector('[class*="content"]') ||
+el.querySelector('[class*="prose"]') || el;
+return (inner.innerText || '').trim();
+}
+function findStopButton(){
+var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
+for (var i=0;i<btns.length;i++){
+var b = btns[i];
+var label = (b.getAttribute('aria-label') || '').toLowerCase();
+var text = (b.innerText || '').toLowerCase();
+if (label.indexOf('stop')>=0 || label.indexOf('cancel')>=0 || label.indexOf('останов')>=0 ||
+text.indexOf('stop')>=0 || text.indexOf('остановить')>=0) return b;
+}
+return null;
+}
+function reportAi(text){
+if (!text) return;
+window.__LERON_LAST_AI__ = text;
+lastText = text;
+lastChange = Date.now();
+if (window.chrome && window.chrome.webview)
+window.chrome.webview.postMessage({ action: 'aiResponse', text: text });
+}
+function check(){
+if (!window.__LERON_EXPECT__) return;
+var els = assistantEls();
+if (els.length === 0) return;
+var cur = extractText(els[els.length-1]);
+if (cur !== lastText){ lastText = cur; lastChange = Date.now(); }
+if ((Date.now() - lastChange) < 2000) return;
+if (!cur || cur === window.__LERON_LAST_AI__) return;
+if (findStopButton()) return;
+var norm = cur.toLowerCase().trim();
+if (norm==='думаю...' || norm==='думаю' || norm==='thinking...' || norm==='thinking') return;
+window.__LERON_EXPECT__ = false;
+reportAi(cur);
+}
+function startObserve(){
+if (!document.body){ setTimeout(startObserve, 100); return; }
+var observer = new MutationObserver(check);
+observer.observe(document.body, { childList:true, subtree:true, characterData:true });
+setInterval(check, 800);
+}
+startObserve();
+var origFetch = window.fetch;
+window.fetch = async function(){
+var response = await origFetch.apply(this, arguments);
+var url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url || '');
+if (response.ok && (url.indexOf('/chat')>=0 || url.indexOf('/completion')>=0)) {
+try {
+var clone = response.clone();
+var reader = clone.body.getReader();
+var decoder = new TextDecoder();
+var full = '';
+var NL = String.fromCharCode(10);
+(async function(){
+try {
+while(true){
+var r = await reader.read();
+if (r.done){
+if (window.__LERON_EXPECT__){
+window.__LERON_EXPECT__ = false;
+reportAi(full);
+}
+break;
+}
+var chunk = decoder.decode(r.value, {stream:true});
+var lines = chunk.split(NL);
+for (var i=0;i<lines.length;i++){
+if (lines[i].indexOf('data: ')===0){
+var data = lines[i].substring(6).trim();
+if (data==='[DONE]') continue;
+try {
+var json = JSON.parse(data);
+var delta = (json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content) || '';
+if (delta){
+full += delta;
+if (window.chrome && window.chrome.webview)
+window.chrome.webview.postMessage({ action: 'aiStream', text: full, delta: delta });
+}
+} catch(e){}
+}
+}
+}
+} catch(e){}
+})();
+} catch(e){}
+}
+return response;
+};
+setInterval(function(){
+var c = document.querySelector('iframe[src*="challenges.cloudflare.com"], #challenge-stage, #px-captcha, [class*="captcha"], [id*="captcha"]');
+var t = (document.body ? document.body.innerText : '').slice(0,3000).toLowerCase();
+var hit = !!c || t.indexOf('verify you are human')>=0 || t.indexOf('checking your browser')>=0 || t.indexOf('проверьте, что вы человек')>=0;
+if (hit && window.chrome && window.chrome.webview)
+window.chrome.webview.postMessage({ action: 'captcha' });
+}, 3000);
+})();
+""";
+private const string SyncUiScript = @"
+(async function() {
+var wantThink = __THINK__;
+function wait(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+function vis(el) { return !!el && (el.offsetParent !== null || el.getClientRects().length > 0); }
+function txt(el) { return (el.innerText || '').trim(); }
+var report = [];
+var modelLabel = document.querySelector('.wms-trigger__text');
+if (modelLabel) {
+var cm = txt(modelLabel).toLowerCase();
+if (cm.indexOf('3.8') < 0 || cm.indexOf('max') < 0) {
+var mt = document.querySelector('.wms-trigger');
+if (mt) {
+mt.click();
+await wait(300);
+var mEls = document.querySelectorAll('div, span, li');
+var mBest = null; var mLen = 1e9;
+for (var i = 0; i < mEls.length; i++) {
+var el = mEls[i];
+if (!vis(el)) continue;
+var t = txt(el).toLowerCase();
+if (!t || t.length > 40) continue;
+if (t.indexOf('3.8') >= 0 && t.indexOf('max') >= 0 && t.length < mLen) { mBest = el; mLen = t.length; }
+}
+if (mBest) { mBest.click(); await wait(200); } else { mt.click(); await wait(100); }
+report.push('model:' + txt(document.querySelector('.wms-trigger__text') || modelLabel));
+}
+} else report.push('model:ok');
+} else report.push('model:no-ui');
+var tLabel = document.querySelector('.qwen-thinking-selector .qwen-chat-v2-dropdown-menu-select-label');
+if (tLabel) {
+var cur = txt(tLabel).toLowerCase();
+var isThink = cur.indexOf('мышл') >= 0 || cur.indexOf('think') >= 0 || cur.indexOf('reason') >= 0;
+if (isThink !== wantThink) {
+var sel = document.querySelector('.qwen-thinking-selector .qwen-chat-v2-dropdown-menu-select');
+if (sel) {
+sel.click();
+await wait(250);
+var words = wantThink ? ['мышление', 'мышл', 'thinking', 'think'] : ['быстрый', 'быстр', 'fast'];
+var els = document.querySelectorAll('div, span, li');
+var best = null; var bLen = 1e9;
+for (var k = 0; k < els.length; k++) {
+var el2 = els[k];
+if (!vis(el2) || el2 === tLabel) continue;
+var t2 = txt(el2).toLowerCase();
+if (!t2 || t2.length > 20) continue;
+var hit = false;
+for (var w = 0; w < words.length; w++) { if (t2.indexOf(words[w]) >= 0) { hit = true; break; } }
+if (hit && t2.length < bLen) { best = el2; bLen = t2.length; }
+}
+if (best) { best.click(); await wait(150); } else { sel.click(); await wait(100); }
+var nl = document.querySelector('.qwen-thinking-selector .qwen-chat-v2-dropdown-menu-select-label');
+report.push('think:' + txt(nl || tLabel));
+}
+} else report.push('think:ok');
+} else report.push('think:no-ui');
+return report.join(' ');
+})();";
+private const string SendScript = @"
+(async function() {
+window.__LERON_EXPECT__ = true;
+var text = __TEXT__;
+function wait(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+var input = document.querySelector('textarea') || document.querySelector('[contenteditable=""true""]');
+if (!input) return 'NO_INPUT';
+input.focus();
+var isTa = input.tagName === 'TEXTAREA' || input.tagName === 'INPUT';
+function put(chunk) {
+if (isTa) {
+var s = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+s.call(input, input.value + chunk);
+input.dispatchEvent(new Event('input', { bubbles: true }));
+} else {
+document.execCommand('insertText', false, chunk);
+}
+}
+function clearInput() {
+if (isTa) {
+var s2 = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+s2.call(input, '');
+input.dispatchEvent(new Event('input', { bubbles: true }));
+} else {
+document.execCommand('selectAll', false, null);
+document.execCommand('delete', false, null);
+}
+}
+function send() {
+var btns2 = Array.prototype.slice.call(document.querySelectorAll('button'));
+var sb = null;
+for (var j = 0; j < btns2.length; j++) {
+var b2 = btns2[j];
+if (!b2.disabled && (b2.getAttribute('aria-label') || '').toLowerCase().indexOf('send') >= 0) { sb = b2; break; }
+}
+if (sb) sb.click();
+else input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+}
+clearInput();
+if (text.length > 200) {
+put(text);
+await wait(300);
+send();
+} else {
+await new Promise(function(resolve) {
+var i = 0;
+(function step() {
+if (i >= text.length) { setTimeout(function() { send(); resolve(); }, 200 + Math.random() * 300); return; }
+var take = 1 + Math.floor(Math.random() * 3);
+put(text.substring(i, i + take));
+i += take;
+setTimeout(step, 20 + Math.random() * 60);
+})();
+});
+}
+return 'OK';
+})();";
+public QwenBrowserPane()
+{
+InitializeComponent();
+_wsReconnectTimer.Tick += (_, _) => ConnectWebSocket();
+_wsReconnectTimer.Start();
+_bootBarTimer.Tick += (_, _) =>
+{
+_bootTick++;
+const int cells = 22;
+var head = _bootTick % (cells + 8);
+var ch = new char[cells];
+for (int i = 0; i < cells; i++) ch[i] = '░';
+for (int i = 0; i < 8; i++)
+{
+int idx = head - 4 + i;
+if (idx >= 0 && idx < cells) ch[idx] = (i == 3 || i == 4) ? '█' : '▒';
+}
+BootBar.Text = "[" + new string(ch) + "]";
+};
+_bootBarTimer.Start();
+Loaded += async (_, _) =>
+{
+await InitWebView();
+ConnectWebSocket();
+};
+Unloaded += (_, _) =>
+{
+_wsReconnectTimer.Stop();
+_ws?.Dispose();
+_ws = null;
+_wsConnected = false;
+};
+}
+public event Action? CaptchaDetected;
+// Старт прелоада: панель грузит Qwen в окне за экраном.
+public static void EnsureOffscreen()
+{
+if (_host != null) return;
+_host = new Window
+{
+WindowStyle = WindowStyle.None,
+ShowInTaskbar = false,
+ShowActivated = false,
+Left = -32000,
+Top = 0,
+Width = 1024,
+Height = 768,
+Background = Brushes.Black,
+Content = Shared
+};
+_host.Show();
+}
+// Вернуть панель в offscreen-окно (браузер остаётся живым и загруженным).
+public static void ParkOffscreen()
+{
+EnsureOffscreen();
+var pane = Shared;
+if (ReferenceEquals(pane.Parent, _host)) return;
+if (pane.Parent is Panel pp) pp.Children.Remove(pane);
+else if (pane.Parent is Decorator dd) dd.Child = null;
+else if (pane.Parent is ContentControl cc) cc.Content = null;
+_host!.Content = pane;
+}
+// Перенос единственной панели между окнами без пересоздания WebView2.
+public void MountIn(object host)
+{
+if (Parent is Panel p) p.Children.Remove(this);
+else if (Parent is Decorator d) d.Child = null;
+else if (Parent is ContentControl c) c.Content = null;
+if (host is Panel hp)
+{
+hp.Children.Insert(0, this);
+if (hp is Grid g && g.RowDefinitions.Count > 0) Grid.SetRowSpan(this, g.RowDefinitions.Count);
+}
+else if (host is Decorator hd) hd.Child = this;
+}
+private void Boot(string s)
+{
+Dispatcher.InvokeAsync(() => BootText.Text = s);
+BootStatusChanged?.Invoke(s);
+}
+private void MarkReady(bool ok)
+{
+_readyTcs.TrySetResult(ok);
+BootStatusChanged?.Invoke(ok ? "готово" : "ошибка");
+Dispatcher.InvokeAsync(() =>
+{
+_bootBarTimer.Stop();
+if (ok) BootOverlay.Visibility = Visibility.Collapsed;
+else { BootText.Text = "⚠ не загрузилось · нажми ⟳"; BootBar.Text = ""; }
+});
+}
+private async Task InitWebView()
+{
+if (_webInitialized) return;
+_webInitialized = true;
+try
+{
+ConnectionStatus.Text = "Инициализация WebView2...";
+Boot("инициализация WebView2...");
+var env = await CoreWebView2Environment.CreateAsync(
+userDataFolder: Path.Combine(
+Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+"LERON_CLI", "WebView2Profile"));
+await WebView.EnsureCoreWebView2Async(env);
+WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+WebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+WebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+WebView.CoreWebView2.NavigationCompleted += async (_, e) =>
+{
+if (e.IsSuccess)
+{
+_navRetries = 0;
+StatusText.Text = $"Готово: {WebView.CoreWebView2.Source}";
+DetectChatId();
+Boot("синхронизация UI...");
+await SyncQwenUi();
+MarkReady(true);
+}
+else if (_navRetries < 2)
+{
+_navRetries++;
+StatusText.Text = $"Ошибка {e.WebErrorStatus}, повтор {_navRetries}...";
+await Task.Delay(1500);
+try { WebView.CoreWebView2.Navigate(GetStartUrl()); } catch { }
+}
+else
+{
+StatusText.Text = $"⚠ Не загрузилось: {e.WebErrorStatus}";
+MarkReady(false);
+}
+};
+WebView.CoreWebView2.WebMessageReceived += OnWebMessage;
+await InjectCrtCss();
+await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BridgeScript);
+var url = GetStartUrl();
+StatusText.Text = $"Загружаю: {url}";
+Boot("загрузка chat.qwen.ai...");
+WebView.CoreWebView2.Navigate(url);
+ConnectionStatus.Text = "WebView2 готов. Загрузка Qwen...";
+}
+catch (Exception ex)
+{
+ConnectionStatus.Text = $"Ошибка WebView2: {ex.Message}";
+MarkReady(false);
+}
+}
+private static string GetStartUrl()
+{
+try
+{
+var configPath = BrowserLauncher.GetConfigPath();
+if (configPath != null)
+{
+using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+if (doc.RootElement.TryGetProperty("Roles", out var roles))
+{
+foreach (var role in roles.EnumerateObject())
+{
+if (role.Value.TryGetProperty("Url", out var url) && !string.IsNullOrEmpty(url.GetString()))
+return url.GetString()!;
+if (role.Value.TryGetProperty("ChatId", out var cid) && !string.IsNullOrEmpty(cid.GetString()))
+return $"https://chat.qwen.ai/c/{cid.GetString()}";
+}
+}
+}
+}
+catch { }
+return "https://chat.qwen.ai/";
+}
+private async Task InjectCrtCss()
+{
+const string css = @"
+:root {
+--bg-main: #04150c !important;
+--bg-sidebar: #081711 !important;
+--text-primary: #c8ffd8 !important;
+--text-secondary: #78b98f !important;
+--accent: #00ff88 !important;
+--border: #123626 !important;
+}
+body, [class*='sidebar'], [class*='nav'], header {
+background-color: var(--bg-main) !important;
+color: var(--text-primary) !important;
+}
+[class*='message'], [class*='chat'], [class*='input'], textarea {
+background-color: #0a1a12 !important;
+color: var(--text-primary) !important;
+border-color: var(--border) !important;
+}
+button, [class*='btn'] { border-color: var(--border) !important; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #04150c; }
+::-webkit-scrollbar-thumb { background: #1d5c3d; border-radius: 3px; }
+";
+var js = "(function(){var css=" + JsonSerializer.Serialize(css) +
+";function add(){var t=document.head||document.documentElement;" +
+"if(!t){setTimeout(add,100);return;}" +
+"var s=document.createElement('style');s.textContent=css;t.appendChild(s);}add();})();";
+await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(js);
+}
+private void DetectChatId()
+{
+try
+{
+var uri = WebView.CoreWebView2.Source;
+var match = System.Text.RegularExpressions.Regex.Match(uri, @"/c/([a-f0-9-]+)");
+if (match.Success && match.Groups[1].Value != _currentChatId)
+{
+_currentChatId = match.Groups[1].Value;
+ConnectionStatus.Text = $"Чат: {_currentChatId[..8]}...";
+_ws?.SendAsync(
+Encoding.UTF8.GetBytes($"CHATID:{_currentChatId}"),
+WebSocketMessageType.Text, true, CancellationToken.None);
+}
+}
+catch { }
+}
+private async void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+{
+try
+{
+var msg = e.WebMessageAsJson;
+if (string.IsNullOrEmpty(msg)) return;
+var node = JsonDocument.Parse(msg).RootElement;
+if (node.TryGetProperty("action", out var action))
+{
+var act = action.GetString();
+if (act == "aiResponse" && node.TryGetProperty("text", out var textProp))
+{
+var text = textProp.GetString() ?? "";
+if (_wsConnected && _ws != null)
+{
+await _ws.SendAsync(
+Encoding.UTF8.GetBytes($"AI:{_currentChatId}|{text}"),
+WebSocketMessageType.Text, true, CancellationToken.None);
+PlayNotificationSound();
+}
+}
+if (act == "aiStream" && node.TryGetProperty("text", out var streamText))
+{
+var text = streamText.GetString() ?? "";
+Dispatcher.InvokeAsync(() =>
+{
+StatusText.Text = $"Стриминг: {text.Length} симв...";
+});
+}
+if (act == "captcha")
+{
+Dispatcher.InvokeAsync(() =>
+{
+CaptchaDetected?.Invoke();
+StatusText.Text = "⚠ Капча — открой браузер (🌐) и пройди проверку.";
+});
+}
+}
+}
+catch { }
+}
+private static void PlayNotificationSound()
+{
+try { SystemSounds.Asterisk.Play(); } catch { }
+}
+private async void ConnectWebSocket()
+{
+if (_wsConnected) return;
+try
+{
+_ws?.Dispose();
+_ws = new ClientWebSocket();
+await _ws.ConnectAsync(new Uri("ws://localhost:51234/ws"), CancellationToken.None);
+_wsConnected = true;
+ConnectionStatus.Text = "Gateway подключён";
+Dispatcher.InvokeAsync(() => LinkDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#00ff88")));
+_ = ListenWebSocket();
+}
+catch
+{
+ConnectionStatus.Text = "Gateway недоступен, переподключение...";
+Dispatcher.InvokeAsync(() => LinkDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#5a2430")));
+}
+}
+private async Task ListenWebSocket()
+{
+var buffer = new byte[4096];
+try
+{
+while (_ws != null && _ws.State == WebSocketState.Open)
+{
+var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+if (result.MessageType == WebSocketMessageType.Close) break;
+var msg = Encoding.UTF8.GetString(buffer, 0, result.Count);
+if (msg.StartsWith("TYPE:"))
+{
+var parts = msg[5..].Split('|');
+if (parts.Length >= 4)
+{
+var text = string.Join('|', parts[4..]);
+var think = parts[3] == "1";
+await Dispatcher.InvokeAsync(() => SendToQwen(text, think));
+}
+}
+}
+}
+catch { }
+finally
+{
+_wsConnected = false;
+}
+}
+private async Task SyncQwenUi()
+{
+try
+{
+await Task.Delay(1200);
+if (WebView?.CoreWebView2 == null) return;
+await _uiLock.WaitAsync();
+try
+{
+await WebView.CoreWebView2.ExecuteScriptAsync(
+SyncUiScript.Replace("__THINK__", _lastThink ? "true" : "false"));
+}
+finally { _uiLock.Release(); }
+}
+catch { }
+}
+public async void SetThinkMode(bool think)
+{
+_lastThink = think;
+try
+{
+if (WebView?.CoreWebView2 == null) return;
+Dispatcher.InvokeAsync(() =>
+StatusText.Text = think ? "🧠 переключаю на мышление..." : "⚡ переключаю на быстрый...");
+await _uiLock.WaitAsync();
+try
+{
+var result = await WebView.CoreWebView2.ExecuteScriptAsync(
+SyncUiScript.Replace("__THINK__", think ? "true" : "false"));
+var r = result?.Trim('"');
+Dispatcher.InvokeAsync(() =>
+{
+if (r != null && r.Contains("no-ui"))
+StatusText.Text = "⚠ Не нашёл тумблер мышления/модели в Qwen";
+else
+StatusText.Text = (think ? "🧠 Qwen: мышление" : "⚡ Qwen: быстро") + " · " + r;
+});
+}
+finally { _uiLock.Release(); }
+}
+catch { }
+}
+private async void SendToQwen(string text, bool think)
+{
+try
+{
+_lastThink = think;
+Dispatcher.InvokeAsync(() => StatusText.Text = "⏳ режим + отправка...");
+await _uiLock.WaitAsync();
+try
+{
+await WebView.CoreWebView2.ExecuteScriptAsync(
+SyncUiScript.Replace("__THINK__", think ? "true" : "false"));
+var script = SendScript.Replace("__TEXT__", JsonSerializer.Serialize(text));
+var result = await WebView.CoreWebView2.ExecuteScriptAsync(script);
+Dispatcher.InvokeAsync(() =>
+StatusText.Text = result?.Contains("OK") == true ? "Отправлено" : "Ошибка ввода");
+}
+finally { _uiLock.Release(); }
+}
+catch (Exception ex)
+{
+Dispatcher.InvokeAsync(() => StatusText.Text = $"Ошибка: {ex.Message}");
+}
+}
+private void OnBackClick(object sender, System.Windows.RoutedEventArgs e)
+{
+if (WebView.CoreWebView2?.CanGoBack == true)
+WebView.CoreWebView2.GoBack();
+}
+private void OnForwardClick(object sender, System.Windows.RoutedEventArgs e)
+{
+if (WebView.CoreWebView2?.CanGoForward == true)
+WebView.CoreWebView2.GoForward();
+}
+private void OnReloadClick(object sender, System.Windows.RoutedEventArgs e)
+{
+WebView.CoreWebView2?.Reload();
+}
+}
+
+
+------------------------------------------------
+FILE: program\main\chat\MainWindow.xaml
+SIZE: 7606 bytes
+------------------------------------------------
+<local:ChromeWindow x:Class="MainApp.MainWindow"
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+xmlns:local="clr-namespace:MainApp"
+Title="LERON CLI — чат"
+Width="1600" Height="800">
+<WindowChrome.WindowChrome>
+<WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
+</WindowChrome.WindowChrome>
+<local:ChromeWindow.Resources>
+<Style TargetType="Button">
+<Setter Property="Foreground" Value="#c8ffd8"/>
+<Setter Property="Background" Value="#0b1d14"/>
+<Setter Property="BorderBrush" Value="#1d5c3d"/>
+<Setter Property="BorderThickness" Value="1"/>
+<Setter Property="FontSize" Value="13"/>
+<Setter Property="Padding" Value="10,6"/>
+<Setter Property="Cursor" Value="Hand"/>
+<Setter Property="Template">
+<Setter.Value>
+<ControlTemplate TargetType="Button">
+<Border x:Name="bd"
+Background="{TemplateBinding Background}"
+BorderBrush="{TemplateBinding BorderBrush}"
+BorderThickness="{TemplateBinding BorderThickness}"
+CornerRadius="8"
+Padding="{TemplateBinding Padding}">
+<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+</Border>
+<ControlTemplate.Triggers>
+<Trigger Property="IsMouseOver" Value="True">
+<Setter TargetName="bd" Property="Background" Value="#123726"/>
+<Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
+</Trigger>
+<Trigger Property="IsEnabled" Value="False">
+<Setter Property="Opacity" Value="0.45"/>
+</Trigger>
+</ControlTemplate.Triggers>
+</ControlTemplate>
+</Setter.Value>
+</Setter>
+</Style>
+<Style TargetType="ListBox">
+<Setter Property="Background" Value="Transparent"/>
+<Setter Property="BorderThickness" Value="0"/>
+</Style>
+<Style TargetType="ListBoxItem">
+<Setter Property="Foreground" Value="#c8ffd8"/>
+<Setter Property="FontSize" Value="14"/>
+<Setter Property="Padding" Value="8"/>
+<Setter Property="Margin" Value="0,2"/>
+<Setter Property="Cursor" Value="Hand"/>
+<Setter Property="Template">
+<Setter.Value>
+<ControlTemplate TargetType="ListBoxItem">
+<Border x:Name="bd"
+Background="#0a1a12"
+BorderBrush="#123626"
+BorderThickness="1"
+CornerRadius="6"
+Padding="{TemplateBinding Padding}">
+<ContentPresenter/>
+</Border>
+<ControlTemplate.Triggers>
+<Trigger Property="IsMouseOver" Value="True">
+<Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
+</Trigger>
+<Trigger Property="IsSelected" Value="True">
+<Setter TargetName="bd" Property="Background" Value="#123626"/>
+<Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
+</Trigger>
+</ControlTemplate.Triggers>
+</ControlTemplate>
+</Setter.Value>
+</Setter>
+</Style>
+</local:ChromeWindow.Resources>
+<Border BorderBrush="#123626" BorderThickness="1">
+<Grid>
+<Grid.RowDefinitions>
+<RowDefinition Height="46"/>
+<RowDefinition Height="*"/>
+</Grid.RowDefinitions>
+<Border Grid.Row="0" Background="#081711" MouseLeftButtonDown="DragWindow">
+<Grid>
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+<TextBlock Text="LERON CLI" FontSize="18" FontWeight="Bold" Foreground="#00ff88" VerticalAlignment="Center"/>
+<TextBlock Text="· чат агента" Margin="10,0,0,0" Foreground="#447a5a" FontSize="14" VerticalAlignment="Center"/>
+</StackPanel>
+<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0">
+<Button Content="← хаб" Padding="10,5" Margin="0,0,6,0" Click="OnBackClick"/>
+<Button Content="⛶" Width="44" Height="32" Margin="0,0,6,0" Click="ToggleSize"/>
+<Button Content="✕" Width="44" Height="32" Click="CloseClick"/>
+</StackPanel>
+</Grid>
+</Border>
+<Grid Grid.Row="1">
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="280"/>
+<ColumnDefinition Width="*"/>
+<ColumnDefinition x:Name="BrowserColumn" Width="0"/>
+</Grid.ColumnDefinitions>
+<Border Grid.Column="0" Background="#08140f" BorderBrush="#123626" BorderThickness="0,0,1,0" Padding="12">
+<Grid>
+<Grid.RowDefinitions>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="*"/>
+<RowDefinition Height="Auto"/>
+</Grid.RowDefinitions>
+<TextBlock Grid.Row="0" Text="АГЕНТ" FontSize="14" Foreground="#00ff88" FontWeight="Bold" Margin="6,0,0,10"/>
+<ListBox Grid.Row="1" x:Name="RolesList" SelectionChanged="OnRoleSelected">
+<ListBoxItem Tag="coder" Content="💻 Кодер"/>
+</ListBox>
+<Button Grid.Row="2" x:Name="ToggleBrowserBtn" Content="🌐 браузер: скрыт" Click="OnToggleBrowserClick"
+Padding="8,6" Margin="0,8,0,0"
+ToolTip="Показать/скрыть встроенный браузер Qwen. Даже скрытым он продолжает работать и принимать ответы."/>
+<TextBlock Grid.Row="4" x:Name="RoleStatus" Text="Выбери роль" Foreground="#8fe3ae" FontSize="14" TextWrapping="Wrap" Margin="6,10,0,0"/>
+</Grid>
+</Border>
+<Grid Grid.Column="1">
+<Grid.RowDefinitions>
+<RowDefinition Height="*"/>
+<RowDefinition Height="Auto"/>
+</Grid.RowDefinitions>
+<ScrollViewer x:Name="ChatScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16">
+<StackPanel x:Name="ChatMessages"/>
+</ScrollViewer>
+<Border Grid.Row="1" Background="#081711" Padding="12">
+<Grid>
+<Grid.RowDefinitions>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="Auto"/>
+</Grid.RowDefinitions>
+<StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+<Button x:Name="ModeEditBtn" Content="✏️ правка" Click="OnModeEditClick" Padding="8,5" Margin="0,0,6,0" ToolTip="ИИ пишет и меняет файлы проекта"/>
+<Button x:Name="ModeChatBtn" Content="💬 чат" Click="OnModeChatClick" Padding="8,5" Margin="0,0,6,0" ToolTip="Обычный разговор без проекта"/>
+<Button x:Name="ModeProjectBtn" Content="📋 без правок" Click="OnModeProjectClick" Padding="8,5" Margin="0,0,14,0" ToolTip="ИИ обсуждает проект, но не меняет файлы"/>
+<Button Content="📂 файлы" Click="OnToolListClick" Padding="8,5" Margin="0,0,6,0" ToolTip="Показать файлы проекта"/>
+<Button Content="📖 читать" Click="OnToolReadClick" Padding="8,5" Margin="0,0,6,0" ToolTip="Прочитать файл проекта"/>
+<Button Content="✚ создать" Click="OnToolWriteClick" Padding="8,5" Margin="0,0,6,0" ToolTip="Создать файл в проекте"/>
+<Button Content="🗑 удалить" Click="OnToolDeleteClick" Padding="8,5" Margin="0,0,14,0" ToolTip="Удалить файл из проекта"/>
+<TextBlock Text="/list /read /write /delete" Foreground="#3d6a4d" FontSize="12" VerticalAlignment="Center"/>
+</StackPanel>
+<Grid Grid.Row="1">
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="*"/>
+<ColumnDefinition Width="Auto"/>
+</Grid.ColumnDefinitions>
+<TextBox x:Name="InputBox"
+Grid.Column="0"
+Background="#04110c"
+Foreground="#d9ffe7"
+BorderBrush="#1d5c3d"
+BorderThickness="1"
+Padding="10"
+FontSize="15"
+TextWrapping="Wrap"
+AcceptsReturn="False"
+CaretBrush="#00ff88"
+SelectionBrush="#123626"
+IsEnabled="False"
+KeyDown="OnInputKeyDown"/>
+<Button x:Name="SendBtn" Grid.Column="1" Content="Отправить" Width="140" Margin="10,0,0,0" IsEnabled="False" Click="OnSendClick"/>
+</Grid>
+</Grid>
+</Border>
+</Grid>
+<Border Grid.Column="2" x:Name="BrowserPaneHost" BorderBrush="#123626" BorderThickness="1,0,0,0"/>
+</Grid>
+</Grid>
+</Border>
+</local:ChromeWindow>
+
+
+------------------------------------------------
+FILE: program\main\chat\MainWindow.xaml.cs
+SIZE: 22451 bytes
+------------------------------------------------
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
+namespace MainApp;
+public partial class MainWindow : ChromeWindow
+{
+private readonly HttpClient _http = new()
+{
+Timeout = System.Threading.Timeout.InfiniteTimeSpan
+};
+private string? _selectedRole = null;
+private readonly HashSet<string> _boundRoles = new();
+private Dictionary<string, List<ChatMessage>> _history = new();
+private bool _waiting;
+private readonly DispatcherTimer _waitTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+private DateTime _waitStart;
+// Режимы: chat | plan | edit | auto | yolo
+private readonly string? _projectPath;
+private readonly string? _projectName;
+private string _mode;
+private bool _think;
+private Button _modeAutoBtn = null!;
+private Button _modeYoloBtn = null!;
+private Button _thinkBtn = null!;
+// Браузер один на всё приложение — берём общий экземпляр и монтируем в хост.
+private readonly QwenBrowserPane _browserPane = QwenBrowserPane.Shared;
+private string HistoryKey => _projectPath != null
+? HistoryStore.ProjectKey(_projectPath)
+: (_selectedRole ?? "unknown");
+public MainWindow(string? projectPath = null, string? projectName = null)
+{
+InitializeComponent();
+_browserPane.MountIn(BrowserPaneHost);
+Closed += (_, _) =>
+{
+QwenBrowserPane.ParkOffscreen();
+// Кроме offscreen-окна браузера никого не осталось — гасим приложение.
+if (Application.Current?.Windows.Count == 1) Application.Current.Shutdown();
+};
+_browserPane.CaptchaDetected += () =>
+{
+if (BrowserColumn.Width.Value < 1) OnToggleBrowserClick(this, new RoutedEventArgs());
+RoleStatus.Text = "⚠ Капча — пройди проверку в окне браузера.";
+};
+_projectPath = projectPath;
+_projectName = projectName;
+_mode = projectPath != null ? "edit" : "chat";
+LoadHistoryFromDisk();
+SetupModeButtons();
+if (RolesList.SelectedIndex < 0)
+RolesList.SelectedIndex = 0;
+KeyDown += OnMainWindowKeyDown;
+_waitTimer.Tick += (_, _) =>
+{
+var sec = (int)(DateTime.Now - _waitStart).TotalSeconds;
+if (_selectedRole != null)
+RoleStatus.Text = $"Ожидание ответа от {_selectedRole}... {sec}с (кнопка «Отправить» стала «стоп»)";
+};
+var statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+statusTimer.Tick += (_, _) => LoadRolesStatus();
+statusTimer.Start();
+LoadRolesStatus();
+RenderHistory();
+UpdateModeButtons();
+}
+private void OnToggleBrowserClick(object sender, RoutedEventArgs e)
+{
+bool show = BrowserColumn.Width.Value < 1;
+BrowserColumn.Width = show ? new GridLength(500) : new GridLength(0);
+ToggleBrowserBtn.Content = show ? "🌐 браузер: показан" : "🌐 браузер: скрыт";
+}
+private void SetupModeButtons()
+{
+ModeChatBtn.Content = "💬 чат";
+ModeChatBtn.ToolTip = "Обычный разговор без проекта";
+ModeProjectBtn.Content = "📋 планирование";
+ModeProjectBtn.ToolTip = "ИИ читает и обсуждает проект, но не меняет файлы";
+ModeEditBtn.Content = "✏️ аккуратный";
+ModeEditBtn.ToolTip = "ИИ правит файлы, каждое действие с подтверждением";
+_modeAutoBtn = new Button
+{
+Content = "🧠 авто",
+ToolTip = "Подтвердил действие один раз — похожие дальше идут сами",
+Margin = new Thickness(0, 0, 6, 0),
+Padding = new Thickness(8, 4, 8, 4)
+};
+_modeAutoBtn.Click += (_, _) => SetMode("auto");
+_modeYoloBtn = new Button
+{
+Content = "⚡ агрессивный",
+ToolTip = "YOLO: все действия без подтверждений",
+Margin = new Thickness(0, 0, 14, 0),
+Padding = new Thickness(8, 4, 8, 4)
+};
+_modeYoloBtn.Click += (_, _) => SetMode("yolo");
+_thinkBtn = new Button
+{
+Content = "⚡ быстро",
+ToolTip = "Режим ответа ИИ: быстро или с мышлением (Ctrl+6)",
+Margin = new Thickness(0, 0, 14, 0),
+Padding = new Thickness(8, 4, 8, 4)
+};
+_thinkBtn.Click += (_, _) => ToggleThink();
+var panel = (StackPanel)ModeEditBtn.Parent;
+int idx = panel.Children.IndexOf(ModeEditBtn);
+panel.Children.Remove(ModeEditBtn);
+panel.Children.Remove(ModeChatBtn);
+panel.Children.Remove(ModeProjectBtn);
+panel.Children.Insert(idx, ModeChatBtn);
+panel.Children.Insert(idx + 1, ModeProjectBtn);
+panel.Children.Insert(idx + 2, ModeEditBtn);
+panel.Children.Insert(idx + 3, _modeAutoBtn);
+panel.Children.Insert(idx + 4, _modeYoloBtn);
+panel.Children.Insert(idx + 5, _thinkBtn);
+}
+private void ToggleThink()
+{
+_think = !_think;
+_thinkBtn.Content = _think ? "🧠 мышление" : "⚡ быстро";
+StyleModeButton(_thinkBtn, _think);
+ApplyRoleSelection();
+_browserPane.SetThinkMode(_think);
+}
+private async void LoadRolesStatus()
+{
+try
+{
+var resp = await _http.GetStringAsync("http://localhost:51234/status");
+var status = JsonSerializer.Deserialize<GatewayStatus>(
+resp,
+new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+if (status == null) return;
+_boundRoles.Clear();
+if (status.Roles != null)
+{
+foreach (var r in status.Roles)
+_boundRoles.Add(r);
+}
+_selectedRole = "coder";
+foreach (var item in RolesList.Items)
+{
+if (item is ListBoxItem lbi && lbi.Tag is string tag)
+{
+var baseName = "💻 Кодер";
+lbi.Content = _boundRoles.Contains(tag)
+? baseName + " ✅"
+: baseName + " — не закреплён";
+}
+}
+if (_selectedRole != null && !_waiting)
+ApplyRoleSelection();
+}
+catch
+{
+RoleStatus.Text = "⚠️ Gateway не запущен";
+}
+}
+private void OnRoleSelected(object sender, SelectionChangedEventArgs e)
+{
+if (RolesList.SelectedItem is ListBoxItem item)
+{
+_selectedRole = item.Tag?.ToString();
+ApplyRoleSelection();
+RenderHistory();
+}
+}
+private void ApplyRoleSelection()
+{
+if (_selectedRole == null) return;
+var bound = _boundRoles.Contains(_selectedRole);
+InputBox.IsEnabled = bound;
+SendBtn.IsEnabled = bound;
+if (!bound)
+{
+RoleStatus.Text = $"Роль \"{_selectedRole}\" не закреплена за чатом. Открой чат Qwen и закрепи роль через popup плагина.";
+return;
+}
+var proj = _projectPath != null
+? $" · 📁 {_projectName ?? _projectPath}"
+: "";
+RoleStatus.Text = $"Роль: {_selectedRole} · {ModeLabel()} · {(_think ? "🧠 мышление" : "⚡ быстро")}{proj}";
+}
+private string ModeLabel() => _mode switch
+{
+"plan" => "📋 планирование",
+"edit" => "✏️ аккуратный",
+"auto" => "🧠 авто",
+"yolo" => "⚡ агрессивный",
+_ => "💬 чат"
+};
+private void OnMainWindowKeyDown(object sender, KeyEventArgs e)
+{
+if (Keyboard.Modifiers != ModifierKeys.Control) return;
+switch (e.Key)
+{
+case Key.D1:
+case Key.NumPad1:
+SetMode("chat");
+e.Handled = true;
+break;
+case Key.D2:
+case Key.NumPad2:
+SetMode("plan");
+e.Handled = true;
+break;
+case Key.D3:
+case Key.NumPad3:
+SetMode("edit");
+e.Handled = true;
+break;
+case Key.D4:
+case Key.NumPad4:
+SetMode("auto");
+e.Handled = true;
+break;
+case Key.D5:
+case Key.NumPad5:
+SetMode("yolo");
+e.Handled = true;
+break;
+case Key.D6:
+case Key.NumPad6:
+ToggleThink();
+e.Handled = true;
+break;
+}
+}
+private void OnModeEditClick(object sender, RoutedEventArgs e) => SetMode("edit");
+private void OnModeChatClick(object sender, RoutedEventArgs e) => SetMode("chat");
+private void OnModeProjectClick(object sender, RoutedEventArgs e) => SetMode("plan");
+private void SetMode(string mode)
+{
+if (_projectPath == null && mode != "chat")
+{
+RoleStatus.Text = "Режимы проекта доступны только при открытой папке проекта. Сейчас: 💬 чат.";
+_mode = "chat";
+UpdateModeButtons();
+return;
+}
+_mode = mode;
+ApplyRoleSelection();
+UpdateModeButtons();
+}
+private void UpdateModeButtons()
+{
+if (ModeEditBtn == null) return;
+StyleModeButton(ModeChatBtn, _mode == "chat");
+StyleModeButton(ModeProjectBtn, _mode == "plan");
+StyleModeButton(ModeEditBtn, _mode == "edit");
+StyleModeButton(_modeAutoBtn, _mode == "auto");
+StyleModeButton(_modeYoloBtn, _mode == "yolo");
+StyleModeButton(_thinkBtn, _think);
+}
+private static void StyleModeButton(Button btn, bool active)
+{
+btn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(active ? "#123626" : "#0b1d14"));
+btn.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(active ? "#00ff88" : "#1d5c3d"));
+btn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(active ? "#00ff88" : "#c8ffd8"));
+}
+private void OnToolListClick(object sender, RoutedEventArgs e)
+{
+InputBox.Text = "/list";
+InputBox.Focus();
+}
+private void OnToolReadClick(object sender, RoutedEventArgs e)
+{
+InputBox.Text = "/read ./";
+InputBox.Focus();
+InputBox.SelectionStart = InputBox.Text.Length;
+}
+private void OnToolWriteClick(object sender, RoutedEventArgs e)
+{
+InputBox.Text = "/write ./ ";
+InputBox.Focus();
+InputBox.SelectionStart = InputBox.Text.Length;
+}
+private void OnToolDeleteClick(object sender, RoutedEventArgs e)
+{
+InputBox.Text = "/delete ./";
+InputBox.Focus();
+InputBox.SelectionStart = InputBox.Text.Length;
+}
+private string ApplyModePrefix(string text)
+{
+if (_mode == "chat" || string.IsNullOrEmpty(_projectPath))
+return text;
+var sb = new StringBuilder();
+if (_mode is "edit" or "auto" or "yolo")
+sb.Append($"[Режим: редактирование. Корень проекта: {_projectPath}. Можно читать и изменять файлы внутри этой папки. Отвечай на русском.] ");
+else
+sb.Append($"[Режим: обсуждение проекта. Корень проекта: {_projectPath}. НЕ изменяй файлы — только отвечай и объясняй. Отвечай на русском.] ");
+sb.Append(text);
+return sb.ToString();
+}
+private void RenderHistory()
+{
+ChatMessages.Children.Clear();
+if (_history.TryGetValue(HistoryKey, out var list))
+{
+foreach (var m in list)
+AddMessageBlock(m.Author, m.Text, m.Bg);
+}
+}
+private void AddMessage(string role, string author, string text, string bgColor)
+{
+var key = HistoryKey;
+if (!_history.ContainsKey(key))
+_history[key] = new();
+_history[key].Add(new ChatMessage
+{
+Author = author,
+Text = text,
+Bg = bgColor
+});
+SaveHistoryToDisk();
+AddMessageBlock(author, text, bgColor);
+}
+private void AddMessageBlock(string author, string text, string bgColor)
+{
+var isUser = bgColor == "#0f3460";
+var borderColor = isUser ? "#00ff88" : "#1a3a2a";
+var bg = isUser ? "#0f1f17" : "#0a1410";
+var authorColor = isUser ? "#00ff88" : "#4a7a5a";
+var block = new Border
+{
+Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(bg)),
+BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(borderColor)),
+BorderThickness = new Thickness(1),
+CornerRadius = new CornerRadius(6),
+Padding = new Thickness(14, 10, 14, 10),
+Margin = new Thickness(0, 4, 0, 4)
+};
+var stack = new StackPanel();
+stack.Children.Add(new TextBlock
+{
+Text = author.ToUpper(),
+Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(authorColor)),
+FontSize = 12,
+FontWeight = FontWeights.Bold,
+Margin = new Thickness(0, 0, 0, 4)
+});
+stack.Children.Add(new TextBlock
+{
+Text = text,
+Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#c8ffd8")),
+TextWrapping = TextWrapping.Wrap,
+FontSize = 15
+});
+block.Child = stack;
+ChatMessages.Children.Add(block);
+ChatScroll.ScrollToEnd();
+}
+private void OnInputKeyDown(object sender, KeyEventArgs e)
+{
+if (e.Key == Key.Enter && !_waiting) SendMessage();
+}
+private void OnSendClick(object sender, RoutedEventArgs e)
+{
+if (_waiting)
+{
+_ = CancelWait();
+return;
+}
+SendMessage();
+}
+private async Task CancelWait()
+{
+try
+{
+var payload = JsonSerializer.Serialize(new { role = _selectedRole });
+await _http.PostAsync(
+"http://localhost:51234/cancel",
+new StringContent(payload, Encoding.UTF8, "application/json"));
+}
+catch { }
+}
+private void OnBackClick(object sender, RoutedEventArgs e)
+{
+var hub = new ProjectHubWindow();
+hub.StartFullscreen = false;
+hub.WindowStartupLocation = WindowStartupLocation.Manual;
+hub.Left = Left;
+hub.Top = Top;
+hub.Width = Width;
+hub.Height = Height;
+SwapTo(hub);
+}
+private async void SendMessage()
+{
+if (_waiting) return;
+var text = InputBox.Text.Trim();
+if (string.IsNullOrEmpty(text) || _selectedRole == null) return;
+var role = _selectedRole;
+AddMessage(role, "Ты", text, "#0f3460");
+InputBox.Clear();
+if (text.StartsWith("/"))
+{
+RunLocalTool(text);
+return;
+}
+SendBtn.IsEnabled = true;
+SendBtn.Content = "⏹ стоп";
+_waiting = true;
+_waitStart = DateTime.Now;
+_waitTimer.Start();
+try
+{
+var agentPayload = JsonSerializer.Serialize(new
+{
+role,
+text,
+projectPath = _projectPath,
+mode = _mode,
+think = _think
+});
+var agentResp = await _http.PostAsync(
+"http://localhost:51234/agent-run",
+new StringContent(agentPayload, Encoding.UTF8, "application/json"));
+var agentBody = await agentResp.Content.ReadAsStringAsync();
+if (agentResp.IsSuccessStatusCode)
+{
+await HandleAgentBody(role, agentBody);
+}
+else
+{
+if (_mode != "chat")
+AddMessage(role, "система", "⚠ " + ShortError(agentBody) + " Отвечаю через браузер Qwen.", "#123020");
+await SendViaBrowser(role, ApplyModePrefix(text));
+}
+}
+catch (Exception ex)
+{
+AddMessage(role, "Ошибка", ex.Message, "#e94560");
+}
+finally
+{
+_waiting = false;
+_waitTimer.Stop();
+SendBtn.Content = "Отправить";
+SendBtn.IsEnabled = true;
+ApplyRoleSelection();
+}
+}
+private static string ShortError(string body)
+{
+try
+{
+using var doc = JsonDocument.Parse(body);
+if (doc.RootElement.TryGetProperty("error", out var e))
+{
+var s = e.GetString();
+if (!string.IsNullOrEmpty(s))
+return s.Length > 220 ? s.Substring(0, 220) + "…" : s;
+}
+}
+catch { }
+return body.Length > 220 ? body.Substring(0, 220) + "…" : body;
+}
+private async Task HandleAgentBody(string role, string body)
+{
+var r = DeserializeAgent(body);
+int guard = 0;
+while (r != null && r.Status == "approval" && guard++ < 20)
+{
+var args = r.Arguments ?? "";
+if (args.Length > 700) args = args.Substring(0, 700) + "…";
+var yes = MessageBox.Show(
+$"Агент хочет выполнить: {r.Tool}\n{args}\nРазрешить?",
+"LERON CLI · подтверждение",
+MessageBoxButton.YesNo,
+MessageBoxImage.Question) == MessageBoxResult.Yes;
+AddMessage(role, "подтверждение", $"{(yes ? "✅" : "🚫")} {r.Tool}", "#123020");
+var p = JsonSerializer.Serialize(new
+{
+sessionId = r.SessionId,
+approve = yes,
+remember = _mode == "auto"
+});
+var resp = await _http.PostAsync(
+"http://localhost:51234/agent-approve",
+new StringContent(p, Encoding.UTF8, "application/json"));
+body = await resp.Content.ReadAsStringAsync();
+if (!resp.IsSuccessStatusCode)
+{
+AddMessage(role, "Ошибка", body, "#e94560");
+return;
+}
+r = DeserializeAgent(body);
+}
+if (r == null)
+{
+AddMessage(role, "Ошибка", "Не удалось разобрать ответ агента.", "#e94560");
+return;
+}
+if (r.Tools != null && r.Tools.Count > 0)
+AddMessage(role, "инструменты", string.Join("\n", r.Tools), "#123020");
+AddMessage(role, role, string.IsNullOrWhiteSpace(r.Response) ? "(нет ответа)" : r.Response, "#16213e");
+}
+private static AgentRunResponse? DeserializeAgent(string body)
+{
+try
+{
+return JsonSerializer.Deserialize<AgentRunResponse>(
+body,
+new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+}
+catch
+{
+return null;
+}
+}
+private async Task SendViaBrowser(string role, string text)
+{
+try
+{
+var payload = JsonSerializer.Serialize(new { role, text, think = _think });
+var content = new StringContent(payload, Encoding.UTF8, "application/json");
+var resp = await _http.PostAsync("http://localhost:51234/send-and-wait", content);
+var body = await resp.Content.ReadAsStringAsync();
+if (resp.IsSuccessStatusCode)
+{
+var result = JsonSerializer.Deserialize<SendResponse>(
+body,
+new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+if (result != null)
+AddMessage(role, role, result.Response, "#16213e");
+}
+else
+{
+AddMessage(role, "Ошибка", body, "#e94560");
+}
+}
+catch (Exception ex)
+{
+AddMessage(role, "Ошибка", ex.Message, "#e94560");
+}
+}
+private void RunLocalTool(string text)
+{
+var role = _selectedRole!;
+if (_projectPath == null)
+{
+AddMessage(role, "система", "Инструменты доступны только при открытом проекте. Выбери проект в хабе.", "#e94560");
+return;
+}
+var parts = text.Split(new[] { ' ' }, 2);
+var cmd = parts[0].ToLowerInvariant();
+var rest = parts.Length > 1 ? parts[1].Trim() : "";
+string result;
+try
+{
+result = cmd switch
+{
+"/list" => ToolList(rest),
+"/read" => ToolRead(rest),
+"/write" => ToolWrite(rest),
+"/delete" => ToolDelete(rest),
+_ => $"Неизвестная команда: {cmd}. Доступны: /list /read /write /delete"
+};
+}
+catch (Exception ex)
+{
+result = "Ошибка: " + ex.Message;
+}
+AddMessage(role, "инструмент", result, "#123020");
+}
+private string? ResolveInProject(string raw)
+{
+var trimmed = raw.Trim().Trim('"');
+if (string.IsNullOrWhiteSpace(trimmed) || _projectPath == null) return null;
+trimmed = trimmed.Replace('/', Path.DirectorySeparatorChar);
+var rootFull = Path.GetFullPath(_projectPath);
+string full = Path.IsPathRooted(trimmed)
+? Path.GetFullPath(trimmed)
+: Path.GetFullPath(Path.Combine(rootFull, trimmed));
+if (!full.Equals(rootFull, StringComparison.OrdinalIgnoreCase) &&
+!full.StartsWith(rootFull + Path.DirectorySeparatorChar))
+return null;
+return full;
+}
+private string ToolList(string rawPath)
+{
+var p = ResolveInProject(string.IsNullOrWhiteSpace(rawPath) ? "." : rawPath);
+if (p == null) return "Доступ отклонён: путь вне проекта.";
+if (!Directory.Exists(p)) return $"Папка не найдена: {rawPath}";
+var sb = new StringBuilder();
+foreach (var d in Directory.GetDirectories(p).OrderBy(x => x))
+sb.AppendLine("📁 " + Path.GetFileName(d));
+foreach (var f in Directory.GetFiles(p).OrderBy(x => x))
+sb.AppendLine("📄 " + Path.GetFileName(f));
+var list = sb.ToString();
+return string.IsNullOrWhiteSpace(list) ? "(пусто)" : list;
+}
+private string ToolRead(string rawPath)
+{
+if (string.IsNullOrWhiteSpace(rawPath)) return "Укажи путь. Пример: /read ./Program.cs";
+var p = ResolveInProject(rawPath);
+if (p == null) return "Доступ отклонён: путь вне проекта.";
+if (!File.Exists(p)) return $"Файл не найден: {rawPath}";
+var text = File.ReadAllText(p);
+if (text.Length > 20000) text = text.Substring(0, 20000) + "\n…[обрезано]";
+return $"--- {rawPath} ---\n{text}";
+}
+private string ToolWrite(string rest)
+{
+var wp = rest.Split(new[] { ' ' }, 2);
+if (string.IsNullOrWhiteSpace(wp[0])) return "Укажи путь и текст. Пример: /write ./test.txt hello";
+var p = ResolveInProject(wp[0]);
+if (p == null) return "Доступ отклонён: путь вне проекта.";
+var dir = Path.GetDirectoryName(p);
+if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+File.WriteAllText(p, wp.Length > 1 ? wp[1] : "");
+return $"Файл создан: {wp[0]}";
+}
+private string ToolDelete(string rawPath)
+{
+var p = ResolveInProject(rawPath);
+if (p == null) return "Доступ отклонён: путь вне проекта.";
+if (File.Exists(p)) { File.Delete(p); return $"Файл удалён: {rawPath}"; }
+if (Directory.Exists(p)) { Directory.Delete(p, true); return $"Папка удалена: {rawPath}"; }
+return $"Не найдено: {rawPath}";
+}
+private void LoadHistoryFromDisk()
+{
+_history = HistoryStore.Load();
+}
+private void SaveHistoryToDisk()
+{
+HistoryStore.Save(_history);
+}
+}
+public class ChatMessage
+{
+public string Author { get; set; } = "";
+public string Text { get; set; } = "";
+public string Bg { get; set; } = "";
+}
+class GatewayStatus
+{
+public string Status { get; set; } = "";
+public int RolesWithChats { get; set; }
+public string[] Roles { get; set; } = [];
+}
+class SendResponse
+{
+public string Role { get; set; } = "";
+public string Response { get; set; } = "";
+}
+class AgentRunResponse
+{
+public string Status { get; set; } = "";
+public string SessionId { get; set; } = "";
+public string Role { get; set; } = "";
+public string Response { get; set; } = "";
+public List<string> Tools { get; set; } = new();
+public string Tool { get; set; } = "";
+public string Arguments { get; set; } = "";
+}
+public static class HistoryStore
+{
+public static string ProjectKey(string projectPath) =>
+"proj|" + projectPath.TrimEnd('\\', '/').ToLowerInvariant();
+public static string? GetPath()
+{
+var configPath = BrowserLauncher.GetConfigPath();
+if (configPath == null) return null;
+var dir = Path.GetDirectoryName(configPath);
+if (dir == null) return null;
+return Path.Combine(dir, "history.json");
+}
+public static Dictionary<string, List<ChatMessage>> Load()
+{
+try
+{
+var path = GetPath();
+if (path == null || !File.Exists(path)) return new();
+var loaded = JsonSerializer.Deserialize<Dictionary<string, List<ChatMessage>>>(
+File.ReadAllText(path),
+new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+return loaded ?? new();
+}
+catch
+{
+return new();
+}
+}
+public static void Save(Dictionary<string, List<ChatMessage>> map)
+{
+try
+{
+var path = GetPath();
+if (path == null) return;
+File.WriteAllText(path, JsonSerializer.Serialize(map, new JsonSerializerOptions { WriteIndented = true }));
+}
+catch
+{
+}
+}
+public static void DeleteProjectHistory(string projectPath)
+{
+var map = Load();
+if (map.Remove(ProjectKey(projectPath)))
+Save(map);
+}
+}
+
+
+------------------------------------------------
+FILE: program\main\hub\ProjectHubWindow.xaml
+SIZE: 7097 bytes
+------------------------------------------------
+<local:ChromeWindow x:Class="MainApp.ProjectHubWindow"
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+xmlns:local="clr-namespace:MainApp"
+Title="LERON CLI — проекты"
+Width="980" Height="700"
+KeyDown="OnKeyDown">
+<WindowChrome.WindowChrome>
+<WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
+</WindowChrome.WindowChrome>
+<local:ChromeWindow.Resources>
+<Style TargetType="Button">
+<Setter Property="Foreground" Value="#c8ffd8"/>
+<Setter Property="Background" Value="#0b1d14"/>
+<Setter Property="BorderBrush" Value="#1d5c3d"/>
+<Setter Property="BorderThickness" Value="1"/>
+<Setter Property="FontSize" Value="13"/>
+<Setter Property="Padding" Value="10,6"/>
+<Setter Property="Cursor" Value="Hand"/>
+<Setter Property="Template">
+<Setter.Value>
+<ControlTemplate TargetType="Button">
+<Border x:Name="bd"
+Background="{TemplateBinding Background}"
+BorderBrush="{TemplateBinding BorderBrush}"
+BorderThickness="{TemplateBinding BorderThickness}"
+CornerRadius="8"
+Padding="{TemplateBinding Padding}">
+<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+</Border>
+<ControlTemplate.Triggers>
+<Trigger Property="IsMouseOver" Value="True">
+<Setter TargetName="bd" Property="Background" Value="#123726"/>
+<Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
+</Trigger>
+<Trigger Property="IsEnabled" Value="False">
+<Setter Property="Opacity" Value="0.45"/>
+</Trigger>
+</ControlTemplate.Triggers>
+</ControlTemplate>
+</Setter.Value>
+</Setter>
+</Style>
+</local:ChromeWindow.Resources>
+<Border BorderBrush="#123626" BorderThickness="1" Background="#04150c">
+<Grid x:Name="RootGrid" Background="#04150c">
+<Grid.RowDefinitions>
+<RowDefinition Height="52"/>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="*"/>
+<RowDefinition Height="Auto"/>
+</Grid.RowDefinitions>
+<Border Grid.Row="0" Background="#081711" MouseLeftButtonDown="DragWindow">
+<Grid>
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+<Border Width="34" Height="34" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1" Margin="0,0,12,0">
+<TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="15" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+</Border>
+<TextBlock Text="LERON CLI" FontSize="18" FontWeight="Bold" Foreground="#00ff88" VerticalAlignment="Center"/>
+<TextBlock Text="· хаб проектов" Margin="10,0,0,0" Foreground="#447a5a" FontSize="13" VerticalAlignment="Center"/>
+</StackPanel>
+<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
+<Button Content="⛶" Width="44" Height="32" Margin="0,0,6,0" Click="ToggleSize"/>
+<Button Content="✕" Width="44" Height="32" Click="CloseClick" Foreground="#e94560"/>
+</StackPanel>
+</Grid>
+</Border>
+<Grid Grid.Row="1" Margin="20,18,20,12">
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="*"/>
+<ColumnDefinition Width="Auto"/>
+</Grid.ColumnDefinitions>
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+<TextBlock Text="ПРОЕКТЫ" FontSize="16" FontWeight="Bold" Foreground="#c8ffd8"/>
+<Border Background="#123020" CornerRadius="6" Padding="8,3" Margin="10,0,0,0">
+<TextBlock x:Name="CountText" Text="0" FontSize="13" Foreground="#00ff88"/>
+</Border>
+</StackPanel>
+<Button Grid.Column="1" Content="+ новый проект (N)" Padding="16,9" Click="OnNewProjectButtonClick"/>
+</Grid>
+<ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="20,0,20,0" Padding="0,0,0,12">
+<StackPanel>
+<StackPanel x:Name="ProjectsPanel"/>
+<Grid HorizontalAlignment="Center" Margin="0,28,0,4" Width="440" Height="170">
+<Rectangle Stroke="#1d5c3d" StrokeThickness="1" StrokeDashArray="4 3" RadiusX="12" RadiusY="12" Fill="#061a10"/>
+<StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+<TextBlock Text="📁 +" FontFamily="Consolas" FontSize="24" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
+<TextBlock Text="Больше проектов нет" FontSize="13" Foreground="#4a7a5a" HorizontalAlignment="Center" Margin="0,10,0,4"/>
+<TextBlock Text="Нажмите N, чтобы создать новый проект" FontSize="12" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
+</StackPanel>
+</Grid>
+</StackPanel>
+</ScrollViewer>
+<Border Grid.Row="3" Background="#081711" Padding="16,12">
+<Grid>
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="*"/>
+<ColumnDefinition Width="Auto"/>
+</Grid.ColumnDefinitions>
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+<Ellipse Width="8" Height="8" Fill="#00ff88" VerticalAlignment="Center" Margin="0,0,10,0"/>
+<TextBlock x:Name="FooterLeft" Text="Нет проектов — нажми N" Foreground="#8fe3ae" FontSize="13" VerticalAlignment="Center"/>
+</StackPanel>
+<StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+<StackPanel Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center">
+<Border BorderBrush="#1d5c3d" BorderThickness="1" CornerRadius="5" Padding="7,3" Background="#0b1d14">
+<TextBlock Text="Enter" FontFamily="Consolas" FontSize="12" Foreground="#7dffa8"/>
+</Border>
+<TextBlock Text="открыть" FontSize="12" Foreground="#447a5a" Margin="6,0,0,0" VerticalAlignment="Center"/>
+</StackPanel>
+<StackPanel Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center">
+<Border BorderBrush="#1d5c3d" BorderThickness="1" CornerRadius="5" Padding="7,3" Background="#0b1d14">
+<TextBlock Text="N" FontFamily="Consolas" FontSize="12" Foreground="#7dffa8"/>
+</Border>
+<TextBlock Text="новый" FontSize="12" Foreground="#447a5a" Margin="6,0,0,0" VerticalAlignment="Center"/>
+</StackPanel>
+<StackPanel Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center">
+<Border BorderBrush="#1d5c3d" BorderThickness="1" CornerRadius="5" Padding="7,3" Background="#0b1d14">
+<TextBlock Text="S" FontFamily="Consolas" FontSize="12" Foreground="#7dffa8"/>
+</Border>
+<TextBlock Text="чат" FontSize="12" Foreground="#447a5a" Margin="6,0,0,0" VerticalAlignment="Center"/>
+</StackPanel>
+<StackPanel Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
+<Border BorderBrush="#1d5c3d" BorderThickness="1" CornerRadius="5" Padding="7,3" Background="#0b1d14">
+<TextBlock Text="Q" FontFamily="Consolas" FontSize="12" Foreground="#7dffa8"/>
+</Border>
+<TextBlock Text="выход" FontSize="12" Foreground="#447a5a" Margin="6,0,0,0" VerticalAlignment="Center"/>
+</StackPanel>
+<Button Content="чат (S)" Padding="14,8" Margin="0,0,8,0" Click="OnConfigureClick"
+Background="#123020" BorderBrush="#00ff88" Foreground="#00ff88"/>
+<Button Content="выход (Q)" Padding="14,8" Click="OnExitClick"
+Background="#1a0f14" BorderBrush="#e94560" Foreground="#e94560"/>
+</StackPanel>
+</Grid>
+</Border>
+</Grid>
+</Border>
+</local:ChromeWindow>
+
+
+------------------------------------------------
+FILE: program\main\hub\ProjectHubWindow.xaml.cs
+SIZE: 11104 bytes
+------------------------------------------------
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json.Nodes;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using Microsoft.Win32;
+namespace MainApp;
+public partial class ProjectHubWindow : ChromeWindow
+{
+public static ProjectHubWindow? Current { get; private set; }
+private List<ProjectEntry> _projects = new();
+private readonly List<System.Windows.Controls.Border> _rows = new();
+private int _selected = -1;
+public ProjectHubWindow()
+{
+InitializeComponent();
+Loaded += (_, _) =>
+{
+if (Current != null && Current != this) Current.Close();
+Current = this;
+// Браузер НЕ монтируем в хаб: WebView2 (HwndHost) рисуется поверх WPF-UI
+// и закрывал список проектов. Пока открыт хаб — панель ждёт в offscreen-окне.
+_ = GatewayLauncher.EnsureRunningAsync();
+};
+Closed += (_, _) =>
+{
+if (Current == this) Current = null;
+// Кроме offscreen-окна браузера никого не осталось — гасим приложение.
+if (Application.Current?.Windows.Count == 1) Application.Current.Shutdown();
+};
+_projects = ProjectStore.Load();
+Render();
+if (_projects.Count > 0)
+{
+var last = _projects.OrderByDescending(p => p.LastOpened ?? DateTime.MinValue).First();
+Select(_projects.IndexOf(last));
+}
+}
+private void Render()
+{
+ProjectsPanel.Children.Clear();
+_rows.Clear();
+CountText.Text = _projects.Count.ToString();
+for (int i = 0; i < _projects.Count; i++)
+{
+var p = _projects[i];
+var row = new System.Windows.Controls.Border
+{
+Background = Brush("#0c1710"),
+BorderBrush = Brush("#142a1e"),
+BorderThickness = new Thickness(1),
+CornerRadius = new CornerRadius(10),
+Margin = new Thickness(0, 0, 0, 14),
+Padding = new Thickness(16),
+Cursor = Cursors.Hand,
+Tag = i
+};
+row.MouseLeftButtonUp += (_, _) => OpenProject(p);
+row.MouseEnter += (_, _) => { if ((int)row.Tag != _selected) row.BorderBrush = Brush("#2a5a40"); };
+row.MouseLeave += (_, _) => { if ((int)row.Tag != _selected) row.BorderBrush = Brush("#142a1e"); };
+var grid = new Grid();
+grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+var preview = GetFilesPreview(p.Path);
+var iconBox = new System.Windows.Controls.Border
+{
+Width = 46,
+Height = 46,
+CornerRadius = new CornerRadius(10),
+Background = Brush("#123020"),
+BorderBrush = Brush("#1d5c3d"),
+BorderThickness = new Thickness(1),
+Margin = new Thickness(0, 0, 14, 0)
+};
+iconBox.Child = new TextBlock
+{
+Text = "📁",
+FontSize = 20,
+HorizontalAlignment = HorizontalAlignment.Center,
+VerticalAlignment = VerticalAlignment.Center
+};
+Grid.SetColumn(iconBox, 0);
+var texts = new StackPanel();
+texts.Children.Add(new TextBlock { Text = p.Name, Foreground = Brush("#4ade80"), FontSize = 16, FontWeight = FontWeights.Bold });
+texts.Children.Add(new TextBlock { Text = p.Path, Foreground = Brush("#4a7a5a"), FontSize = 12, Margin = new Thickness(0, 5, 0, 0) });
+texts.Children.Add(new TextBlock
+{
+Text = "○ " + preview.Line,
+Foreground = Brush("#3d6a4d"),
+FontSize = 11,
+Margin = new Thickness(0, 4, 0, 0),
+TextTrimming = TextTrimming.CharacterEllipsis
+});
+Grid.SetColumn(texts, 1);
+var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+right.Children.Add(new TextBlock { Text = FormatRelative(p.LastOpened), Foreground = Brush("#4a7a5a"), FontSize = 12, Margin = new Thickness(0, 0, 14, 0) });
+var badge = new System.Windows.Controls.Border
+{
+Background = Brush("#123020"),
+CornerRadius = new CornerRadius(8),
+Padding = new Thickness(12, 7, 12, 7),
+ToolTip = preview.ToolTip
+};
+badge.Child = new TextBlock { Text = preview.Badge, Foreground = Brush("#7dffa8"), FontSize = 12 };
+right.Children.Add(badge);
+var del = new Button
+{
+Content = "✕",
+ToolTip = "Убрать проект из списка и стереть его историю чата",
+Background = Brush("#1a0f14"),
+Foreground = Brush("#e94560"),
+BorderThickness = new Thickness(0),
+Cursor = Cursors.Hand,
+FontSize = 13,
+Padding = new Thickness(9, 4, 9, 4),
+Margin = new Thickness(12, 0, 0, 0),
+VerticalAlignment = VerticalAlignment.Center
+};
+int idx = i;
+del.Click += (_, _) => DeleteProject(idx);
+right.Children.Add(del);
+Grid.SetColumn(right, 2);
+grid.Children.Add(iconBox);
+grid.Children.Add(texts);
+grid.Children.Add(right);
+row.Child = grid;
+_rows.Add(row);
+ProjectsPanel.Children.Add(row);
+}
+UpdateSelection();
+}
+private static (string Badge, string Line, string ToolTip) GetFilesPreview(string path)
+{
+try
+{
+if (!Directory.Exists(path))
+return ("📄 папка не найдена", "пусто", "");
+var files = Directory.GetFiles(path)
+.Select(Path.GetFileName)
+.Where(n => !string.IsNullOrEmpty(n))
+.Select(n => n!)
+.ToList();
+var dirs = Directory.GetDirectories(path)
+.Select(Path.GetFileName)
+.Where(n => !string.IsNullOrEmpty(n))
+.ToList();
+var badge = $"📄 {files.Count} файлов";
+var shown = string.Join(", ", files.Take(4));
+var line = dirs.Count > 0
+? $"[{dirs.Count} папок] {shown}"
+: shown;
+if (string.IsNullOrWhiteSpace(shown))
+line = dirs.Count > 0 ? $"[{dirs.Count} папок]" : "пусто";
+var tooltipList = files.Take(15).ToList();
+var tooltip = tooltipList.Count > 0
+? string.Join("\n", tooltipList)
+: "Файлов нет";
+return (badge, line, tooltip);
+}
+catch
+{
+return ("📄 —", "пусто", "");
+}
+}
+private void Select(int i) { _selected = i; UpdateSelection(); }
+private void UpdateSelection()
+{
+for (int i = 0; i < _rows.Count; i++)
+{
+bool sel = i == _selected;
+_rows[i].BorderBrush = Brush(sel ? "#00ff88" : "#142a1e");
+_rows[i].BorderThickness = new Thickness(sel ? 1.5 : 1);
+_rows[i].Background = Brush(sel ? "#10241a" : "#0c1710");
+}
+FooterLeft.Text = _selected >= 0 && _selected < _projects.Count
+? $"Выбран: {_projects[_selected].Name} · Enter — открыть"
+: _projects.Count == 0 ? "Нет проектов — нажми N" : "Выбери проект";
+}
+private void OpenProject(ProjectEntry p)
+{
+p.LastOpened = DateTime.Now;
+ProjectStore.Save(_projects);
+var main = new MainWindow(p.Path, p.Name);
+main.StartFullscreen = false;
+main.UseFadeIn = false;
+CopyGeometry(main);
+SwapTo(main);
+}
+private void CopyGeometry(Window w)
+{
+w.WindowStartupLocation = WindowStartupLocation.Manual;
+w.Left = Left;
+w.Top = Top;
+w.Width = Width;
+w.Height = Height;
+}
+private void DeleteProject(int i)
+{
+if (i < 0 || i >= _projects.Count) return;
+var p = _projects[i];
+var res = MessageBox.Show(
+$"Убрать \"{p.Name}\" из списка проектов?\nПапка и файлы останутся на диске.\nИстория чата этого проекта будет стёрта.",
+"LERON CLI",
+MessageBoxButton.YesNo,
+MessageBoxImage.Question);
+if (res != MessageBoxResult.Yes) return;
+_projects.RemoveAt(i);
+ProjectStore.Save(_projects);
+HistoryStore.DeleteProjectHistory(p.Path);
+_selected = -1;
+Render();
+}
+private void CreateNewProject()
+{
+var dlg = new OpenFolderDialog { Title = "Выбери папку проекта" };
+if (dlg.ShowDialog() != true) return;
+var path = dlg.FolderName;
+var existing = _projects.FirstOrDefault(p =>
+string.Equals(Norm(p.Path), Norm(path), StringComparison.OrdinalIgnoreCase));
+int index;
+if (existing != null)
+{
+index = _projects.IndexOf(existing);
+}
+else
+{
+_projects.Add(new ProjectEntry
+{
+Name = new DirectoryInfo(path).Name,
+Path = path,
+Role = "team"
+});
+index = _projects.Count - 1;
+}
+ProjectStore.Save(_projects);
+Render();
+Select(index);
+}
+private static string Norm(string p) => p.TrimEnd('\\', '/');
+private static string FormatRelative(DateTime? dt)
+{
+if (dt == null) return "ещё не открыт";
+var span = DateTime.Now - dt.Value;
+if (span.TotalMinutes < 1) return "только что";
+if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes} мин назад";
+if (dt.Value.Date == DateTime.Today) return $"{(int)span.TotalHours} ч назад";
+if (dt.Value.Date == DateTime.Today.AddDays(-1)) return $"вчера, {dt:HH:mm}";
+if (span.TotalDays < 7) return $"{(int)span.TotalDays} дн назад";
+return dt.Value.ToString("dd.MM.yyyy");
+}
+private static SolidColorBrush Brush(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
+private void OnKeyDown(object sender, KeyEventArgs e)
+{
+switch (e.Key)
+{
+case Key.Up: Select(Math.Max(0, _selected - 1)); e.Handled = true; break;
+case Key.Down: Select(Math.Min(_projects.Count - 1, _selected + 1)); e.Handled = true; break;
+case Key.Enter: if (_selected >= 0) OpenProject(_projects[_selected]); else CreateNewProject(); e.Handled = true; break;
+case Key.N: CreateNewProject(); e.Handled = true; break;
+case Key.S: OnConfigureClick(this, new RoutedEventArgs()); e.Handled = true; break;
+case Key.Delete: DeleteProject(_selected); e.Handled = true; break;
+case Key.Q: Application.Current.Shutdown(); break;
+case Key.Escape: Close(); break;
+}
+}
+private void OnNewProjectClick(object sender, MouseButtonEventArgs e) => CreateNewProject();
+private void OnNewProjectButtonClick(object sender, RoutedEventArgs e) => CreateNewProject();
+private void OnConfigureClick(object sender, RoutedEventArgs e)
+{
+if (_selected >= 0 && _selected < _projects.Count)
+OpenProject(_projects[_selected]);
+else
+FooterLeft.Text = "Сначала выбери проект (клик по строке) или создай новый (N).";
+}
+private void OnExitClick(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
+}
+public class ProjectEntry
+{
+public string Name { get; set; } = "";
+public string Path { get; set; } = "";
+public string Role { get; set; } = "team";
+public DateTime? LastOpened { get; set; }
+}
+public static class ProjectStore
+{
+public static List<ProjectEntry> Load()
+{
+try
+{
+var path = BrowserLauncher.GetConfigPath();
+if (path == null) return new();
+var node = JsonNode.Parse(File.ReadAllText(path));
+var arr = node?["Projects"] as JsonArray;
+if (arr == null) return new();
+return System.Text.Json.JsonSerializer.Deserialize<List<ProjectEntry>>(
+arr.ToJsonString(),
+new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+}
+catch { return new(); }
+}
+public static void Save(List<ProjectEntry> projects)
+{
+try
+{
+var path = BrowserLauncher.GetConfigPath();
+if (path == null) return;
+var node = JsonNode.Parse(File.ReadAllText(path))?.AsObject();
+if (node == null) return;
+node["Projects"] = System.Text.Json.JsonSerializer.SerializeToNode(projects);
+File.WriteAllText(path, node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+}
+catch { }
+}
+}
+
+
+------------------------------------------------
+FILE: program\main\roles\RolePickWindow.xaml
+SIZE: 1650 bytes
+------------------------------------------------
+<Window x:Class="MainApp.RolePickWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Роль проекта"
+        Width="420" Height="280"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        FontFamily="Consolas">
+    <Border Background="#0a0f0a" BorderBrush="#1e3a2a" BorderThickness="1" CornerRadius="12" Padding="24">
+        <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="Кто работает в проекте?" Foreground="#4ade80" FontSize="16" FontWeight="Bold"
+                       Margin="0,0,0,6"/>
+            <TextBlock Text="Роль определяет, какой чат будет отвечать." Foreground="#4a7a5a" FontSize="11"
+                       Margin="0,0,0,18"/>
+            <Button Content="💻  coder" Tag="coder" Click="Pick"
+                    Background="#101c14" Foreground="#c8ffd8" BorderThickness="1" BorderBrush="#142a1e"
+                    FontFamily="Consolas" FontSize="14" Padding="16,12" Margin="0,0,0,10"
+                    HorizontalContentAlignment="Left" Cursor="Hand"/>
+            <Button Content="🎨  designer" Tag="designer" Click="Pick"
+                    Background="#101c14" Foreground="#c8ffd8" BorderThickness="1" BorderBrush="#142a1e"
+                    FontFamily="Consolas" FontSize="14" Padding="16,12"
+                    HorizontalContentAlignment="Left" Cursor="Hand"/>
+        </StackPanel>
+    </Border>
+</Window>
+
+
+------------------------------------------------
+FILE: program\main\roles\RolePickWindow.xaml.cs
+SIZE: 418 bytes
+------------------------------------------------
+using System.Windows;
+using System.Windows.Controls;
+
+namespace MainApp;
+
+public partial class RolePickWindow : Window
+{
+    public string SelectedRole { get; private set; } = "coder";
+    public RolePickWindow() => InitializeComponent();
+    private void Pick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is string r) SelectedRole = r;
+        DialogResult = true;
+    }
+}
+
+
+------------------------------------------------
+FILE: program\main\splash\SplashWindow.xaml
+SIZE: 3079 bytes
+------------------------------------------------
+<local:ChromeWindow x:Class="MainApp.SplashWindow"
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+xmlns:local="clr-namespace:MainApp"
+Title="LERON CLI"
+Background="#04150c"
+Foreground="#c8ffd8">
+<WindowChrome.WindowChrome>
+<WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
+</WindowChrome.WindowChrome>
+<Grid x:Name="RootGrid" Background="#04150c">
+<Border x:Name="TermOverlay" Background="#04150c">
+<Grid x:Name="TermGrid" Margin="64,40">
+<Grid.RowDefinitions>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="*"/>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="Auto"/>
+</Grid.RowDefinitions>
+<Grid Grid.Row="0">
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="*"/>
+<ColumnDefinition Width="*"/>
+</Grid.ColumnDefinitions>
+<TextBlock Text="LERON·CLI // CRT-9000" FontFamily="Consolas" FontSize="16" Foreground="#3f8a5f"/>
+<TextBlock Grid.Column="1" Text="60HZ // P1 PHOSPHOR" FontFamily="Consolas" FontSize="16" Foreground="#3f8a5f" HorizontalAlignment="Right"/>
+</Grid>
+<StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,18,0,26">
+<TextBlock Text="L E R O N   C L I" FontFamily="Consolas" FontSize="72" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center">
+<TextBlock.Effect>
+<DropShadowEffect Color="#00ff88" BlurRadius="28" ShadowDepth="0"/>
+</TextBlock.Effect>
+</TextBlock>
+<TextBlock Text="─── терминальная система · v2.6 ───" FontFamily="Consolas" FontSize="18" Foreground="#4a8a63" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+</StackPanel>
+<ScrollViewer Grid.Row="2" x:Name="TermScroll" VerticalScrollBarVisibility="Hidden">
+<TextBlock x:Name="TermText" FontFamily="Consolas" FontSize="25" Foreground="#7dffa8" TextWrapping="Wrap" LineHeight="38" LineStackingStrategy="BlockLineHeight"/>
+</ScrollViewer>
+<StackPanel Grid.Row="3" x:Name="InputLine" Orientation="Horizontal" Margin="0,14,0,0" Visibility="Collapsed">
+<TextBlock Text="&gt; " FontFamily="Consolas" FontSize="24" Foreground="#00ff88" VerticalAlignment="Center"/>
+<TextBox x:Name="InputBox" Width="900" Background="Transparent" BorderThickness="0"
+FontFamily="Consolas" FontSize="24" Foreground="#d9ffe7" CaretBrush="#00ff88"
+SelectionBrush="#123626" VerticalAlignment="Center" KeyDown="OnInputKeyDown"/>
+</StackPanel>
+<StackPanel Grid.Row="4" HorizontalAlignment="Center" Margin="0,20,0,0">
+<TextBlock x:Name="BarText" FontFamily="Consolas" FontSize="22" Foreground="#00ff88" HorizontalAlignment="Center" Visibility="Collapsed">
+<TextBlock.Effect>
+<DropShadowEffect Color="#00ff88" BlurRadius="10" ShadowDepth="0"/>
+</TextBlock.Effect>
+</TextBlock>
+<TextBlock x:Name="HintText" FontFamily="Consolas" FontSize="15" Foreground="#2a5a40" Text="[пробел] — пропустить заставку" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+</StackPanel>
+</Grid>
+</Border>
+</Grid>
+</local:ChromeWindow>
+
+
+------------------------------------------------
+FILE: program\main\splash\SplashWindow.xaml.cs
+SIZE: 6778 bytes
+------------------------------------------------
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
+namespace MainApp;
+public partial class SplashWindow : ChromeWindow
+{
+private enum Stage { Boot, AskNick, AskAbout, Greet, Loading, Done }
+private Stage _stage = Stage.Boot;
+private string _nick = "";
+private bool _ready;
+private bool _readyOk;
+private bool _transitioning;
+private double _progress;
+private string _printed = "";
+private string? _cur;
+private int _pos;
+private Action? _done;
+private readonly Queue<(string text, Action? done)> _q = new();
+private readonly DispatcherTimer _typeTimer = new() { Interval = TimeSpan.FromMilliseconds(12) };
+private readonly DispatcherTimer _barTimer = new() { Interval = TimeSpan.FromMilliseconds(90) };
+public SplashWindow()
+{
+FxIntensity = 0.7;
+UseFadeIn = false;
+InitializeComponent();
+// Браузер стартует СРАЗУ в offscreen-окне, не мешая заставке.
+QwenBrowserPane.EnsureOffscreen();
+Loaded += OnLoaded;
+_typeTimer.Tick += OnTypeTick;
+_barTimer.Tick += (_, _) =>
+{
+if (_ready) return;
+_progress = Math.Min(0.92, _progress + (0.92 - _progress) * 0.04 + 0.0015);
+DrawBar();
+};
+}
+protected override void OnKeyDown(KeyEventArgs e)
+{
+if (e.Key == Key.Space && !InputBox.IsFocused)
+{
+e.Handled = true;
+if (_stage == Stage.Loading && _ready && !_readyOk) BeginTransition();
+else FlushTyper();
+}
+base.OnKeyDown(e);
+}
+private void OnLoaded(object sender, RoutedEventArgs e)
+{
+Theme.PowerOn(this);
+// CRT-слой ПОВЕРХ непрозрачного терминала и на ВЕСЬ RootGrid —
+// квадратики доходят до краёв окна (раньше обрезались Margin'ом TermGrid).
+RootGrid.Children.Add(Theme.MakeFx(0.7));
+_ = GatewayLauncher.EnsureRunningAsync();
+_ = QwenBrowserPane.Shared.ReadyTask.ContinueWith(t =>
+Dispatcher.InvokeAsync(() => OnBrowserReady(t.Result)));
+TypeLine("> LERON BIOS v2.6 — POST", () =>
+{
+TypeLine("> MEM 65536 KB ......... OK", () =>
+{
+TypeLine("> PHOSPHOR P1-GREEN .... OK", () =>
+{
+TypeLine("> GATEWAY LINK ......... SYNC", () =>
+{
+if (UserProfile.Exists()) StartGreet();
+else TypeLine("> первый запуск · регистрация пользователя", AskNick);
+});
+});
+});
+});
+}
+private void AskNick()
+{
+_stage = Stage.AskNick;
+Print("> введи ник: ");
+InputLine.Visibility = Visibility.Visible;
+InputBox.Focus();
+}
+private void OnInputKeyDown(object sender, KeyEventArgs e)
+{
+if (e.Key != Key.Enter) return;
+e.Handled = true;
+var text = InputBox.Text.Trim();
+if (_stage == Stage.AskNick)
+{
+if (text.Length == 0) { Print("  ⚠ ник не может быть пустым"); return; }
+_nick = text;
+Print("  ✓ ник: " + _nick);
+InputBox.Clear();
+_stage = Stage.AskAbout;
+Print("> расскажи о себе в паре слов: ");
+}
+else if (_stage == Stage.AskAbout)
+{
+UserProfile.Save(_nick, text);
+Print("  ✓ профиль сохранён");
+InputLine.Visibility = Visibility.Collapsed;
+StartGreet();
+}
+}
+private void StartGreet()
+{
+_stage = Stage.Greet;
+TypeLine($"LERON CLI приветствует пользователя {UserProfile.Nick}!", () =>
+{
+_stage = Stage.Loading;
+BarText.Visibility = Visibility.Visible;
+DrawBar();
+_barTimer.Start();
+if (_ready) OnBrowserReady(_readyOk);
+});
+}
+private void OnBrowserReady(bool ok)
+{
+_ready = true;
+_readyOk = ok;
+if (_stage != Stage.Loading) return;
+if (ok)
+{
+_progress = 1;
+DrawBar();
+_barTimer.Stop();
+TypeLine("> браузер готов · вход в систему", () =>
+{
+var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
+t.Tick += (_, _) => { t.Stop(); BeginTransition(); };
+t.Start();
+});
+}
+else
+{
+_barTimer.Stop();
+BarText.Text = "[ браузер offline ]";
+Print("⚠ браузер не загрузился · [пробел] — войти без него");
+}
+}
+private void DrawBar()
+{
+const int cells = 40;
+int done = (int)Math.Round(_progress * cells);
+BarText.Text = "[" + new string('█', done) + new string('░', cells - done) + "] " + (int)(_progress * 100) + "%";
+}
+private void Print(string line)
+{
+_printed += line + "\n";
+TermText.Text = _printed;
+TermScroll.ScrollToEnd();
+}
+private void TypeLine(string text, Action? done = null)
+{
+_q.Enqueue((text, done));
+if (!_typeTimer.IsEnabled) _typeTimer.Start();
+}
+private void OnTypeTick(object? s, EventArgs e)
+{
+if (_cur == null)
+{
+if (_q.Count == 0) { _typeTimer.Stop(); return; }
+var next = _q.Dequeue();
+_cur = next.text;
+_pos = 0;
+_done = next.done;
+}
+_pos = Math.Min(_cur.Length, _pos + 2);
+TermText.Text = _printed + _cur.Substring(0, _pos);
+if (_pos >= _cur.Length)
+{
+_printed += _cur + "\n";
+TermText.Text = _printed;
+var d = _done;
+_cur = null;
+_done = null;
+d?.Invoke();
+}
+TermScroll.ScrollToEnd();
+}
+private void FlushTyper()
+{
+while (_cur != null || _q.Count > 0)
+{
+if (_cur == null)
+{
+var n = _q.Dequeue();
+_printed += n.text + "\n";
+n.done?.Invoke();
+}
+else
+{
+_printed += _cur + "\n";
+_done?.Invoke();
+_cur = null;
+_done = null;
+}
+}
+_typeTimer.Stop();
+TermText.Text = _printed;
+TermScroll.ScrollToEnd();
+}
+private void BeginTransition()
+{
+if (_transitioning) return;
+_transitioning = true;
+_stage = Stage.Done;
+Topmost = true;
+var next = new ProjectHubWindow();
+next.UseFadeIn = false;
+next.Opacity = 0;
+next.Show();
+var off = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+off.Tick += (_, _) =>
+{
+off.Stop();
+Theme.PowerOff(this, () =>
+{
+next.Opacity = 1;
+Topmost = false;
+Close();
+});
+};
+off.Start();
+}
+}
+public static class UserProfile
+{
+public static string Nick = "";
+public static string About = "";
+public static bool Exists()
+{
+try
+{
+var path = BrowserLauncher.GetConfigPath();
+if (path == null) return false;
+var node = JsonNode.Parse(File.ReadAllText(path));
+var p = node?["UserProfile"];
+Nick = p?["Nick"]?.GetValue<string>() ?? "";
+About = p?["About"]?.GetValue<string>() ?? "";
+return !string.IsNullOrWhiteSpace(Nick);
+}
+catch { return false; }
+}
+public static void Save(string nick, string about)
+{
+Nick = nick;
+About = about;
+try
+{
+var path = BrowserLauncher.GetConfigPath();
+if (path == null) return;
+var node = JsonNode.Parse(File.ReadAllText(path))?.AsObject();
+if (node == null) return;
+node["UserProfile"] = new JsonObject { ["Nick"] = nick, ["About"] = about };
+File.WriteAllText(path, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+}
+catch { }
+}
+}
+
+
+------------------------------------------------
+FILE: program\sending and receiving\config.json
+SIZE: 916 bytes
+------------------------------------------------
+{
+  "Roles": {
+    "coder": {
+      "ChatId": "da6df916-591b-4344-a995-c2d913b485fd",
+      "Url": "https://chat.qwen.ai/c/da6df916-591b-4344-a995-c2d913b485fd"
+    }
+  },
+  "Token": "",
+  "RetryAttempts": 3,
+  "Projects": [
+    {
+      "Name": "test_qwen",
+      "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen",
+      "Role": "team",
+      "LastOpened": "2026-08-20T23:12:39.4269337\u002B03:00"
+    }
+  ],
+  "AutoApprove": [],
+  "UserProfile": {
+    "Nick": "LERON",
+    "About": "\u042F \u0437\u0430\u043D\u0438\u043C\u0430\u044E\u0441\u044C \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435\u043C, \u0445\u043E\u0447\u0443 \u043F\u043E\u043B\u0443\u0447\u0430\u0442\u044C \u043F\u0440\u044F\u043C\u044B\u0435 \u043E\u0442\u0432\u0435\u0442\u044B \u043E\u0442 \u0438\u0438"
+  }
+}
+
+
+------------------------------------------------
+FILE: program\sending and receiving\GatewayHost.cs
+SIZE: 51048 bytes
+------------------------------------------------
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Runtime.InteropServices;
+
+namespace MainApp;
+
+public static class GatewayHost
+{
+    private static string FindSendReceivingDir()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var candidates = new[]
+        {
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "sending and receiving")),
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "sending and receiving")),
+            Path.GetFullPath(Path.Combine(baseDir, "..", "sending and receiving")),
+            Path.Combine(baseDir, "sending and receiving")
+        };
+        foreach (var c in candidates)
+        {
+            try { if (Directory.Exists(c)) return c; } catch { }
+        }
+        return candidates[0];
+    }
+
+    public static void Start()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://localhost:51234");
+        var app = builder.Build();
+
+        var clients = new List<WebSocket>();
+
+        var srDir = FindSendReceivingDir();
+        var configPath = Path.Combine(srDir, "config.json");
+        if (!File.Exists(configPath)) configPath = Path.Combine(AppContext.BaseDirectory, "config.json");
+        var config = JsonSerializer.Deserialize<Config>(File.ReadAllText(configPath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        var chatRoleMap = new Dictionary<string, string>();
+        var roleChatMap = new Dictionary<string, string>();
+        foreach (var role in config.Roles)
+        {
+            if (!string.IsNullOrEmpty(role.Value.ChatId))
+            {
+                chatRoleMap[role.Value.ChatId] = role.Key;
+                roleChatMap[role.Key] = role.Value.ChatId;
+            }
+        }
+
+        var pendingResponses = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
+        var pendingCancels = new ConcurrentDictionary<string, CancellationTokenSource>();
+        var roleSendLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
+        var lastSentText = new ConcurrentDictionary<string, string>();
+        var lastAiText = new ConcurrentDictionary<string, string>();
+        var lastExtDiag = new ConcurrentDictionary<string, string>();
+
+        var logsDir = Path.Combine(srDir, "logs");
+        // Звук при получении ответа
+void PlayNotifySound()
+{
+    try { System.Media.SystemSounds.Asterisk.Play(); } catch { }
+}
+
+// Показать окно браузера при капче
+void ShowBrowserForCaptcha()
+{
+    try
+    {
+        var proc = System.Diagnostics.Process.GetProcessesByName("chrome")
+            .Concat(System.Diagnostics.Process.GetProcessesByName("msedge"))
+            .FirstOrDefault(p => !p.HasExited && p.MainWindowHandle != IntPtr.Zero);
+        if (proc != null)
+        {
+            ShowWindow(proc.MainWindowHandle, 5); // SW_SHOW = 5
+            SetForegroundWindow(proc.MainWindowHandle);
+        }
+    }
+    catch { }
+}
+
+        [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
+        try { if (!Directory.Exists(logsDir)) Directory.CreateDirectory(logsDir); }
+        catch { logsDir = Path.Combine(AppContext.BaseDirectory, "logs"); Directory.CreateDirectory(logsDir); }
+
+        void LogRole(string role, string message)
+        {
+            var logFile = Path.Combine(logsDir, $"{role}_{DateTime.Now:yyyyMMdd}.log");
+            File.AppendAllText(logFile, $"[{DateTime.Now:HH:mm:ss}] {message}\n");
+        }
+
+        void AgentLog(string message)
+        {
+            try
+            {
+                var logFile = Path.Combine(logsDir, $"agent_{DateTime.Now:yyyyMMdd}.log");
+                File.AppendAllText(logFile, $"[{DateTime.Now:HH:mm:ss}] {message}\n");
+            }
+            catch { }
+        }
+
+        void SaveConfig()
+        {
+            try
+            {
+                File.WriteAllText(configPath, JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch { }
+        }
+
+        var agentHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+        const string AgentBaseUrl = "https://qwen.aikit.club/v1";
+        const string AgentModel = "qwen3.6-plus";
+
+        var agentSessions = new ConcurrentDictionary<string, AgentSession>();
+        var autoLock = new object();
+        var autoApproved = new HashSet<string>(config.AutoApprove ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+
+        string? ResolveAgentToken()
+        {
+            if (!string.IsNullOrWhiteSpace(config.Token)) return config.Token;
+            var env = Environment.GetEnvironmentVariable("QWEN_API_KEY") ?? Environment.GetEnvironmentVariable("QWEN_AIKIT_API_KEY");
+            if (!string.IsNullOrWhiteSpace(env)) return env;
+            var credPaths = new[] {
+                Path.Combine(AppContext.BaseDirectory, "credentials.json"),
+                Path.Combine(srDir, "credentials.json"),
+                Path.Combine(Directory.GetCurrentDirectory(), "credentials.json"),
+                Path.GetFullPath(Path.Combine(srDir, "..", "credentials.json"))
+            };
+            foreach (var p in credPaths) {
+                if (File.Exists(p)) {
+                    try {
+                        var json = File.ReadAllText(p);
+                        var node = JsonNode.Parse(json);
+                        var token = node?["sessions"]?[0]?["qwen_credentials"]?["access_token"]?.GetValue<string>();
+                        if (!string.IsNullOrWhiteSpace(token)) return token;
+                    } catch {}
+                }
+            }
+            return null;
+        }
+
+        static bool IsKnownTool(string name) =>
+            name is "read_file" or "list_files" or "write_file" or "edit_file" or "delete_file" or "create_directory";
+
+        static string Truncate(string s, int n) => s.Length <= n ? s : s.Substring(0, n) + "…";
+
+        static string StripProviderMetadata(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            var idx = text.LastIndexOf("<details>", StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0)
+            {
+                var end = text.IndexOf("</details>", idx, StringComparison.OrdinalIgnoreCase);
+                if (end >= 0)
+                    text = text.Substring(0, idx) + text.Substring(end + "</details>".Length);
+            }
+            return text.Trim();
+        }
+
+        static bool ModeAllowsEdit(string mode) => mode is "edit" or "auto" or "yolo";
+        static bool ModeRequiresApproval(string mode) => mode is "edit" or "auto";
+        static bool IsMutating(string name) => name is "write_file" or "edit_file" or "delete_file" or "create_directory";
+
+        static string? ResolveSafePath(string raw, string root)
+        {
+            try
+            {
+                var trimmed = raw.Trim().Trim('"');
+                if (string.IsNullOrWhiteSpace(trimmed)) return null;
+                trimmed = trimmed.Replace('/', Path.DirectorySeparatorChar);
+                var rootFull = Path.GetFullPath(root);
+                string full = Path.IsPathRooted(trimmed)
+                    ? Path.GetFullPath(trimmed)
+                    : Path.GetFullPath(Path.Combine(rootFull, trimmed));
+                if (!full.Equals(rootFull, StringComparison.OrdinalIgnoreCase) &&
+                    !full.StartsWith(rootFull + Path.DirectorySeparatorChar))
+                    return null;
+                return full;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static (string result, string log) ExecuteAgentTool(string name, JsonObject args, string root, bool allowEdit)
+        {
+            string Arg(string key) => args[key]?.GetValue<string>() ?? "";
+            bool mutating = IsMutating(name);
+            if (mutating && !allowEdit)
+                return ("Запрещено: текущий режим не позволяет изменять файлы.", $"{name} → запрещено режимом");
+            try
+            {
+                switch (name)
+                {
+                    case "read_file":
+                    {
+                        var p = ResolveSafePath(Arg("path"), root);
+                        if (p == null) return ("Доступ отклонён: путь вне проекта.", $"{name} {Arg("path")} → отклонено");
+                        if (!File.Exists(p)) return ($"Файл не найден: {Arg("path")}", $"{name} {Arg("path")} → не найден");
+                        var text = File.ReadAllText(p);
+                        if (text.Length > 20000) text = text.Substring(0, 20000) + "\n…[обрезано]";
+                        return (text, $"{name} {Arg("path")} → OK");
+                    }
+                    case "list_files":
+                    {
+                        var rawPath = string.IsNullOrWhiteSpace(Arg("path")) ? "." : Arg("path");
+                        var p = ResolveSafePath(rawPath, root);
+                        if (p == null) return ("Доступ отклонён: путь вне проекта.", $"{name} {rawPath} → отклонено");
+                        if (!Directory.Exists(p)) return ($"Папка не найдена: {rawPath}", $"{name} {rawPath} → не найдена");
+                        var sb = new StringBuilder();
+                        foreach (var d in Directory.GetDirectories(p).OrderBy(x => x))
+                            sb.AppendLine("<DIR> " + Path.GetFileName(d));
+                        foreach (var f in Directory.GetFiles(p).OrderBy(x => x))
+                            sb.AppendLine(Path.GetFileName(f));
+                        var list = sb.ToString();
+                        if (string.IsNullOrWhiteSpace(list)) list = "(пусто)";
+                        return (list, $"{name} {rawPath} → OK");
+                    }
+                    case "create_directory":
+                    {
+                        var p = ResolveSafePath(Arg("path"), root);
+                        if (p == null) return ("Доступ отклонён: путь вне проекта.", $"{name} {Arg("path")} → отклонено");
+                        Directory.CreateDirectory(p);
+                        return ($"Папка создана: {Arg("path")}", $"{name} {Arg("path")} → OK");
+                    }
+                    case "write_file":
+                    {
+                        var p = ResolveSafePath(Arg("path"), root);
+                        if (p == null) return ("Доступ отклонён: путь вне проекта.", $"{name} {Arg("path")} → отклонено");
+                        var dir = Path.GetDirectoryName(p);
+                        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                        File.WriteAllText(p, Arg("content"));
+                        return ($"Файл записан: {Arg("path")}", $"{name} {Arg("path")} → OK");
+                    }
+                    case "edit_file":
+                    {
+                        var p = ResolveSafePath(Arg("path"), root);
+                        if (p == null) return ("Доступ отклонён: путь вне проекта.", $"{name} {Arg("path")} → отклонено");
+                        if (!File.Exists(p)) return ($"Файл не найден: {Arg("path")}", $"{name} {Arg("path")} → не найден");
+                        var text = File.ReadAllText(p);
+                        var old = Arg("old_text");
+                        if (string.IsNullOrEmpty(old) || !text.Contains(old))
+                            return ("old_text не найден в файле. Прочитай файл read_file и попробуй снова.", $"{name} {Arg("path")} → old_text не найден");
+                        File.WriteAllText(p, text.Replace(old, Arg("new_text")));
+                        return ($"Файл изменён: {Arg("path")}", $"{name} {Arg("path")} → OK");
+                    }
+                    case "delete_file":
+                    {
+                        var p = ResolveSafePath(Arg("path"), root);
+                        if (p == null) return ("Доступ отклонён: путь вне проекта.", $"{name} {Arg("path")} → отклонено");
+                        if (File.Exists(p)) { File.Delete(p); return ($"Файл удалён: {Arg("path")}", $"{name} {Arg("path")} → OK"); }
+                        if (Directory.Exists(p)) { Directory.Delete(p, true); return ($"Папка удалена: {Arg("path")}", $"{name} {Arg("path")} → OK"); }
+                        return ($"Не найдено: {Arg("path")}", $"{name} {Arg("path")} → не найдено");
+                    }
+                    default:
+                        return ($"Неизвестный инструмент: {name}", $"{name} → неизвестный");
+                }
+            }
+            catch (Exception ex)
+            {
+                return ("Ошибка выполнения инструмента: " + ex.Message, $"{name} → ошибка");
+            }
+        }
+
+        static JsonArray BuildTools(bool allowEdit)
+        {
+            JsonObject Str(string desc) => new() { ["type"] = "string", ["description"] = desc };
+            JsonObject Fn(string name, string desc, JsonObject props, JsonArray req) => new()
+            {
+                ["type"] = "function",
+                ["function"] = new JsonObject
+                {
+                    ["name"] = name,
+                    ["description"] = desc,
+                    ["parameters"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = props,
+                        ["required"] = req
+                    }
+                }
+            };
+            var tools = new JsonArray
+            {
+                Fn("read_file", "Прочитать файл внутри проекта. Возвращает текст файла.",
+                    new JsonObject { ["path"] = Str("Путь относительно корня проекта, например ./src/main.py") },
+                    new JsonArray { "path" }),
+                Fn("list_files", "Показать файлы и папки внутри папки проекта.",
+                    new JsonObject { ["path"] = Str("Путь относительно корня проекта, например . или ./src") },
+                    new JsonArray { "path" })
+            };
+            if (allowEdit)
+            {
+                tools.Add(Fn("write_file", "Создать или полностью перезаписать файл внутри проекта.",
+                    new JsonObject
+                    {
+                        ["path"] = Str("Путь относительно корня проекта"),
+                        ["content"] = Str("Полное текстовое содержимое файла")
+                    },
+                    new JsonArray { "path", "content" }));
+                tools.Add(Fn("edit_file", "Заменить точный фрагмент текста в существующем файле. Сначала прочитай файл.",
+                    new JsonObject
+                    {
+                        ["path"] = Str("Путь относительно корня проекта"),
+                        ["old_text"] = Str("Точный фрагмент текста для замены"),
+                        ["new_text"] = Str("Текст, на который заменить")
+                    },
+                    new JsonArray { "path", "old_text", "new_text" }));
+                tools.Add(Fn("delete_file", "Удалить файл или папку внутри проекта.",
+                    new JsonObject { ["path"] = Str("Путь относительно корня проекта") },
+                    new JsonArray { "path" }));
+                tools.Add(Fn("create_directory", "Создать папку внутри проекта.",
+                    new JsonObject { ["path"] = Str("Путь относительно корня проекта") },
+                    new JsonArray { "path" }));
+            }
+            return tools;
+        }
+
+        static JsonObject BuildSystemMessage(string? root, bool allowEdit, bool think)
+        {
+            var sb = new StringBuilder();
+            if (root == null)
+            {
+                sb.AppendLine("Ты полезный AI-помощник. Всегда отвечай на русском языке, коротко и по делу.");
+                return new JsonObject { ["role"] = "system", ["content"] = sb.ToString() };
+            }
+            sb.AppendLine($"Ты русскоязычный coding agent. Always treat {root} as the only project root.");
+            sb.AppendLine($"Resolve all relative paths against {root}.");
+            sb.AppendLine("Never create, read, or modify files outside the project root unless the user explicitly asks for an absolute path outside the project.");
+            sb.AppendLine("Всегда отвечай на русском языке, если пользователь явно не попросил другой язык.");
+            sb.AppendLine("Если пользователь пишет на русском, не переходи на английский.");
+            sb.AppendLine("Не добавляй HTML-блоки, details, summary, Response ID или Request ID в ответы.");
+            if (!allowEdit)
+                sb.AppendLine("Режим: обсуждение и планирование. Разрешено только читать и смотреть файлы, изменять запрещено.");
+            sb.AppendLine(think
+                ? "Режим ответа: с мышлением. Можно рассуждать, но итог пиши на русском."
+                : "Режим ответа: быстрый. Отвечай сразу по делу, без долгих рассуждений.");
+            sb.AppendLine("Если нужно действие с файлом — ответь строго одним блоком ```json {\"name\": \"имя_инструмента\", \"arguments\": {...}} ``` без лишнего текста.");
+            sb.AppendLine("Если действие не нужно — ответь коротко на русском.");
+            sb.AppendLine();
+            return new JsonObject { ["role"] = "system", ["content"] = sb.ToString() };
+        }
+
+        static (string name, JsonObject args)? TryParseTextToolCall(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            var candidates = new List<string>();
+            var fence = Regex.Match(text, "```(?:json)?\\s*(\\{[\\s\\S]*?\\})\\s*```");
+            if (fence.Success) candidates.Add(fence.Groups[1].Value);
+            candidates.Add(text.Trim());
+            foreach (var c in candidates)
+            {
+                try
+                {
+                    var node = JsonNode.Parse(c) as JsonObject;
+                    if (node == null) continue;
+                    var name = node["name"]?.GetValue<string>();
+                    if (string.IsNullOrEmpty(name) || !IsKnownTool(name)) continue;
+                    var args = node["arguments"] as JsonObject;
+                    if (args == null)
+                    {
+                        var argsStr = node["arguments"]?.GetValue<string>();
+                        args = argsStr != null ? JsonNode.Parse(argsStr) as JsonObject : null;
+                    }
+                    return (name, args ?? new JsonObject());
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        async Task<(bool ok, int code, string body)> CallApi(JsonObject payload, string token)
+        {
+            try
+            {
+                var httpReq = new HttpRequestMessage(HttpMethod.Post, AgentBaseUrl + "/chat/completions");
+                httpReq.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
+                httpReq.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                httpReq.Headers.TryAddWithoutValidation("Origin", "https://chat.qwen.ai");
+                httpReq.Headers.TryAddWithoutValidation("Referer", "https://chat.qwen.ai/");
+                httpReq.Headers.TryAddWithoutValidation("X-Requested-With", "XMLHttpRequest");
+                httpReq.Headers.TryAddWithoutValidation("Accept", "application/json");
+                httpReq.Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json");
+                var resp = await agentHttp.SendAsync(httpReq);
+                var respBody = await resp.Content.ReadAsStringAsync();
+                return (resp.IsSuccessStatusCode, (int)resp.StatusCode, respBody);
+            }
+            catch (Exception ex)
+            {
+                return (false, 0, ex.Message);
+            }
+        }
+
+        bool NeedsAsk(AgentSession s, string toolName) =>
+            s.AllowEdit && IsMutating(toolName) && ModeRequiresApproval(s.Mode) &&
+            !(s.Mode == "auto" && autoApproved.Contains(toolName));
+
+        JsonObject MakePayload(AgentSession s)
+        {
+            var payload = new JsonObject
+            {
+                ["model"] = AgentModel,
+                ["messages"] = s.Messages.DeepClone(),
+                ["temperature"] = 0.7,
+                ["stream"] = false
+            };
+            if (s.UseTools)
+            {
+                payload["tools"] = BuildTools(s.AllowEdit).DeepClone();
+                payload["tool_choice"] = "auto";
+            }
+            return payload;
+        }
+
+        object Finish(AgentSession s, string text)
+        {
+            AgentLog($"[FINAL] {Truncate(text, 500)}");
+            if (!string.IsNullOrEmpty(s.Role))
+                LogRole(s.Role, $"[AGENT]: {Truncate(text, 300)}");
+            return new { status = "final", role = s.Role, response = text, tools = s.ToolLog };
+        }
+
+        object ApprovalPause(AgentSession s, PendingTool c)
+        {
+            var sid = Guid.NewGuid().ToString("N");
+            agentSessions[sid] = s;
+            return new
+            {
+                status = "approval",
+                sessionId = sid,
+                role = s.Role,
+                tool = c.Name,
+                arguments = c.Args.ToJsonString(),
+                tools = s.ToolLog
+            };
+        }
+
+        async Task<object> RunAgentLoopAsync(AgentSession s, string token)
+        {
+            for (int step = 0; step < 8; step++)
+            {
+                while (s.Pending.Count > 0)
+                {
+                    var head = s.Pending.Peek();
+                    if (NeedsAsk(s, head.Name))
+                        return ApprovalPause(s, head);
+                    s.Pending.Dequeue();
+                    var (hr, hlg) = ExecuteAgentTool(head.Name, head.Args, s.Root ?? "", s.AllowEdit);
+                    s.ToolLog.Add(hlg);
+                    AgentLog($"[TOOL] {hlg}");
+                    s.Messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = head.Id, ["content"] = hr });
+                }
+                var (ok, code, respBody) = await CallApi(MakePayload(s), token);
+                if (!ok && s.UseTools && step == 0)
+                {
+                    AgentLog($"[API] tools отклонены ({code}), повтор без tools");
+                    s.UseTools = false;
+                    (ok, code, respBody) = await CallApi(MakePayload(s), token);
+                }
+                if (!ok)
+                {
+                    AgentLog($"[API ERROR] {code} {Truncate(respBody, 300)}");
+                    return Finish(s, $"Ошибка API {code}: {Truncate(respBody, 300)}");
+                }
+                var respNode = JsonNode.Parse(respBody);
+                var message = respNode?["choices"]?.AsArray()[0]?["message"] as JsonObject;
+                if (message == null)
+                    return Finish(s, "Пустой ответ модели.");
+                var content = message["content"]?.GetValue<string>() ?? "";
+                var calls = new List<PendingTool>();
+                var toolCalls = message["tool_calls"] as JsonArray;
+                if (toolCalls != null)
+                {
+                    foreach (var tc in toolCalls)
+                    {
+                        var id = tc?["id"]?.GetValue<string>() ?? Guid.NewGuid().ToString();
+                        var name = tc?["function"]?["name"]?.GetValue<string>() ?? "";
+                        var argsRaw = tc?["function"]?["arguments"]?.GetValue<string>() ?? "{}";
+                        JsonObject args;
+                        try { args = JsonNode.Parse(argsRaw) as JsonObject ?? new JsonObject(); }
+                        catch { args = new JsonObject(); }
+                        calls.Add(new PendingTool { Id = id, Name = name, Args = args });
+                    }
+                }
+                else
+                {
+                    var parsed = TryParseTextToolCall(content);
+                    if (parsed != null)
+                        calls.Add(new PendingTool { Id = Guid.NewGuid().ToString(), Name = parsed.Value.name, Args = parsed.Value.args });
+                }
+                if (calls.Count > 0)
+                {
+                    s.Messages.Add((JsonObject)message.DeepClone());
+                    for (int i = 0; i < calls.Count; i++)
+                    {
+                        var c = calls[i];
+                        if (NeedsAsk(s, c.Name))
+                        {
+                            for (int j = i; j < calls.Count; j++) s.Pending.Enqueue(calls[j]);
+                            return ApprovalPause(s, c);
+                        }
+                        var (r, lg) = ExecuteAgentTool(c.Name, c.Args, s.Root ?? "", s.AllowEdit);
+                        s.ToolLog.Add(lg);
+                        AgentLog($"[TOOL] {lg}");
+                        s.Messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = c.Id, ["content"] = r });
+                    }
+                    continue;
+                }
+                return Finish(s, StripProviderMetadata(content));
+            }
+            return Finish(s, s.ToolLog.Count > 0
+                ? "Агент завершил работу. Детали — в строках инструментов выше."
+                : "Ответ не получен.");
+        }
+
+        async Task<(bool ok, string text)> SendToBrowserAndWait(string role, string text, bool think, int timeoutMs, CancellationToken httpAbort = default)
+        {
+            var sem = roleSendLocks.GetOrAdd(role, _ => new SemaphoreSlim(1, 1));
+            await sem.WaitAsync(httpAbort);
+            try
+            {
+                if (!roleChatMap.ContainsKey(role))
+                    return (false, $"Роль '{role}' не закреплена за чатом. Закрепи через popup плагина.");
+                lastSentText[role] = text;
+                AgentLog($"[SEND] роль={role} текст={Truncate(text, 120)}");
+                LogRole(role, $"[USER]: {Truncate(text, 300)}");
+                var tcs = new TaskCompletionSource<string>();
+                pendingResponses[role] = tcs;
+                var cts = new CancellationTokenSource();
+                pendingCancels[role] = cts;
+                using var abortReg = httpAbort.Register(() => tcs.TrySetCanceled());
+                var chatId = roleChatMap[role];
+                var url = config.Roles.TryGetValue(role, out var roleCfg) && !string.IsNullOrEmpty(roleCfg.Url)
+                    ? roleCfg.Url
+                    : $"https://chat.qwen.ai/c/{chatId}";
+                var payload = Encoding.UTF8.GetBytes($"TYPE:{role}|{chatId}|{url}|{(think ? "1" : "0")}|{text}");
+                bool sent = false;
+                foreach (var client in clients)
+                {
+                    if (client.State == WebSocketState.Open)
+                    {
+                        await client.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, CancellationToken.None);
+                        sent = true;
+                    }
+                }
+                if (!sent)
+                {
+                    pendingResponses.TryRemove(role, out _);
+                    pendingCancels.TryRemove(role, out _);
+                    return (false, "Расширение браузера не подключено. Открой браузер LERON и дождись подключения.");
+                }
+                var delayTask = Task.Delay(timeoutMs);
+                var cancelTask = Task.Run(async () => { try { await Task.Delay(Timeout.Infinite, cts.Token); } catch { } });
+                var done = await Task.WhenAny(tcs.Task, delayTask, cancelTask);
+                pendingResponses.TryRemove(role, out _);
+                pendingCancels.TryRemove(role, out _);
+                lastSentText.TryRemove(role, out _);
+                if (done == tcs.Task)
+                {
+                    if (tcs.Task.IsCanceled || httpAbort.IsCancellationRequested)
+                        return (false, "Клиент отключился");
+                    return (true, await tcs.Task);
+                }
+                if (done == cancelTask) return (false, "cancelled");
+                return (false, "Браузер не ответил за 120 секунд.");
+            }
+            finally
+            {
+                sem.Release();
+            }
+        }
+
+        string BrowserInstruction(AgentSession s)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Ты локальный русскоязычный coding agent, подключённый к LERON CLI.");
+            if (s.Root != null)
+                sb.AppendLine($"Корень проекта: {s.Root}. Все относительные пути решай от корня проекта.");
+            sb.AppendLine(s.AllowEdit
+                ? "Доступные инструменты: read_file, list_files, write_file, edit_file, delete_file, create_directory."
+                : "Доступные инструменты: read_file, list_files. Изменять файлы запрещено.");
+            sb.AppendLine(s.Think
+                ? "Режим ответа: с мышлением. Можно рассуждать, но итог пиши на русском."
+                : "Режим ответа: быстрый. Отвечай сразу по делу, без долгих рассуждений.");
+            sb.AppendLine("Если нужно действие с файлом — ответь строго одним блоком ```json {\"name\": \"имя_инструмента\", \"arguments\": {...}} ``` без лишнего текста.");
+            sb.AppendLine("Если действие не нужно — ответь коротко на русском.");
+            sb.AppendLine();
+            return sb.ToString();
+        }
+
+        string ToolResultPrompt(string name, string result) =>
+            $"Результат выполнения {name}: {Truncate(result, 4000)}\n" +
+            "Если задача завершена — ответь текстом на русском. Если нужны ещё действия — снова один JSON-блок с инструментом.";
+
+        async Task<object> RunBrowserAgentLoopAsync(AgentSession s, CancellationToken httpAbort)
+        {
+            for (int step = 0; step < 8; step++)
+            {
+                while (s.Pending.Count > 0)
+                {
+                    var head = s.Pending.Peek();
+                    if (NeedsAsk(s, head.Name))
+                        return ApprovalPause(s, head);
+                    s.Pending.Dequeue();
+                    var (hr, hlg) = ExecuteAgentTool(head.Name, head.Args, s.Root ?? "", s.AllowEdit);
+                    s.ToolLog.Add(hlg);
+                    AgentLog($"[TOOL] {hlg}");
+                    s.BrowserNextPrompt = ToolResultPrompt(head.Name, hr);
+                }
+                string prompt;
+                if (!string.IsNullOrEmpty(s.BrowserNextPrompt))
+                {
+                    prompt = s.BrowserNextPrompt;
+                    s.BrowserNextPrompt = "";
+                }
+                else
+                {
+                    var userText = s.Messages.Count > 0
+                        ? s.Messages[s.Messages.Count - 1]?["content"]?.GetValue<string>() ?? ""
+                        : "";
+                    prompt = BrowserInstruction(s) + userText;
+                }
+                AgentLog($"[BROWSER] шаг {step}: {Truncate(prompt, 200)}");
+                var (ok, text) = await SendToBrowserAndWait(s.Role, prompt, s.Think, 120000, httpAbort);
+                if (!ok)
+                {
+                    AgentLog($"[BROWSER ERROR] {text}");
+                    if (text == "cancelled")
+                        return Finish(s, "⏹ Отменено пользователем.");
+                    return Finish(s, s.ToolLog.Count > 0
+                        ? $"⚠ {text} Выполнено действий: {s.ToolLog.Count}. Детали в строках инструментов."
+                        : $"⚠ {text}");
+                }
+                var parsed = TryParseTextToolCall(text);
+                if (parsed == null)
+                    return Finish(s, StripProviderMetadata(text));
+                var c = new PendingTool
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Name = parsed.Value.name,
+                    Args = parsed.Value.args
+                };
+                if (NeedsAsk(s, c.Name))
+                {
+                    s.Pending.Enqueue(c);
+                    return ApprovalPause(s, c);
+                }
+                var (r, lg) = ExecuteAgentTool(c.Name, c.Args, s.Root ?? "", s.AllowEdit);
+                s.ToolLog.Add(lg);
+                AgentLog($"[TOOL] {lg}");
+                s.BrowserNextPrompt = ToolResultPrompt(c.Name, r);
+            }
+            return Finish(s, "Агент завершил работу по лимиту шагов. Детали в строках инструментов.");
+        }
+
+        app.MapPost("/agent-run", async (HttpContext ctx) =>
+        {
+            var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+            var req = JsonSerializer.Deserialize<AgentRequest>(
+                body,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (req == null || string.IsNullOrWhiteSpace(req.Text))
+                return Results.BadRequest(new { error = "text is required" });
+            var mode = string.IsNullOrWhiteSpace(req.Mode) ? "edit" : req.Mode.ToLowerInvariant();
+            string? root = null;
+            if (!string.IsNullOrWhiteSpace(req.ProjectPath))
+            {
+                if (!Directory.Exists(req.ProjectPath))
+                    return Results.BadRequest(new { error = "Папка проекта не найдена. Выбери проект в хабе заново." });
+                root = req.ProjectPath;
+            }
+            var token = ResolveAgentToken();
+            var s = new AgentSession
+            {
+                Role = req.Role,
+                Root = root,
+                Mode = mode,
+                Think = req.Think,
+                AllowEdit = root != null && ModeAllowsEdit(mode),
+                UseTools = root != null,
+                Backend = token != null ? "api" : "browser"
+            };
+            s.Messages.Add(new JsonObject { ["role"] = "user", ["content"] = req.Text });
+            if (token != null)
+            {
+                AgentLog("[BACKEND] прямой API");
+                s.Messages.Insert(0, BuildSystemMessage(root, s.AllowEdit, s.Think));
+                return Results.Ok(await RunAgentLoopAsync(s, token));
+            }
+            AgentLog("[BACKEND] браузер");
+            return Results.Ok(await RunBrowserAgentLoopAsync(s, ctx.RequestAborted));
+        });
+
+        app.MapPost("/agent-approve", async (HttpContext ctx) =>
+        {
+            var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+            var req = JsonSerializer.Deserialize<ApproveRequest>(
+                body,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (req == null || string.IsNullOrWhiteSpace(req.SessionId))
+                return Results.BadRequest(new { error = "sessionId is required" });
+            if (!agentSessions.TryRemove(req.SessionId, out var s))
+                return Results.BadRequest(new { error = "Сессия не найдена или устарела." });
+            if (s.Pending.Count == 0)
+                return Results.BadRequest(new { error = "В сессии нет действия, ожидающего подтверждения." });
+            var pt = s.Pending.Dequeue();
+            if (req.Approve)
+            {
+                if (s.Mode == "auto" || req.Remember)
+                {
+                    bool added;
+                    lock (autoLock) added = autoApproved.Add(pt.Name);
+                    if (added)
+                    {
+                        config.AutoApprove = autoApproved.ToList();
+                        SaveConfig();
+                        AgentLog($"[AUTO] инструмент {pt.Name} будет подтверждаться автоматически");
+                    }
+                }
+                var (r, lg) = ExecuteAgentTool(pt.Name, pt.Args, s.Root ?? "", true);
+                s.ToolLog.Add(lg);
+                AgentLog($"[TOOL] {lg}");
+                if (s.Backend == "browser")
+                    s.BrowserNextPrompt = ToolResultPrompt(pt.Name, r);
+                else
+                    s.Messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = pt.Id, ["content"] = r });
+            }
+            else
+            {
+                s.ToolLog.Add($"{pt.Name} → отклонено пользователем");
+                AgentLog($"[TOOL] {pt.Name} → отклонено");
+                if (s.Backend == "browser")
+                    s.BrowserNextPrompt = "Действие отклонено пользователем. Не повторяй его, предложи альтернативу или ответь текстом на русском.";
+                else
+                    s.Messages.Add(new JsonObject
+                    {
+                        ["role"] = "tool",
+                        ["tool_call_id"] = pt.Id,
+                        ["content"] = "Действие отклонено пользователем. Не повторяй его, предложи альтернативу или объясни."
+                    });
+            }
+            if (s.Backend == "browser")
+                return Results.Ok(await RunBrowserAgentLoopAsync(s, ctx.RequestAborted));
+            var token = ResolveAgentToken();
+            if (token == null)
+                return Results.BadRequest(new { error = "Нет API-токена." });
+            return Results.Ok(await RunAgentLoopAsync(s, token));
+        });
+
+        app.MapPost("/cancel", async (HttpContext ctx) =>
+        {
+            var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+            var req = JsonSerializer.Deserialize<CancelRequest>(
+                body,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (req == null || string.IsNullOrWhiteSpace(req.Role))
+                return Results.BadRequest(new { error = "role is required" });
+            if (pendingCancels.TryRemove(req.Role, out var cts))
+                cts.Cancel();
+            return Results.Ok(new { ok = true });
+        });
+
+        app.MapGet("/diag", async (HttpContext ctx) =>
+        {
+            foreach (var client in clients)
+            {
+                try
+                {
+                    if (client.State == WebSocketState.Open)
+                        await client.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes("DIAG?")), WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+                catch { }
+            }
+            await Task.Delay(700);
+            return Results.Ok(new
+            {
+                gateway = "ok",
+                ws_clients = clients.Count,
+                extension = lastExtDiag.ToDictionary(kv => kv.Key, kv => kv.Value),
+                pending_wait_roles = pendingResponses.Keys.ToArray(),
+                last_sent = lastSentText.ToDictionary(kv => kv.Key, kv => Truncate(kv.Value, 100)),
+                last_ai_received = lastAiText.ToDictionary(kv => kv.Key, kv => Truncate(kv.Value, 100)),
+                roles = roleChatMap,
+                token_present = !string.IsNullOrWhiteSpace(config.Token)
+            });
+        });
+
+        app.UseWebSockets();
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Path == "/ws" && context.WebSockets.IsWebSocketRequest)
+            {
+                var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                clients.Add(webSocket);
+                var buffer = new byte[1024 * 4];
+                while (webSocket.State == WebSocketState.Open)
+                {
+                    using var ms = new MemoryStream();
+                    WebSocketReceiveResult result;
+                    do
+                    {
+                        result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                        if (result.MessageType == WebSocketMessageType.Close)
+                            break;
+                        await ms.WriteAsync(buffer, 0, result.Count);
+                    } while (!result.EndOfMessage);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                        break;
+                    var msg = Encoding.UTF8.GetString(ms.ToArray());
+                    if (msg.StartsWith("AI:"))
+                    {
+                        var parts = msg.Substring(3).Split('|', 2);
+                        var chatId = parts.Length > 1 ? parts[0] : "unknown";
+                        var text = parts.Length > 1 ? parts[1] : parts[0];
+                        var role = chatRoleMap.ContainsKey(chatId) ? chatRoleMap[chatId] : "unknown";
+                        lastAiText[role] = text;
+                        AgentLog($"[AI RECV] роль={role} текст={Truncate(text, 120)}");
+                        if (lastSentText.TryGetValue(role, out var sentEcho) && sentEcho == text)
+                        {
+                            AgentLog($"[{role}] пропущено эхо пользователя");
+                        }
+                        else
+                        {
+                            LogRole(role, $"[AI]: {text}");
+                            if (pendingResponses.TryGetValue(role, out var tcs))
+                            {
+                                tcs.TrySetResult(text);
+                                PlayNotifySound();
+                                pendingResponses.TryRemove(role, out _);
+                            }
+                            else
+                            {
+                                AgentLog($"[AI ORPHAN] роль={role} ответ пришёл, но никто не ждал");
+                            }
+                        }
+                    }
+                    else if (msg.StartsWith("DIAG:"))
+                    {
+                        var parts = msg.Substring(5).Split('|', 2);
+                        var cid = parts[0];
+                        var payload = parts.Length > 1 ? parts[1] : "";
+                        lastExtDiag[cid] = payload;
+                    }
+                    else if (msg.StartsWith("TOKEN:"))
+                    {
+                        config.Token = msg.Substring(6);
+                        SaveConfig();
+                        AgentLog("[TOKEN ОБНОВЛЕН]");
+                    }
+                    else if (msg.StartsWith("CHATID:"))
+                    {
+                        var chatId = msg.Substring(7);
+                        AgentLog($"[CHAT ID]: {chatId}");
+                    }
+                    else if (msg.StartsWith("ROLE:"))
+                    {
+                        var parts = msg.Substring(5).Split('|', 2);
+                        if (parts.Length == 2)
+                        {
+                            var chatId = parts[0];
+                            var role = parts[1];
+                            chatRoleMap[chatId] = role;
+                            roleChatMap[role] = chatId;
+                            if (config.Roles.ContainsKey(role))
+                            {
+                                config.Roles[role].ChatId = chatId;
+                                config.Roles[role].Url = $"https://chat.qwen.ai/c/{chatId}";
+                                SaveConfig();
+                            }
+                            AgentLog($"[ROLE] {role} → {chatId}");
+                        }
+                    }
+                    else if (msg.StartsWith("CAPTCHA:"))
+                    {
+                        var chatId = msg.Substring(8);
+                        AgentLog($"[CAPTCHA] обнаружена в чате {chatId}");
+                        ShowBrowserForCaptcha();
+                    }
+                    else
+                    {
+                        AgentLog($"[LERON <- EXT] {msg}");
+                    }
+                }
+                clients.Remove(webSocket);
+            }
+            else
+            {
+                await next();
+            }
+        });
+
+        app.MapGet("/status", () => Results.Ok(new
+        {
+            status = "LERON CLI работает",
+            rolesWithChats = roleChatMap.Count,
+            roles = roleChatMap.Keys.ToArray()
+        }));
+
+        app.MapPost("/send-and-wait", async (HttpContext ctx) =>
+        {
+            var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+            var req = JsonSerializer.Deserialize<SendRequest>(
+                body,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (req == null || string.IsNullOrEmpty(req.Role))
+                return Results.BadRequest(new { error = "role is required" });
+            var result = await SendToBrowserAndWait(req.Role, req.Text, req.Think, 120000, ctx.RequestAborted);
+            if (!result.ok)
+                return Results.BadRequest(new { error = result.text });
+            return Results.Ok(new { role = req.Role, response = result.text });
+        });
+
+        AgentLog("LERON CLI gateway запущен in-process на http://localhost:51234");
+        app.Run();
+    }
+}
+
+class Config
+{
+    public Dictionary<string, RoleConfig> Roles { get; set; } = new();
+    public string Token { get; set; } = "";
+    public int RetryAttempts { get; set; } = 3;
+    public List<ProjectConfig> Projects { get; set; } = new();
+    public List<string> AutoApprove { get; set; } = new();
+}
+
+class ProjectConfig
+{
+    public string Name { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string Role { get; set; } = "";
+    public DateTime? LastOpened { get; set; }
+}
+
+class RoleConfig
+{
+    public string ChatId { get; set; } = "";
+    public string Url { get; set; } = "";
+}
+
+class SendRequest
+{
+    public string Role { get; set; } = "";
+    public string Text { get; set; } = "";
+    public bool Think { get; set; }
+}
+
+class AgentRequest
+{
+    public string Role { get; set; } = "";
+    public string Text { get; set; } = "";
+    public string ProjectPath { get; set; } = "";
+    public string Mode { get; set; } = "edit";
+    public bool Think { get; set; }
+}
+
+class ApproveRequest
+{
+    public string SessionId { get; set; } = "";
+    public bool Approve { get; set; }
+    public bool Remember { get; set; }
+}
+
+class CancelRequest
+{
+    public string Role { get; set; } = "";
+}
+
+class AgentSession
+{
+    public string Role { get; set; } = "";
+    public string? Root { get; set; }
+    public string Mode { get; set; } = "edit";
+    public bool Think { get; set; }
+    public bool AllowEdit { get; set; }
+    public bool UseTools { get; set; } = true;
+    public string Backend { get; set; } = "api";
+    public string BrowserNextPrompt { get; set; } = "";
+    public JsonArray Messages { get; set; } = new();
+    public List<string> ToolLog { get; set; } = new();
+    public Queue<PendingTool> Pending { get; set; } = new();
+}
+
+class PendingTool
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public JsonObject Args { get; set; } = new();
+}
+
+
+------------------------------------------------
+FILE: program\sending and receiving\history.json
+SIZE: 24939 bytes
+------------------------------------------------
+{
+  "coder": [
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0441\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "When an operator is pressed, I assess whether a calculation is pending or if the first operand is already set, ensuring correct state transitions. If a previous result exists and another operation follows, I preserve the current value as the new first operand. For equality operations, I determine which value to use based on whether the user is continuing a sequence or has just entered an operator. This approach maintains intuitive behavior consistent with standard calculator expectations.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
+      "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
+      "Bg": "#e94560"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
+      "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
+      "Bg": "#e94560"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
+      "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
+      "Bg": "#e94560"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
+      "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
+      "Bg": "#e94560"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u042F \u0441\u043E\u0437\u0434\u0430\u043C \u0434\u043B\u044F \u0432\u0430\u0441 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#. \u0414\u0430\u0432\u0430\u0439\u0442\u0435 \u043D\u0430\u0447\u043D\u0435\u043C \u0441 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u044B \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u0438 \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
+      "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
+      "Bg": "#e94560"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0441\u0438\u0441\u0442\u0435\u043C\u0430",
+      "Text": "\u26A0 \u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C. \u041E\u0442\u0432\u0435\u0447\u0430\u044E \u0447\u0435\u0440\u0435\u0437 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 Qwen; \u0444\u0430\u0439\u043B\u044B \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E \u043D\u0435 \u0441\u043E\u0437\u0434\u0430\u044E\u0442\u0441\u044F.",
+      "Bg": "#123020"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0427\u0435\u043C \u043C\u043E\u0433\u0443 \u043F\u043E\u043C\u043E\u0447\u044C? \uD83D\uDE0A",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
+      "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
+      "Bg": "#e94560"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0441\u0438\u0441\u0442\u0435\u043C\u0430",
+      "Text": "\u26A0 \u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C. \u041E\u0442\u0432\u0435\u0447\u0430\u044E \u0447\u0435\u0440\u0435\u0437 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 Qwen.",
+      "Bg": "#123020"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0415\u0441\u043B\u0438 \u0432\u0430\u043C \u043D\u0443\u0436\u0435\u043D \u0433\u0440\u0430\u0444\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441 (WinForms/WPF) \u0438\u043B\u0438 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u043D\u044B\u0439 \u0444\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0430\u043B (\u0438\u0441\u0442\u043E\u0440\u0438\u044F, \u0441\u043A\u043E\u0431\u043A\u0438, \u0442\u0440\u0438\u0433\u043E\u043D\u043E\u043C\u0435\u0442\u0440\u0438\u044F) \u2014 \u0441\u043A\u0430\u0436\u0438\u0442\u0435, \u044F \u0434\u043E\u0431\u0430\u0432\u043B\u044E \u0432 \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u0432\u0435\u0440\u0441\u0438\u044E.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430\u0443",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430\u0443",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0441\u0438\u0441\u0442\u0435\u043C\u0430",
+      "Text": "\u26A0 \u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C. \u041E\u0442\u0432\u0435\u0447\u0430\u044E \u0447\u0435\u0440\u0435\u0437 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 Qwen.",
+      "Bg": "#123020"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043A\u0430\u043A \u0434\u0435\u043B\u0430?",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430\u0443",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043F\u043E\u043C\u043E\u0447\u044C \u0441 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u043C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430 \u0441\u0435\u0439\u0447\u0430\u0441?",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041D\u0430 \u0441\u0432\u044F\u0437\u0438. \u0416\u0434\u0443 \u043A\u043E\u043C\u0430\u043D\u0434\u0443.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430\u0443",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435.",
+      "Bg": "#16213e"
+    }
+  ],
+  "proj|c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\test_qwen": [
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0432\u0430\u0448\u0438\u0445 \u043A\u043E\u043C\u0430\u043D\u0434.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0442\u043E\u0447\u043D\u043E?",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0414\u0430, \u0442\u043E\u0447\u043D\u043E. \u0413\u043E\u0442\u043E\u0432 \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u0442\u044C \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u0447\u0442\u0435\u043D\u0438\u044F \u0438 \u043B\u0438\u0441\u0442\u0438\u043D\u0433\u0430 \u0444\u0430\u0439\u043B\u043E\u0432.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0443\u0440\u0430, \u044D\u0442\u043E \u043F\u043E\u0431\u0435\u0434\u0430",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u043E\u0437\u0434\u0440\u0430\u0432\u043B\u044F\u044E! \u0413\u043E\u0442\u043E\u0432 \u043A \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u043C \u0437\u0430\u0434\u0430\u0447\u0430\u043C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430 \u0442\u0430\u043A?",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0414\u0430, \u0432\u0441\u0451 \u0432\u0435\u0440\u043D\u043E. \u0416\u0434\u0443 \u043A\u043E\u043C\u0430\u043D\u0434\u044B.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0442\u043E\u0447\u043D\u043E?",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0414\u0430, \u0442\u043E\u0447\u043D\u043E.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0441\u0443\u043F\u0435\u0440",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0421\u043F\u0430\u0441\u0438\u0431\u043E! \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043A\u0430\u043A \u0434\u0435\u043B\u0430?",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0412\u0441\u0451 \u043E\u0442\u043B\u0438\u0447\u043D\u043E, \u0433\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435!",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430 \u0441\u0435\u0439\u0447\u0430\u0441?",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0412\u0441\u0451 \u0432 \u043F\u043E\u0440\u044F\u0434\u043A\u0435, \u0436\u0434\u0443 \u0432\u0430\u0448\u0438\u0445 \u0437\u0430\u0434\u0430\u0447.\u0412\u0441\u0451 \u0432 \u043F\u043E\u0440\u044F\u0434\u043A\u0435, \u0436\u0434\u0443 \u0432\u0430\u0448\u0438\u0445 \u0437\u0430\u0434\u0430\u0447.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0427\u0435\u043C \u043C\u043E\u0433\u0443 \u043F\u043E\u043C\u043E\u0447\u044C?",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043A\u0430\u043A \u0434\u0435\u043B\u0430",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0412\u0441\u0451 \u043E\u0442\u043B\u0438\u0447\u043D\u043E! \u0413\u043E\u0442\u043E\u0432 \u043F\u043E\u043C\u043E\u0447\u044C \u0441 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u043C. \u0427\u0442\u043E \u043D\u0443\u0436\u043D\u043E \u0441\u0434\u0435\u043B\u0430\u0442\u044C?",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u044D\u043C",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0416\u0434\u0443 \u0432\u0430\u0448\u0438\u0445 \u0438\u043D\u0441\u0442\u0440\u0443\u043A\u0446\u0438\u0439. \u0427\u0442\u043E \u043D\u0443\u0436\u043D\u043E \u0441\u0434\u0435\u043B\u0430\u0442\u044C \u0441 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u043C?",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0432\u0430\u0448\u0438\u0445 \u043A\u043E\u043C\u0430\u043D\u0434.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430\u0443",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041D\u0430 \u0441\u0432\u044F\u0437\u0438. \u0413\u043E\u0442\u043E\u0432 \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u0442\u044C \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u0447\u0442\u0435\u043D\u0438\u044F \u0438 \u0430\u043D\u0430\u043B\u0438\u0437\u0430 \u0444\u0430\u0439\u043B\u043E\u0432 \u0432 \u043F\u0440\u043E\u0435\u043A\u0442\u0435 \u0060C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen\u0060. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0427\u0435\u043C \u043C\u043E\u0433\u0443 \u043F\u043E\u043C\u043E\u0447\u044C?",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043F\u043E\u043C\u043E\u0447\u044C \u0441 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u043C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430\u0443",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0421\u043B\u0443\u0448\u0430\u044E. \u0427\u0435\u043C \u043F\u043E\u043C\u043E\u0447\u044C?",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u042F \u0433\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0432\u0430\u0448\u0438\u0445 \u0443\u043A\u0430\u0437\u0430\u043D\u0438\u0439 \u043F\u043E \u0430\u043D\u0430\u043B\u0438\u0437\u0443 \u0444\u0430\u0439\u043B\u043E\u0432 \u043F\u0440\u043E\u0435\u043A\u0442\u0430.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0432\u0430\u0448\u0438\u0445 \u043A\u043E\u043C\u0430\u043D\u0434.",
+      "Bg": "#16213e"
+    }
+  ]
+}
+
+
+------------------------------------------------
+FILE: инструменты\check.bat
+SIZE: 6125 bytes
+------------------------------------------------
+@echo off
+chcp 65001 >nul 2>&1
+setlocal
+cd /d "%~dp0"
+set "STARTPATH=%~dp0"
+echo.
+echo ================================================================
+echo   NEW ERA · PROJECT REPORT
+echo ================================================================
+echo.
+echo   Батник открыт из : %STARTPATH%
+echo   Сейчас откроется окно выбора папки для отчёта.
+echo.
+:: ── Выбор папки (диалог стартует из папки батника) ──────────
+set "TARGET="
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms;$d=New-Object System.Windows.Forms.FolderBrowserDialog;$d.Description='Выбери папку для отчёта';$d.SelectedPath=$env:STARTPATH;$d.ShowNewFolderButton=$false;if($d.ShowDialog()-eq 'OK'){$d.SelectedPath}"`) do set "TARGET=%%P"
+:: ── Если диалог закрыли — ввод пути вручную ─────────────────
+if not defined TARGET (
+echo   [i] Окно закрыто. Укажи путь вручную.
+echo       Папка батника: %STARTPATH%
+set /p "TARGET=  Путь к папке для отчёта ^(Enter = папка батника^)> "
+)
+if not defined TARGET set "TARGET=%STARTPATH%"
+:: убрать завершающий обратный слэш
+if "%TARGET:~-1%"=="\" set "TARGET=%TARGET:~0,-1%"
+set "ROOT=%TARGET%"
+if not exist "%ROOT%\" (
+echo   [XX] Папка не найдена: %ROOT%
+pause
+exit /b 1
+)
+for %%I in ("%ROOT%") do set "NAME=%%~nxI"
+set "OUT=%ROOT%\%NAME%_report.txt"
+echo.
+echo ================================================================
+echo   FOLDER : %NAME%
+echo   PATH   : %ROOT%
+echo ================================================================
+echo.
+echo   [i] Формирую отчёт: %NAME%_report.txt
+echo.
+:: ─── Пути для PowerShell ────────────────────────────────────
+set "NR_ROOT=%ROOT%"
+set "NR_OUT=%OUT%"
+set "NR_NAME=%NAME%"
+:: ─── Отчёт (UTF-8 с BOM) ────────────────────────────────────
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$r=$env:NR_ROOT;$o=$env:NR_OUT;$nm=$env:NR_NAME;[Console]::OutputEncoding=[Text.Encoding]::UTF8;$m='.cs','.bat','.cmd','.ps1','.json','.xml','.xaml','.csproj','.sln','.py','.md','.sh','.txt','.gitignore','.js','.ts','.html','.css','.yml','.yaml','.toml','.ini','.env','.cfg';$skip=@('bin','obj','.git','.vs','.vscode','.idea');$skipRe='\\(bin|obj|\.git|\.vscode|\.vs|\.idea)\\';function T($p,$pf){$e=Get-ChildItem -LiteralPath $p|Where-Object {($skip -notcontains $_.Name) -and ($_.FullName -ne $o)}|Sort-Object Name;$cnt=@($e).Count;for($i=0;$i-lt$cnt;$i++){$it=$e[$i];$l=$i-eq($cnt-1);if($l){$cn='\---'}else{$cn='+---'};$pf+$cn+$it.Name;if($it.PSIsContainer){if($l){$nx=$pf+'    '}else{$nx=$pf+'|   '};T $it.FullName $nx}}};$s=[Text.StringBuilder]::new();$L='='*64;[void]$s.AppendLine($L);[void]$s.AppendLine('  PROJECT REPORT : '+$nm);[void]$s.AppendLine('  GENERATED      : '+(Get-Date -Format 'dd.MM.yyyy HH:mm:ss'));[void]$s.AppendLine('  PATH           : '+$r);[void]$s.AppendLine($L);[void]$s.AppendLine('');[void]$s.AppendLine('==================== STRUCTURE ====================');[void]$s.AppendLine('');[void]$s.AppendLine($r);foreach($ln in @(T $r '')){[void]$s.AppendLine($ln)};[void]$s.AppendLine('');[void]$s.AppendLine('==================== SOURCE FILES ====================');$fc=0;$fs=Get-ChildItem -LiteralPath $r -Recurse -File|Where-Object {($m -contains $_.Extension.ToLower()) -and ($_.FullName -ne $o) -and ($_.FullName -notmatch $skipRe)};foreach($f in $fs){$fc++;$rel=$f.FullName.Substring($r.Length+1);[void]$s.AppendLine('');[void]$s.AppendLine('-'*48);[void]$s.AppendLine('FILE: '+$rel);[void]$s.AppendLine('SIZE: '+$f.Length+' bytes');[void]$s.AppendLine('-'*48);try{$txt=[IO.File]::ReadAllText($f.FullName,[Text.Encoding]::UTF8);[void]$s.AppendLine($txt.TrimEnd())}catch{[void]$s.AppendLine('  [!!] Ошибка чтения: '+$_.Exception.Message)};[void]$s.AppendLine('');Write-Host ('  [OK] '+$rel)};[void]$s.AppendLine('==================== SUMMARY ====================');[void]$s.AppendLine('  Source files : '+$fc);[void]$s.AppendLine('  Report file  : '+$nm+'_report.txt');[void]$s.AppendLine($L);[IO.File]::WriteAllText($o,$s.ToString(),[Text.UTF8Encoding]::new($true));Write-Host '';Write-Host ('  [OK] Обработано файлов: '+$fc);Write-Host ('  [OK] Отчёт сохранён   : '+$o)"
+:: ─── Поиск Notepad++ ────────────────────────────────────────
+set "NPP="
+where notepad++ >nul 2>&1 && set "NPP=notepad++"
+if not defined NPP for /f "tokens=2*" %%A in ('reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\notepad++.exe" /ve 2^>nul') do set "NPP=%%B"
+if not defined NPP for /f "tokens=2*" %%A in ('reg query "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\notepad++.exe" /ve 2^>nul') do set "NPP=%%B"
+if not defined NPP if exist "%ProgramFiles%\Notepad++\notepad++.exe" set "NPP=%ProgramFiles%\Notepad++\notepad++.exe"
+set "PF86=%ProgramFiles(x86)%"
+if not defined NPP if exist "%PF86%\Notepad++\notepad++.exe" set "NPP=%PF86%\Notepad++\notepad++.exe"
+if not defined NPP if exist "%LOCALAPPDATA%\Programs\Notepad++\notepad++.exe" set "NPP=%LOCALAPPDATA%\Programs\Notepad++\notepad++.exe"
+:: ─── Открыть отчёт ──────────────────────────────────────────
+echo.
+set /p "OPEN=  Открыть отчёт? [y/N] "
+if /i "%OPEN%"=="y" (
+if defined NPP (
+echo   [i] Открываю в Notepad++ ...
+start "" "%NPP%" "%OUT%"
+) else (
+echo   [i] Notepad++ не найден — открываю в Блокноте.
+start "" notepad "%OUT%"
+)
+)
+endlocal
+pause
+
+
+------------------------------------------------
+FILE: инструменты\diagnostic.bat
+SIZE: 3213 bytes
+------------------------------------------------
+@echo off
+chcp 65001 >nul 2>&1
+setlocal enabledelayedexpansion
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
+set "OUT=%ROOT%\diagnostic.txt"
+set "PS1=%TEMP%\leron_diag.ps1"
+set "STOPFLAG=%TEMP%\leron_diag_stop.flag"
+
+echo.
+echo ================================================================
+echo   LERON CLI · ДИАГНОСТИКА
+echo ================================================================
+echo.
+echo   Запускаю приложение и пишу метрики каждые ~6 секунд.
+echo   Отчёт: %OUT%
+echo   Для остановки — в окне «СТОП» нажми любую кнопку.
+echo.
+
+if exist "%STOPFLAG%" del "%STOPFLAG%"
+
+:: старт приложения — как в start.bat
+start "LERON CLI" /d "%ROOT%\program\main" cmd /k "dotnet run"
+
+:: скрипт метрик: CPU%% и RAM по процессам LeronCli / QwenCli / dotnet
+> "%PS1%" echo $n = @('LeronCli','QwenCli','dotnet')
+>> "%PS1%" echo $a = Get-Process -Name $n -ErrorAction SilentlyContinue
+>> "%PS1%" echo if (-not $a) { $a = @() }
+>> "%PS1%" echo Start-Sleep -Milliseconds 1000
+>> "%PS1%" echo $b = Get-Process -Name $n -ErrorAction SilentlyContinue
+>> "%PS1%" echo foreach ($x in $b) {
+>> "%PS1%" echo   $o = $a.Where({ $_.Id -eq $x.Id })
+>> "%PS1%" echo   $pct = 0
+>> "%PS1%" echo   if ($o) { $pct = [math]::Round(($x.TotalProcessorTime.TotalMilliseconds - $o.TotalProcessorTime.TotalMilliseconds) / 10, 1) }
+>> "%PS1%" echo   $ws = [math]::Round($x.WorkingSet64 / 1MB, 1)
+>> "%PS1%" echo   Write-Output ("{0} {1} CPU={2}%% WS={3}MB" -f $x.Id, $x.Name, $pct, $ws)
+>> "%PS1%" echo }
+>> "%PS1%" echo $t = (Get-Counter '\Processor(_Total)\%% Processor Time' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue
+>> "%PS1%" echo $m = (Get-Counter '\Memory\Available MBytes' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue
+>> "%PS1%" echo Write-Output ("TOTAL CPU={0}%% AVAIL={1}MB" -f [math]::Round($t,1), [math]::Round($m,0))
+
+:: шапка отчёта + инфо о системе
+> "%OUT%" echo ================================================================
+>> "%OUT%" echo   LERON CLI · DIAGNOSTIC LOG
+>> "%OUT%" echo   STARTED: %date% %time%
+>> "%OUT%" echo ================================================================
+powershell -NoProfile -Command "(Get-CimInstance Win32_Processor ^| Select-Object -First 1).Name; [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB,1); [Environment]::OSVersion.Version" >> "%OUT%" 2>nul
+
+:: окно остановки: любая кнопка создаёт флаг
+start "LERON CLI · СТОП — нажми любую кнопку" cmd /c "pause >nul & type nul > ^"%STOPFLAG%^""
+
+:loop
+if exist "%STOPFLAG%" goto stop
+>> "%OUT%" echo.
+>> "%OUT%" echo --- [%date% %time%] ---
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" >> "%OUT%" 2>&1
+echo   [%time%] образец записан
+timeout /t 4 >nul
+goto loop
+
+:stop
+if exist "%STOPFLAG%" del "%STOPFLAG%"
+>> "%OUT%" echo.
+>> "%OUT%" echo STOPPED: %date% %time%
+echo.
+echo   [OK] Стоп. Отчёт: %OUT%
+start "" notepad "%OUT%"
+endlocal
+pause
+
+
+------------------------------------------------
+FILE: инструменты\diagnostic_messages.bat
+SIZE: 1365 bytes
+------------------------------------------------
+@echo off
+chcp 65001 >nul 2>&1
+setlocal enabledelayedexpansion
+
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
+set "GATEWAY_DIR=%ROOT%\program\sending and receiving"
+set "LOG_FILE=%ROOT%\logs\messages_%date:~-4%%date:~3,2%%date:~0,2%.log"
+
+if not exist "%ROOT%\logs" mkdir "%ROOT%\logs"
+
+echo.
+echo ================================================================
+echo   LERON CLI · ДИАГНОСТИКА СООБЩЕНИЙ
+echo ================================================================
+echo.
+echo   Корень     : %ROOT%
+echo   Gateway    : %GATEWAY_DIR%
+echo   Лог-файл   : %LOG_FILE%
+echo.
+echo   Гашу старый gateway на порту 51234...
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":51234" ^| findstr "LISTENING"') do (
+    taskkill /PID %%P /F >nul 2>&1
+)
+timeout /t 2 >nul
+
+echo   [i] Старт gateway с полным логированием...
+echo.
+echo   === НАЧАЛО ЛОГА [%date% %time%] === >> "%LOG_FILE%"
+
+cd /d "%GATEWAY_DIR%"
+dotnet run 2>&1 | powershell -NoProfile -Command "$input | ForEach-Object { $line = $_; $ts = Get-Date -Format 'HH:mm:ss'; Write-Host \"[$ts] $line\"; Add-Content -LiteralPath '%LOG_FILE%' -Value \"[$ts] $line\" -Encoding UTF8 }"
+
+echo.
+echo   === КОНЕЦ ЛОГА === >> "%LOG_FILE%"
+echo   [OK] Лог сохранён: %LOG_FILE%
+pause
+
+==================== SUMMARY ====================
+  Source files : 26
+  Report file  : cli_report.txt
+================================================================

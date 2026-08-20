@@ -1,0 +1,27 @@
+<Window x:Class="MainApp.RolePickWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Роль проекта"
+        Width="420" Height="280"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        FontFamily="Consolas">
+    <Border Background="#0a0f0a" BorderBrush="#1e3a2a" BorderThickness="1" CornerRadius="12" Padding="24">
+        <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="Кто работает в проекте?" Foreground="#4ade80" FontSize="16" FontWeight="Bold"
+                       Margin="0,0,0,6"/>
+            <TextBlock Text="Роль определяет, какой чат будет отвечать." Foreground="#4a7a5a" FontSize="11"
+                       Margin="0,0,0,18"/>
+            <Button Content="💻  coder" Tag="coder" Click="Pick"
+                    Background="#101c14" Foreground="#c8ffd8" BorderThickness="1" BorderBrush="#142a1e"
+                    FontFamily="Consolas" FontSize="14" Padding="16,12" Margin="0,0,0,10"
+                    HorizontalContentAlignment="Left" Cursor="Hand"/>
+            <Button Content="🎨  designer" Tag="designer" Click="Pick"
+                    Background="#101c14" Foreground="#c8ffd8" BorderThickness="1" BorderBrush="#142a1e"
+                    FontFamily="Consolas" FontSize="14" Padding="16,12"
+                    HorizontalContentAlignment="Left" Cursor="Hand"/>
+        </StackPanel>
+    </Border>
+</Window>
