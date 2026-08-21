@@ -269,79 +269,105 @@ Bg = bgColor
 SaveHistoryToDisk();
 AddMessageBlock(author, text, bgColor);
 }
-private void AddMessageBlock(string author, string text, string bgColor)
+private void AddMessageBlock(string author, string text, string bg)
 {
-var isUser = bgColor == "#0f3460";
-var isCancel = text.StartsWith("⏹");
-var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
-row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-var avatar = new Border
-{
-Width = 38,
-Height = 38,
-CornerRadius = new CornerRadius(19),
-Background = B("#0d2418"),
-BorderBrush = B(isUser ? "#00ff88" : "#1d5c3d"),
-BorderThickness = new Thickness(1),
-Margin = new Thickness(0, 2, 10, 0),
-VerticalAlignment = VerticalAlignment.Top,
-Visibility = isCancel ? Visibility.Collapsed : Visibility.Visible
-};
-avatar.Child = new TextBlock
-{
-Text = ">_",
-FontFamily = Mono,
-FontSize = 13,
-Foreground = B("#00ff88"),
-HorizontalAlignment = HorizontalAlignment.Center,
-VerticalAlignment = VerticalAlignment.Center
-};
-Grid.SetColumn(avatar, 0);
-var time = new TextBlock
-{
-Text = DateTime.Now.ToString("HH:mm"),
-FontFamily = Mono,
-FontSize = 12,
-Foreground = B("#447a5a"),
-Margin = new Thickness(0, 8, 12, 0),
-VerticalAlignment = VerticalAlignment.Top
-};
-Grid.SetColumn(time, 1);
-var bubble = new Border
-{
-Background = B(isCancel ? "#0a1410" : isUser ? "#0f241a" : "#0a1410"),
-BorderBrush = B(isCancel ? "#1a3a2a" : isUser ? "#00ff88" : "#1a3a2a"),
-BorderThickness = new Thickness(1),
-CornerRadius = new CornerRadius(8),
-Padding = new Thickness(12, 8, 12, 8)
-};
-var stack = new StackPanel();
-stack.Children.Add(new TextBlock
-{
-Text = author.ToUpper(),
-FontFamily = Mono,
-FontSize = 11,
-FontWeight = FontWeights.Bold,
-Foreground = B(isUser ? "#00ff88" : "#4a7a5a"),
-Margin = new Thickness(0, 0, 0, 4)
-});
-stack.Children.Add(new TextBlock
-{
-Text = text,
-Foreground = B(isCancel ? "#447a5a" : "#c8ffd8"),
-FontStyle = isCancel ? FontStyles.Italic : FontStyles.Normal,
-TextWrapping = TextWrapping.Wrap,
-FontSize = 14
-});
-bubble.Child = stack;
-Grid.SetColumn(bubble, 2);
-row.Children.Add(avatar);
-row.Children.Add(time);
-row.Children.Add(bubble);
-ChatMessages.Children.Add(row);
-ChatScroll.ScrollToEnd();
+    bool isUser = author.Trim().Equals("ТЫ", StringComparison.OrdinalIgnoreCase);
+
+    var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
+    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) });
+    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+    row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+    row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+    // время сверху над пузырем
+    var time = new TextBlock
+    {
+        Text = DateTime.Now.ToString("HH:mm"),
+        FontFamily = Theme.Font(),
+        FontSize = 12,
+        Foreground = Theme.B("#447a5a"),
+        Margin = new Thickness(4, 0, 0, 4)
+    };
+    Grid.SetRow(time, 0);
+    Grid.SetColumn(time, 1);
+    row.Children.Add(time);
+
+    // аватар прижат к НИЗУ пузыря — как в Telegram
+    var avatar = new Border
+    {
+        Width = 40,
+        Height = 40,
+        CornerRadius = new CornerRadius(20),
+        Background = Theme.B("#0d2418"),
+        BorderBrush = isUser ? Theme.B("#00ff88") : Theme.B("#1d5c3d"),
+        BorderThickness = new Thickness(1),
+        VerticalAlignment = VerticalAlignment.Bottom,
+        HorizontalAlignment = HorizontalAlignment.Center
+    };
+    if (isUser)
+    {
+        avatar.Child = new System.Windows.Shapes.Path
+        {
+            Fill = Theme.B("#00ff88"),
+            Width = 16,
+            Height = 16,
+            Stretch = System.Windows.Media.Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Data = System.Windows.Media.Geometry.Parse(
+                "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z")
+        };
+    }
+    else
+    {
+        avatar.Child = new TextBlock
+        {
+            Text = ">_",
+            FontFamily = Theme.Font(),
+            FontSize = 15,
+            FontWeight = FontWeights.Bold,
+            Foreground = Theme.B("#7dffa8"),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+    }
+    Grid.SetRow(avatar, 1);
+    Grid.SetColumn(avatar, 0);
+    row.Children.Add(avatar);
+
+    var bubble = new Border
+    {
+        Background = Theme.B("#0a1a12"),
+        BorderBrush = isUser ? Theme.B("#00ff88") : Theme.B(bg),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(8),
+        Padding = new Thickness(12, 8, 12, 10),
+        Margin = new Thickness(4, 0, 0, 0)
+    };
+    var inner = new StackPanel();
+    inner.Children.Add(new TextBlock
+    {
+        Text = author,
+        FontFamily = Theme.Font(),
+        FontSize = 11,
+        Foreground = isUser ? Theme.B("#00ff88") : Theme.B("#447a5a"),
+        Margin = new Thickness(0, 0, 0, 4)
+    });
+    inner.Children.Add(new TextBlock
+    {
+        Text = text,
+        FontFamily = Theme.Font(),
+        FontSize = 14,
+        Foreground = Theme.B("#d9ffe7"),
+        TextWrapping = TextWrapping.Wrap
+    });
+    bubble.Child = inner;
+    Grid.SetRow(bubble, 1);
+    Grid.SetColumn(bubble, 1);
+    row.Children.Add(bubble);
+
+    ChatMessages.Children.Add(row);
+    ChatScroll.ScrollToEnd();
 }
 private void OnInputKeyDown(object sender, KeyEventArgs e)
 {

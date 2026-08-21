@@ -12,9 +12,11 @@ namespace MainApp;
 public class ChromeWindow : Window
 {
     public bool StartFullscreen = true;
+    // Сплэш выключает: его вход даёт PowerOn, а не дорогой фейд всего окна.
     public bool UseFadeIn = false;
     protected double FxIntensity = 0.0;
     private bool _full;
+    private bool _poweringDown;
 
     public ChromeWindow()
     {
@@ -35,6 +37,8 @@ public class ChromeWindow : Window
         Focus();
     }
 
+    // Переход без зазора: старое окно непрозрачно, пока новое не отрисовано
+    // и не стало полностью непрозрачным поверх.
     protected void SwapTo(Window next)
     {
         if (next is ChromeWindow cw) cw.UseFadeIn = false;
@@ -54,6 +58,60 @@ public class ChromeWindow : Window
 
         BeginAnimation(OpacityProperty, fadeOut);
         next.BeginAnimation(OpacityProperty, fadeIn);
+    }
+
+    // Кнопка ✕: экран плавно гаснет в чёрный и через 2 секунды приложение
+    // гарантированно завершается. История и конфиг пишутся синхронно при
+    // каждом действии, поэтому к моменту гашения сохранять уже нечего —
+    // эти 2 секунды идут на спокойное завершение, а OnExit в App.xaml.cs
+    // добивает фоновые потоки gateway/WebView2 через Environment.Exit.
+    public void CloseClick(object sender, RoutedEventArgs e) => PowerDown();
+
+    private void PowerDown()
+    {
+        if (_poweringDown) return;
+        _poweringDown = true;
+
+        // блокируем ввод на время гашения
+        IsEnabled = false;
+
+        var root = Content as Grid ?? (Content as Border)?.Child as Grid;
+        if (root != null)
+        {
+            var black = new Rectangle { Fill = Brushes.Black, Opacity = 0 };
+            Grid.SetRowSpan(black, 100);
+            Grid.SetColumnSpan(black, 100);
+            root.Children.Add(black);
+            var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(1200))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            };
+            black.BeginAnimation(UIElement.OpacityProperty, fade);
+        }
+
+        // ровно 2 секунды от нажатия — и выход
+        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2000) };
+        t.Tick += (_, _) =>
+        {
+            t.Stop();
+            Application.Current?.Shutdown();
+        };
+        t.Start();
+    }
+
+    // Штатный OnLastWindowClose не срабатывает: скрытое окно браузерной панели
+    // считается «открытым» и держит процесс. Гасим сами, как только
+    // не осталось ни одного ВИДИМОГО окна.
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        var app = Application.Current;
+        if (app == null) return;
+        foreach (Window w in app.Windows)
+        {
+            if (w.IsVisible) return;
+        }
+        app.Shutdown();
     }
 
     public void GoFull()
@@ -78,8 +136,6 @@ public class ChromeWindow : Window
         }
         else GoFull();
     }
-
-    public void CloseClick(object sender, RoutedEventArgs e) => Close();
 
     public void DragWindow(object sender, MouseButtonEventArgs e)
     {

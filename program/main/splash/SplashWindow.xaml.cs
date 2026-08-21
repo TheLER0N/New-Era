@@ -98,6 +98,8 @@ public partial class SplashWindow : ChromeWindow
             {
                 TypeLine("> PHOSPHOR P1-GREEN .... OK", () =>
                 {
+                    // Регистрация — только самый первый запуск.
+                    // Потом профиль уже есть и идёт обычное приветствие.
                     if (UserProfile.Exists()) StartGreet();
                     else TypeLine("> первый запуск · регистрация пользователя", AskNick);
                 });
@@ -106,29 +108,28 @@ public partial class SplashWindow : ChromeWindow
         HookSkip(this, skip);
     }
 
-        private void BeginTransition()
+    private void BeginTransition()
     {
         if (_transitioning) return;
         _transitioning = true;
         _stage = Stage.Done;
         Topmost = true;
-
         var next = new ProjectHubWindow();
         next.UseFadeIn = false;
         next.Opacity = 0;
         next.Show();
 
-        // CRT выключение только для сплэша
-        Theme.Crt.PowerOff(RootGrid, () =>
+        var skipOff = Theme.Crt.PowerOff(RootGrid, () =>
         {
+            Topmost = false;
             Close();
-            // Хаб появляется плавно
             var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(350))
             {
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
             };
             next.BeginAnimation(OpacityProperty, fadeIn);
         });
+        HookSkip(this, skipOff);
     }
 
     private void HookSkip(Window w, Action skip)
@@ -159,7 +160,13 @@ public partial class SplashWindow : ChromeWindow
         catch { }
     }
 
-    private void AskNick() { _stage = Stage.AskNick; Print("> введи ник: "); InputLine.Visibility = Visibility.Visible; InputBox.Focus(); }
+    private void AskNick()
+    {
+        _stage = Stage.AskNick;
+        Print("> введи ник: ");
+        InputLine.Visibility = Visibility.Visible;
+        InputBox.Focus();
+    }
 
     private void OnInputKeyDown(object sender, KeyEventArgs e)
     {
@@ -169,14 +176,20 @@ public partial class SplashWindow : ChromeWindow
         if (_stage == Stage.AskNick)
         {
             if (text.Length == 0) { Print("  ⚠ ник не может быть пустым"); return; }
-            _nick = text; Print("  ✓ ник: " + _nick); InputBox.Clear();
-            _stage = Stage.AskAbout; Print("> расскажи о себе в паре слов: ");
+            _nick = text;
+            Print("  ✓ ник: " + _nick);
+            InputBox.Clear();
+            _stage = Stage.AskAbout;
+            Print("> расскажи о себе в паре слов: ");
         }
         else if (_stage == Stage.AskAbout)
         {
-            UserProfile.Save(_nick, text); Print("  ✓ профиль сохранён");
-            InputLine.Visibility = Visibility.Collapsed; SessionUser.Text = _nick;
-            FooterRight.Text = $"USER: {_nick} // TTY1"; StartGreet();
+            UserProfile.Save(_nick, text);
+            Print("  ✓ профиль сохранён");
+            InputLine.Visibility = Visibility.Collapsed;
+            SessionUser.Text = _nick;
+            FooterRight.Text = $"USER: {_nick} // TTY1";
+            StartGreet();
         }
     }
 

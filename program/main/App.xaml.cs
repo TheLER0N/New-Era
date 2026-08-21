@@ -7,23 +7,31 @@ namespace MainApp;
 
 public partial class App : Application
 {
-    protected override void OnStartup(StartupEventArgs e)
+    public App()
     {
-        DispatcherUnhandledException += OnDispatcherUnhandled;
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandled;
-        base.OnStartup(e);
+        DispatcherUnhandledException += OnDispatcherUnhandled;
     }
 
     private void OnDispatcherUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        Report(e.Exception);
         e.Handled = true;
+        Report(e.Exception);
         Shutdown(1);
     }
 
     private void OnAppDomainUnhandled(object sender, UnhandledExceptionEventArgs e)
     {
         Report(e.ExceptionObject as Exception);
+    }
+
+    // in-process gateway (порт 51234) и WebView2 держат свои потоки даже после
+    // закрытия всех окон — из-за этого LeronCli.exe оставался в диспетчере задач.
+    // Environment.Exit гарантированно завершает процесс при любом выходе.
+    protected override void OnExit(ExitEventArgs e)
+    {
+        base.OnExit(e);
+        Environment.Exit(e.ApplicationExitCode);
     }
 
     private static void Report(Exception? ex)

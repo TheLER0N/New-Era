@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : cli
-  GENERATED      : 21.08.2026 03:11:49
+  GENERATED      : 22.08.2026 01:12:30
   PATH           : C:\Users\Пользователь\Desktop\cli
 ================================================================
 
@@ -211,7 +211,7 @@ timeout /t 5
 
 ------------------------------------------------
 FILE: program\main\App.xaml
-SIZE: 3827 bytes
+SIZE: 8843 bytes
 ------------------------------------------------
 <Application x:Class="MainApp.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -282,13 +282,97 @@ SIZE: 3827 bytes
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Тонкий тематический скроллбар: 8px, без стрелок, полупрозрачный в покое.
+             Подключается через BasedOn только в чате и хабе — сплэш не трогаем. -->
+        <Style x:Key="LeronPageButton" TargetType="RepeatButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="LeronThumb" TargetType="Thumb">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="bd" Background="#1d5c3d" CornerRadius="3" Margin="1"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#00ff88"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#00ff88"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="LeronScrollBar" TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Opacity" Value="0.55"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="1"/>
+                </Trigger>
+                <Trigger Property="Orientation" Value="Vertical">
+                    <Setter Property="Width" Value="8"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollBar">
+                                <Grid Background="Transparent">
+                                    <Border Background="#0a1a12" CornerRadius="4"/>
+                                    <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                        <Track.DecreaseRepeatButton>
+                                            <RepeatButton Command="ScrollBar.PageUpCommand" Style="{StaticResource LeronPageButton}"/>
+                                        </Track.DecreaseRepeatButton>
+                                        <Track.IncreaseRepeatButton>
+                                            <RepeatButton Command="ScrollBar.PageDownCommand" Style="{StaticResource LeronPageButton}"/>
+                                        </Track.IncreaseRepeatButton>
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource LeronThumb}"/>
+                                        </Track.Thumb>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Height" Value="8"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollBar">
+                                <Grid Background="Transparent">
+                                    <Border Background="#0a1a12" CornerRadius="4"/>
+                                    <Track x:Name="PART_Track">
+                                        <Track.DecreaseRepeatButton>
+                                            <RepeatButton Command="ScrollBar.PageLeftCommand" Style="{StaticResource LeronPageButton}"/>
+                                        </Track.DecreaseRepeatButton>
+                                        <Track.IncreaseRepeatButton>
+                                            <RepeatButton Command="ScrollBar.PageRightCommand" Style="{StaticResource LeronPageButton}"/>
+                                        </Track.IncreaseRepeatButton>
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource LeronThumb}"/>
+                                        </Track.Thumb>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Application.Resources>
 </Application>
 
 
 ------------------------------------------------
 FILE: program\main\App.xaml.cs
-SIZE: 1140 bytes
+SIZE: 1582 bytes
 ------------------------------------------------
 using System;
 using System.IO;
@@ -299,23 +383,31 @@ namespace MainApp;
 
 public partial class App : Application
 {
-    protected override void OnStartup(StartupEventArgs e)
+    public App()
     {
-        DispatcherUnhandledException += OnDispatcherUnhandled;
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandled;
-        base.OnStartup(e);
+        DispatcherUnhandledException += OnDispatcherUnhandled;
     }
 
     private void OnDispatcherUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        Report(e.Exception);
         e.Handled = true;
+        Report(e.Exception);
         Shutdown(1);
     }
 
     private void OnAppDomainUnhandled(object sender, UnhandledExceptionEventArgs e)
     {
         Report(e.ExceptionObject as Exception);
+    }
+
+    // in-process gateway (порт 51234) и WebView2 держат свои потоки даже после
+    // закрытия всех окон — из-за этого LeronCli.exe оставался в диспетчере задач.
+    // Environment.Exit гарантированно завершает процесс при любом выходе.
+    protected override void OnExit(ExitEventArgs e)
+    {
+        base.OnExit(e);
+        Environment.Exit(e.ApplicationExitCode);
     }
 
     private static void Report(Exception? ex)
@@ -329,7 +421,7 @@ public partial class App : Application
 
 ------------------------------------------------
 FILE: program\main\ChromeWindow.cs
-SIZE: 3864 bytes
+SIZE: 5665 bytes
 ------------------------------------------------
 using System;
 using System.Windows;
@@ -346,9 +438,10 @@ public class ChromeWindow : Window
 {
     public bool StartFullscreen = true;
     // Сплэш выключает: его вход даёт PowerOn, а не дорогой фейд всего окна.
-    public bool UseFadeIn = false;  // Отключено по умолчанию
-    protected double FxIntensity = 0.0;  // Эффекты отключены
+    public bool UseFadeIn = false;
+    protected double FxIntensity = 0.0;
     private bool _full;
+    private bool _poweringDown;
 
     public ChromeWindow()
     {
@@ -364,56 +457,86 @@ public class ChromeWindow : Window
 
     private void OnChromeLoaded(object sender, RoutedEventArgs e)
     {
-        // Эффекты отключены
         if (StartFullscreen) GoFull();
+        if (UseFadeIn) FadeIn();
         Focus();
     }
 
     // Переход без зазора: старое окно непрозрачно, пока новое не отрисовано
-    // (ContentRendered) и не стало полностью непрозрачным поверх.
+    // и не стало полностью непрозрачным поверх.
     protected void SwapTo(Window next)
     {
         if (next is ChromeWindow cw) cw.UseFadeIn = false;
-        next.Opacity = 1;
+        next.Opacity = 0;
         next.Show();
-        var currentGrid = this.Content as Grid ?? (this.Content as Border)?.Child as Grid;
-        var nextGrid = next.Content as Grid ?? (next.Content as Border)?.Child as Grid;
-        
-        Action? skipCurrent = null;
-        if (currentGrid != null)
+
+        var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(220))
         {
-            skipCurrent = Theme.Crt.PowerOff(currentGrid, () =>
-            {
-                this.Close();
-                if (nextGrid != null)
-                {
-                    var skipNext = Theme.Crt.PowerOn(nextGrid);
-                    HookSkip(next, skipNext);
-                }
-            });
-            HookSkip(this, skipCurrent);
-        }
-        else
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        fadeOut.Completed += (_, _) => Close();
+
+        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280))
         {
-            this.Close();
-            if (nextGrid != null)
-            {
-                var skipNext = Theme.Crt.PowerOn(nextGrid);
-                HookSkip(next, skipNext);
-            }
-        }
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        BeginAnimation(OpacityProperty, fadeOut);
+        next.BeginAnimation(OpacityProperty, fadeIn);
     }
 
-    private void HookSkip(Window w, Action skip)
+    // Кнопка ✕: экран плавно гаснет в чёрный и через 2 секунды приложение
+    // гарантированно завершается. История и конфиг пишутся синхронно при
+    // каждом действии, поэтому к моменту гашения сохранять уже нечего —
+    // эти 2 секунды идут на спокойное завершение, а OnExit в App.xaml.cs
+    // добивает фоновые потоки gateway/WebView2 через Environment.Exit.
+    public void CloseClick(object sender, RoutedEventArgs e) => PowerDown();
+
+    private void PowerDown()
     {
-        void OnSkip(object s, EventArgs e)
+        if (_poweringDown) return;
+        _poweringDown = true;
+
+        // блокируем ввод на время гашения
+        IsEnabled = false;
+
+        var root = Content as Grid ?? (Content as Border)?.Child as Grid;
+        if (root != null)
         {
-            skip();
-            w.KeyDown -= OnSkip;
-            w.MouseDown -= OnSkip;
+            var black = new Rectangle { Fill = Brushes.Black, Opacity = 0 };
+            Grid.SetRowSpan(black, 100);
+            Grid.SetColumnSpan(black, 100);
+            root.Children.Add(black);
+            var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(1200))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            };
+            black.BeginAnimation(UIElement.OpacityProperty, fade);
         }
-        w.KeyDown += OnSkip;
-        w.MouseDown += OnSkip;
+
+        // ровно 2 секунды от нажатия — и выход
+        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2000) };
+        t.Tick += (_, _) =>
+        {
+            t.Stop();
+            Application.Current?.Shutdown();
+        };
+        t.Start();
+    }
+
+    // Штатный OnLastWindowClose не срабатывает: скрытое окно браузерной панели
+    // считается «открытым» и держит процесс. Гасим сами, как только
+    // не осталось ни одного ВИДИМОГО окна.
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        var app = Application.Current;
+        if (app == null) return;
+        foreach (Window w in app.Windows)
+        {
+            if (w.IsVisible) return;
+        }
+        app.Shutdown();
     }
 
     public void GoFull()
@@ -439,8 +562,6 @@ public class ChromeWindow : Window
         else GoFull();
     }
 
-    public void CloseClick(object sender, RoutedEventArgs e) => Close();
-
     public void DragWindow(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
@@ -450,8 +571,11 @@ public class ChromeWindow : Window
 
     public void FadeIn()
     {
-        // Анимация отключена
-        Opacity = 1;
+        Opacity = 0;
+        BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(450))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
     }
 }
 
@@ -483,7 +607,7 @@ SIZE: 790 bytes
 
 ------------------------------------------------
 FILE: program\main\Theme.cs
-SIZE: 14789 bytes
+SIZE: 16090 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -532,7 +656,6 @@ public static class Theme
         };
         ambienceBrush.Freeze();
         grid.Children.Add(new Rectangle { Fill = ambienceBrush });
-
         var scanGeom = new GeometryGroup();
         for (int y = 0; y < 192; y += 3)
             scanGeom.Children.Add(new RectangleGeometry(new Rect(0, y, 64, 1)));
@@ -556,7 +679,6 @@ public static class Theme
         };
         crtBrush.Freeze();
         grid.Children.Add(new Rectangle { Fill = crtBrush });
-
         var canvas = new Canvas();
         grid.Children.Add(canvas);
         var parts = new List<(TranslateTransform tr, double y, double v)>();
@@ -580,7 +702,6 @@ public static class Theme
             }
         }
         canvas.SizeChanged += (_, _) => Seed();
-
         var bandBrush = new LinearGradientBrush
         {
             StartPoint = new Point(0.5, 0),
@@ -603,12 +724,10 @@ public static class Theme
             RenderTransform = new TranslateTransform(0, -420)
         };
         grid.Children.Add(band);
-
         var glowBrush = B("#00ff88");
         glowBrush.Freeze();
         var glow = new Rectangle { Fill = glowBrush, Opacity = 0.028 };
         grid.Children.Add(glow);
-
         var vigBrush = new RadialGradientBrush
         {
             GradientOrigin = new Point(0.5, 0.5),
@@ -621,7 +740,6 @@ public static class Theme
         };
         vigBrush.Freeze();
         grid.Children.Add(new Rectangle { Fill = vigBrush });
-
         var last = DateTime.Now;
         var start = DateTime.Now;
         void Tick(object? s, EventArgs e)
@@ -653,6 +771,8 @@ public static class Theme
 
     public static class Crt
     {
+        // ВКЛ: тусклая бледно-зелёная точка → линия → раскрытие.
+        // Яркость нарастает от точки к полному экрану, цвет плавно до #00ff88.
         public static Action PowerOn(Grid g, Action? done = null)
         {
             Action? skipAction = null;
@@ -661,48 +781,53 @@ public static class Theme
             {
                 double W = g.ActualWidth, H = g.ActualHeight;
                 if (W < 10 || H < 10) { done?.Invoke(); return; }
-
                 var black = new Rectangle { Fill = Brushes.Black, Opacity = 1 };
                 Grid.SetRowSpan(black, 100);
-                var beamBrush = new SolidColorBrush(Colors.White);
+                var beamBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7dffa8"));
                 var beam = new Rectangle
                 {
                     Fill = beamBrush, Width = 4, Height = 4,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     Opacity = 0,
-                    Effect = new BlurEffect { Radius = 8 }
+                    Effect = new BlurEffect { Radius = 4 }
                 };
                 Grid.SetRowSpan(beam, 100);
-
                 g.Children.Add(black);
                 g.Children.Add(beam);
-
                 skipAction = () =>
                 {
                     if (finished) return;
                     finished = true;
-                    var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
-                    fade.Completed += (_, _) => { g.Children.Remove(black); g.Children.Remove(beam); done?.Invoke(); };
-                    black.BeginAnimation(UIElement.OpacityProperty, fade);
-                    beam.BeginAnimation(UIElement.OpacityProperty, fade);
+                    var fadeBlack = new DoubleAnimation(black.Opacity, 0, TimeSpan.FromMilliseconds(200));
+                    var fadeBeam = new DoubleAnimation(beam.Opacity, 0, TimeSpan.FromMilliseconds(200));
+                    fadeBlack.Completed += (_, _) => { g.Children.Remove(black); g.Children.Remove(beam); done?.Invoke(); };
+                    black.BeginAnimation(UIElement.OpacityProperty, fadeBlack);
+                    beam.BeginAnimation(UIElement.OpacityProperty, fadeBeam);
                 };
-
                 try { System.Media.SystemSounds.Beep.Play(); } catch { }
-
-                var dotFadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150));
+                // 1) точка загорается тускло (45%), без белого
+                var dotFadeIn = new DoubleAnimation(0, 0.45, TimeSpan.FromMilliseconds(150));
                 dotFadeIn.Completed += (_, _) =>
                 {
                     if (finished) return;
+                    // рампа яркости: тускло в точке → полно на весь экран
+                    var ramp = new DoubleAnimation(0.45, 1.0, TimeSpan.FromMilliseconds(700))
+                    { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+                    beam.BeginAnimation(UIElement.OpacityProperty, ramp);
+                    // 2) точка ползёт в линию
                     var lineExpand = new DoubleAnimation(4, W, TimeSpan.FromMilliseconds(250))
-                        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+                    { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
                     lineExpand.Completed += (_, _) =>
                     {
                         if (finished) return;
+                        // 3) линия раскрывается, цвет плавно бледно-зелёный → #00ff88
                         var hExpand = new DoubleAnimation(4, H, TimeSpan.FromMilliseconds(450))
-                            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-                        var colorAnim = new ColorAnimation(Colors.White, (Color)ColorConverter.ConvertFromString("#00ff88"), TimeSpan.FromMilliseconds(450));
-
+                        { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+                        var colorAnim = new ColorAnimation(
+                            (Color)ColorConverter.ConvertFromString("#7dffa8"),
+                            (Color)ColorConverter.ConvertFromString("#00ff88"),
+                            TimeSpan.FromMilliseconds(450));
                         hExpand.Completed += (_, _) =>
                         {
                             if (finished) return;
@@ -725,7 +850,6 @@ public static class Theme
                 };
                 beam.BeginAnimation(UIElement.OpacityProperty, dotFadeIn);
             }
-
             if (g.ActualHeight >= 10) Run();
             else
             {
@@ -736,11 +860,11 @@ public static class Theme
             return () => skipAction?.Invoke();
         }
 
+        // ВЫКЛ: без изменений — шторки в линию, линия в точку, точка гаснет.
         public static Action PowerOff(Grid g, Action done)
         {
             double W = g.ActualWidth, H = g.ActualHeight;
             if (W < 10 || H < 10) { done(); return () => { }; }
-
             var top = new Rectangle { Fill = Brushes.Black, Height = 0, VerticalAlignment = VerticalAlignment.Top };
             Grid.SetRowSpan(top, 100);
             var bot = new Rectangle { Fill = Brushes.Black, Height = 0, VerticalAlignment = VerticalAlignment.Bottom };
@@ -765,12 +889,10 @@ public static class Theme
                 Effect = new BlurEffect { Radius = 6 }
             };
             Grid.SetRowSpan(dot, 100);
-
             g.Children.Add(top);
             g.Children.Add(bot);
             g.Children.Add(line);
             g.Children.Add(dot);
-
             bool finished = false;
             Action skipAction = () =>
             {
@@ -788,13 +910,10 @@ public static class Theme
                 line.BeginAnimation(UIElement.OpacityProperty, fade);
                 dot.BeginAnimation(UIElement.OpacityProperty, fade);
             };
-
             try { System.Media.SystemSounds.Beep.Play(); } catch { }
-
             var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
             var topAnim = new DoubleAnimation(0, H / 2 - 1, TimeSpan.FromMilliseconds(350)) { EasingFunction = easeIn };
             var botAnim = new DoubleAnimation(0, H / 2 - 1, TimeSpan.FromMilliseconds(350)) { EasingFunction = easeIn };
-
             topAnim.Completed += (_, _) =>
             {
                 if (finished) return;
@@ -806,7 +925,7 @@ public static class Theme
                     line.Opacity = 0;
                     dot.Opacity = 1;
                     var dotFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400))
-                        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+                    { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
                     dotFade.Completed += (_, _) =>
                     {
                         if (finished) return;
@@ -823,7 +942,6 @@ public static class Theme
             };
             top.BeginAnimation(FrameworkElement.HeightProperty, topAnim);
             bot.BeginAnimation(FrameworkElement.HeightProperty, botAnim);
-
             return () => skipAction();
         }
     }
@@ -1654,214 +1772,215 @@ WebView.CoreWebView2?.Reload();
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindow.xaml
-SIZE: 11285 bytes
+SIZE: 16529 bytes
 ------------------------------------------------
 <local:ChromeWindow x:Class="MainApp.MainWindow"
-xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-xmlns:local="clr-namespace:MainApp"
-Title="LERON GUI — чат"
-Width="1600" Height="800">
-<WindowChrome.WindowChrome>
-<WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
-</WindowChrome.WindowChrome>
-<local:ChromeWindow.Resources>
-<Style TargetType="Button">
-<Setter Property="Foreground" Value="#c8ffd8"/>
-<Setter Property="Background" Value="#0b1d14"/>
-<Setter Property="BorderBrush" Value="#1d5c3d"/>
-<Setter Property="BorderThickness" Value="1"/>
-<Setter Property="FontFamily" Value="Consolas"/>
-<Setter Property="FontSize" Value="14"/>
-<Setter Property="Padding" Value="12,7"/>
-<Setter Property="Cursor" Value="Hand"/>
-<Setter Property="Template">
-<Setter.Value>
-<ControlTemplate TargetType="Button">
-<Border x:Name="bd"
-Background="{TemplateBinding Background}"
-BorderBrush="{TemplateBinding BorderBrush}"
-BorderThickness="{TemplateBinding BorderThickness}"
-CornerRadius="8"
-Padding="{TemplateBinding Padding}">
-<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-</Border>
-<ControlTemplate.Triggers>
-<Trigger Property="IsMouseOver" Value="True">
-<Setter TargetName="bd" Property="Background" Value="#123726"/>
-<Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
-</Trigger>
-<Trigger Property="IsEnabled" Value="False">
-<Setter Property="Opacity" Value="0.45"/>
-</Trigger>
-</ControlTemplate.Triggers>
-</ControlTemplate>
-</Setter.Value>
-</Setter>
-</Style>
-</local:ChromeWindow.Resources>
-<Border BorderBrush="#123626" BorderThickness="1">
-<Grid>
-<Grid.RowDefinitions>
-<RowDefinition Height="56"/>
-<RowDefinition Height="*"/>
-</Grid.RowDefinitions>
-<Border Grid.Row="0" Background="#081711" MouseLeftButtonDown="DragWindow" BorderBrush="#123626" BorderThickness="0,0,0,1">
-<Grid>
-<StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-<Border Width="40" Height="40" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
-<TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-</Border>
-<TextBlock Text="LERON GUI" FontSize="20" FontWeight="Bold" Foreground="#00ff88" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0"/>
-<TextBlock Text="· чат агента" Margin="10,0,0,0" Foreground="#447a5a" FontSize="14" VerticalAlignment="Center"/>
-<Border Background="#0d2418" BorderBrush="#1d5c3d" BorderThickness="1" CornerRadius="10" Padding="12,5" Margin="18,0,0,0" VerticalAlignment="Center">
-<StackPanel Orientation="Horizontal">
-<Ellipse x:Name="OnlineDot" Width="9" Height="9" Fill="#00ff88" VerticalAlignment="Center"/>
-<TextBlock x:Name="OnlineText" Text="онлайн" Foreground="#7dffa8" FontSize="13" FontFamily="Consolas" Margin="6,0,0,0" VerticalAlignment="Center"/>
-</StackPanel>
-</Border>
-</StackPanel>
-<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
-<Button Content="← хаб" Padding="14,7" Margin="0,0,6,0" Click="OnBackClick"/>
-<Button Content="⧉" Width="46" Height="34" Margin="0,0,6,0" Click="ToggleSize" ToolTip="Развернуть / окно"/>
-<Button Content="✕" Width="46" Height="34" Click="CloseClick" Foreground="#e94560" ToolTip="Закрыть"/>
-</StackPanel>
-</Grid>
-</Border>
-<Grid Grid.Row="1">
-<Grid.ColumnDefinitions>
-<ColumnDefinition Width="300"/>
-<ColumnDefinition Width="*"/>
-<ColumnDefinition x:Name="BrowserColumn" Width="0"/>
-</Grid.ColumnDefinitions>
-<Border Grid.Column="0" Background="#08140f" BorderBrush="#123626" BorderThickness="0,0,1,0" Padding="14">
-<Grid>
-<Grid.RowDefinitions>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="*"/>
-<RowDefinition Height="Auto"/>
-</Grid.RowDefinitions>
-<TextBlock Grid.Row="0" Text="AGENT" FontSize="13" Foreground="#00ff88" FontWeight="Bold" FontFamily="Consolas" Margin="2,0,0,10"/>
-<Border Grid.Row="1" Background="#0d2418" BorderBrush="#00ff88" BorderThickness="1" CornerRadius="10" Padding="12">
-<Grid>
-<Grid.ColumnDefinitions>
-<ColumnDefinition Width="Auto"/>
-<ColumnDefinition Width="*"/>
-<ColumnDefinition Width="Auto"/>
-</Grid.ColumnDefinitions>
-<Border Width="46" Height="46" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
-<TextBlock Text="💻" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-</Border>
-<StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-<TextBlock Text="Кодер" FontSize="17" FontWeight="Bold" Foreground="#d9ffe7"/>
-<TextBlock x:Name="AgentStatusText" Text="онлайн · готов к работе" FontSize="12" Foreground="#7dffa8" FontFamily="Consolas" Margin="0,3,0,0"/>
-</StackPanel>
-<Border Grid.Column="2" Width="22" Height="22" CornerRadius="11" Background="#00ff88" VerticalAlignment="Top">
-<TextBlock Text="✓" FontSize="13" FontWeight="Bold" Foreground="#04150c" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-</Border>
-</Grid>
-</Border>
-<Button Grid.Row="2" x:Name="ToggleBrowserBtn" Content="🌐 браузер: скрыт" Click="OnToggleBrowserClick" Padding="12,9" Margin="0,10,0,0" HorizontalContentAlignment="Left"/>
-<TextBlock Grid.Row="3" Text="СЕССИЯ" FontSize="13" Foreground="#00ff88" FontWeight="Bold" FontFamily="Consolas" Margin="2,18,0,8"/>
-<Border Grid.Row="4" Background="#0d2418" BorderBrush="#123626" BorderThickness="1" CornerRadius="10" Padding="12">
-<Grid TextElement.FontFamily="Consolas" TextElement.FontSize="13">
-<Grid.ColumnDefinitions>
-<ColumnDefinition Width="Auto"/>
-<ColumnDefinition Width="*"/>
-</Grid.ColumnDefinitions>
-<Grid.RowDefinitions>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="Auto"/>
-</Grid.RowDefinitions>
-<TextBlock Text="Роль:" Foreground="#447a5a" Margin="0,0,0,8"/>
-<TextBlock Grid.Column="1" x:Name="SessionRoleText" Text="coder" Foreground="#d9ffe7" FontWeight="Bold" Margin="10,0,0,8"/>
-<TextBlock Grid.Row="1" Text="Стиль:" Foreground="#447a5a" Margin="0,0,0,8"/>
-<TextBlock Grid.Row="1" Grid.Column="1" x:Name="SessionStyleText" Text="аккуратный" Foreground="#d9ffe7" Margin="10,0,0,8"/>
-<TextBlock Grid.Row="2" Text="Скорость:" Foreground="#447a5a" Margin="0,0,0,8"/>
-<TextBlock Grid.Row="2" Grid.Column="1" x:Name="SessionSpeedText" Text="быстро" Foreground="#d9ffe7" Margin="10,0,0,8"/>
-<TextBlock Grid.Row="3" Text="Проект:" Foreground="#447a5a"/>
-<TextBlock Grid.Row="3" Grid.Column="1" x:Name="SessionProjectText" Text="—" Foreground="#00ff88" Margin="10,0,0,0"/>
-</Grid>
-</Border>
-<TextBlock Grid.Row="6" x:Name="RoleStatus" Text="" Foreground="#8fe3ae" FontSize="12" FontFamily="Consolas" TextWrapping="Wrap" Margin="2,8,0,0"/>
-</Grid>
-</Border>
-<Grid Grid.Column="1">
-<Grid.RowDefinitions>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="*"/>
-<RowDefinition Height="Auto"/>
-</Grid.RowDefinitions>
-<Border Grid.Row="0" HorizontalAlignment="Center" Background="#0d2418" BorderBrush="#123626" BorderThickness="1" CornerRadius="10" Padding="16,5" Margin="0,12,0,0">
-<TextBlock Text="Сегодня" Foreground="#7dffa8" FontSize="13" FontFamily="Consolas"/>
-</Border>
-<ScrollViewer x:Name="ChatScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16,8">
-<StackPanel x:Name="ChatMessages"/>
-</ScrollViewer>
-<Border Grid.Row="2" Background="#081711" Padding="14,12" BorderBrush="#123626" BorderThickness="0,1,0,0">
-<Grid>
-<Grid.RowDefinitions>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="Auto"/>
-</Grid.RowDefinitions>
-<StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-<Button x:Name="ModeChatBtn" Content="💬 чат" Click="OnModeChatClick" Margin="0,0,6,0" ToolTip="Обычный разговор без проекта"/>
-<Button x:Name="ModeProjectBtn" Content="📋 планирование" Click="OnModeProjectClick" Margin="0,0,6,0" ToolTip="ИИ читает и обсуждает проект, но не меняет файлы"/>
-<Button x:Name="ModeEditBtn" Content="✏️ аккуратный" Click="OnModeEditClick" Margin="0,0,6,0" ToolTip="ИИ правит файлы, каждое действие с подтверждением"/>
-<Button x:Name="ModeAutoBtn" Content="🔄 авто" Click="OnModeAutoClick" Margin="0,0,6,0" ToolTip="Подтвердил действие один раз — похожие дальше идут сами"/>
-<Button x:Name="ModeYoloBtn" Content="⚡ агрессивный" Click="OnModeYoloClick" Margin="0,0,6,0" ToolTip="YOLO: все действия без подтверждений"/>
-<TextBlock Text="│" Foreground="#1d5c3d" Margin="4,0,6,0" VerticalAlignment="Center"/>
-<Button x:Name="ThinkBtn" Content="⚡ быстро" Click="OnThinkClick" Margin="0,0,6,0" ToolTip="Режим ответа ИИ: быстро или с мышлением (Ctrl+6)"/>
-<TextBlock Text="│" Foreground="#1d5c3d" Margin="4,0,6,0" VerticalAlignment="Center"/>
-<Button Content="📂 файлы" Click="OnToolListClick" Margin="0,0,6,0" ToolTip="Показать файлы проекта"/>
-<Button Content="📖 читать" Click="OnToolReadClick" Margin="0,0,6,0" ToolTip="Прочитать файл проекта"/>
-<Button Content="✚ создать" Click="OnToolWriteClick" Margin="0,0,6,0" ToolTip="Создать файл в проекте"/>
-<Button Content="🗑 удалить" Click="OnToolDeleteClick" Margin="0,0,10,0" ToolTip="Удалить файл из проекта"/>
-<TextBlock Text="/list /read /write /delete" Foreground="#3d6a4d" FontSize="12" FontFamily="Consolas" VerticalAlignment="Center"/>
-</StackPanel>
-<Grid Grid.Row="1">
-<Grid.ColumnDefinitions>
-<ColumnDefinition Width="*"/>
-<ColumnDefinition Width="Auto"/>
-</Grid.ColumnDefinitions>
-<Grid Grid.Column="0">
-<TextBox x:Name="InputBox"
-Background="#04110c"
-Foreground="#d9ffe7"
-BorderBrush="#1d5c3d"
-BorderThickness="1"
-Padding="12,10"
-FontSize="15"
-FontFamily="Consolas"
-TextWrapping="Wrap"
-AcceptsReturn="False"
-CaretBrush="#00ff88"
-SelectionBrush="#123626"
-IsEnabled="False"
-KeyDown="OnInputKeyDown"/>
-<TextBlock x:Name="InputPlaceholder" Text="Введите сообщение или команду..." Foreground="#3d6a4d" FontSize="15" FontFamily="Consolas" Margin="14,12,0,0" IsHitTestVisible="False"/>
-</Grid>
-<Button x:Name="SendBtn" Grid.Column="1" Content="Отправить ➤" Width="170" Margin="10,0,0,0" IsEnabled="False" Click="OnSendClick" Background="#00ff88" Foreground="#04150c" FontWeight="Bold" FontSize="15"/>
-</Grid>
-</Grid>
-</Border>
-</Grid>
-<Border Grid.Column="2" x:Name="BrowserPaneHost" BorderBrush="#123626" BorderThickness="1,0,0,0"/>
-</Grid>
-</Grid>
-</Border>
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MainApp"
+                    Title="LERON GUI — чат"
+                    Width="1600" Height="800">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
+    </WindowChrome.WindowChrome>
+    <local:ChromeWindow.Resources>
+        <Style TargetType="ScrollBar" BasedOn="{StaticResource LeronScrollBar}"/>
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="#c8ffd8"/>
+            <Setter Property="Background" Value="#0b1d14"/>
+            <Setter Property="BorderBrush" Value="#1d5c3d"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#123726"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </local:ChromeWindow.Resources>
+    <Border BorderBrush="#123626" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="56"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" Background="#081711" MouseLeftButtonDown="DragWindow" BorderBrush="#123626" BorderThickness="0,0,0,1">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <Border Width="40" Height="40" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
+                            <TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="LERON GUI" FontSize="20" FontWeight="Bold" Foreground="#00ff88" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        <TextBlock Text="· чат агента" Margin="10,0,0,0" Foreground="#447a5a" FontSize="14" VerticalAlignment="Center"/>
+                        <Border Background="#0d2418" BorderBrush="#1d5c3d" BorderThickness="1" CornerRadius="10" Padding="12,5" Margin="18,0,0,0" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="OnlineDot" Width="9" Height="9" Fill="#00ff88" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="OnlineText" Text="онлайн" Foreground="#7dffa8" FontSize="13" FontFamily="Consolas" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
+                        <Button Content="← хаб" Padding="14,7" Margin="0,0,6,0" Click="OnBackClick"/>
+                        <Button Content="⧉" Width="46" Height="34" Margin="0,0,6,0" Click="ToggleSize" ToolTip="Развернуть / окно"/>
+                        <Button Content="✕" Width="46" Height="34" Click="CloseClick" Foreground="#e94560" ToolTip="Закрыть"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="300"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition x:Name="BrowserColumn" Width="0"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="#08140f" BorderBrush="#123626" BorderThickness="0,0,1,0" Padding="14">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="AGENT" FontSize="13" Foreground="#00ff88" FontWeight="Bold" FontFamily="Consolas" Margin="2,0,0,10"/>
+                        <Border Grid.Row="1" Background="#0d2418" BorderBrush="#00ff88" BorderThickness="1" CornerRadius="10" Padding="12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="46" Height="46" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
+                                    <TextBlock Text="💻" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Кодер" FontSize="17" FontWeight="Bold" Foreground="#d9ffe7"/>
+                                    <TextBlock x:Name="AgentStatusText" Text="онлайн · готов к работе" FontSize="12" Foreground="#7dffa8" FontFamily="Consolas" Margin="0,3,0,0"/>
+                                </StackPanel>
+                                <Border Grid.Column="2" Width="22" Height="22" CornerRadius="11" Background="#00ff88" VerticalAlignment="Top">
+                                    <TextBlock Text="✓" FontSize="13" FontWeight="Bold" Foreground="#04150c" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Button Grid.Row="2" x:Name="ToggleBrowserBtn" Content="🌐 браузер: скрыт" Click="OnToggleBrowserClick" Padding="12,9" Margin="0,10,0,0" HorizontalContentAlignment="Left"/>
+                        <TextBlock Grid.Row="3" Text="СЕССИЯ" FontSize="13" Foreground="#00ff88" FontWeight="Bold" FontFamily="Consolas" Margin="2,18,0,8"/>
+                        <Border Grid.Row="4" Background="#0d2418" BorderBrush="#123626" BorderThickness="1" CornerRadius="10" Padding="12">
+                            <Grid TextElement.FontFamily="Consolas" TextElement.FontSize="13">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Роль:" Foreground="#447a5a" Margin="0,0,0,8"/>
+                                <TextBlock Grid.Column="1" x:Name="SessionRoleText" Text="coder" Foreground="#d9ffe7" FontWeight="Bold" Margin="10,0,0,8"/>
+                                <TextBlock Grid.Row="1" Text="Стиль:" Foreground="#447a5a" Margin="0,0,0,8"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SessionStyleText" Text="аккуратный" Foreground="#d9ffe7" Margin="10,0,0,8"/>
+                                <TextBlock Grid.Row="2" Text="Скорость:" Foreground="#447a5a" Margin="0,0,0,8"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="SessionSpeedText" Text="быстро" Foreground="#d9ffe7" Margin="10,0,0,8"/>
+                                <TextBlock Grid.Row="3" Text="Проект:" Foreground="#447a5a"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SessionProjectText" Text="—" Foreground="#00ff88" Margin="10,0,0,0"/>
+                            </Grid>
+                        </Border>
+                        <TextBlock Grid.Row="6" x:Name="RoleStatus" Text="" Foreground="#8fe3ae" FontSize="12" FontFamily="Consolas" TextWrapping="Wrap" Margin="2,8,0,0"/>
+                    </Grid>
+                </Border>
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" HorizontalAlignment="Center" Background="#0d2418" BorderBrush="#123626" BorderThickness="1" CornerRadius="10" Padding="16,5" Margin="0,12,0,0">
+                        <TextBlock Text="Сегодня" Foreground="#7dffa8" FontSize="13" FontFamily="Consolas"/>
+                    </Border>
+                    <ScrollViewer x:Name="ChatScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16,8">
+                        <StackPanel x:Name="ChatMessages"/>
+                    </ScrollViewer>
+                    <Border Grid.Row="2" Background="#081711" Padding="14,12" BorderBrush="#123626" BorderThickness="0,1,0,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                                <Button x:Name="ModeChatBtn" Content="💬 чат" Click="OnModeChatClick" Margin="0,0,6,0" ToolTip="Обычный разговор без проекта"/>
+                                <Button x:Name="ModeProjectBtn" Content="📋 планирование" Click="OnModeProjectClick" Margin="0,0,6,0" ToolTip="ИИ читает и обсуждает проект, но не меняет файлы"/>
+                                <Button x:Name="ModeEditBtn" Content="✏️ аккуратный" Click="OnModeEditClick" Margin="0,0,6,0" ToolTip="ИИ правит файлы, каждое действие с подтверждением"/>
+                                <Button x:Name="ModeAutoBtn" Content="🔄 авто" Click="OnModeAutoClick" Margin="0,0,6,0" ToolTip="Подтвердил действие один раз — похожие дальше идут сами"/>
+                                <Button x:Name="ModeYoloBtn" Content="⚡ агрессивный" Click="OnModeYoloClick" Margin="0,0,6,0" ToolTip="YOLO: все действия без подтверждений"/>
+                                <TextBlock Text="│" Foreground="#1d5c3d" Margin="4,0,6,0" VerticalAlignment="Center"/>
+                                <Button x:Name="ThinkBtn" Content="⚡ быстро" Click="OnThinkClick" Margin="0,0,6,0" ToolTip="Режим ответа ИИ: быстро или с мышлением (Ctrl+6)"/>
+                                <TextBlock Text="│" Foreground="#1d5c3d" Margin="4,0,6,0" VerticalAlignment="Center"/>
+                                <Button Content="📂 файлы" Click="OnToolListClick" Margin="0,0,6,0" ToolTip="Показать файлы проекта"/>
+                                <Button Content="📖 читать" Click="OnToolReadClick" Margin="0,0,6,0" ToolTip="Прочитать файл проекта"/>
+                                <Button Content="✚ создать" Click="OnToolWriteClick" Margin="0,0,6,0" ToolTip="Создать файл в проекте"/>
+                                <Button Content="🗑 удалить" Click="OnToolDeleteClick" Margin="0,0,10,0" ToolTip="Удалить файл из проекта"/>
+                                <TextBlock Text="/list /read /write /delete" Foreground="#3d6a4d" FontSize="12" FontFamily="Consolas" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid Grid.Column="0">
+                                    <TextBox x:Name="InputBox"
+                                             Background="#04110c"
+                                             Foreground="#d9ffe7"
+                                             BorderBrush="#1d5c3d"
+                                             BorderThickness="1"
+                                             Padding="12,10"
+                                             FontSize="15"
+                                             FontFamily="Consolas"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="False"
+                                             CaretBrush="#00ff88"
+                                             SelectionBrush="#123626"
+                                             IsEnabled="False"
+                                             KeyDown="OnInputKeyDown"/>
+                                    <TextBlock x:Name="InputPlaceholder" Text="Введите сообщение или команду..." Foreground="#3d6a4d" FontSize="15" FontFamily="Consolas" Margin="14,12,0,0" IsHitTestVisible="False"/>
+                                </Grid>
+                                <Button x:Name="SendBtn" Grid.Column="1" Content="Отправить ➤" Width="170" Margin="10,0,0,0" IsEnabled="False" Click="OnSendClick" Background="#00ff88" Foreground="#04150c" FontWeight="Bold" FontSize="15"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <Border Grid.Column="2" x:Name="BrowserPaneHost" BorderBrush="#123626" BorderThickness="1,0,0,0"/>
+            </Grid>
+        </Grid>
+    </Border>
 </local:ChromeWindow>
 
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindow.xaml.cs
-SIZE: 21759 bytes
+SIZE: 23017 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -2134,79 +2253,105 @@ Bg = bgColor
 SaveHistoryToDisk();
 AddMessageBlock(author, text, bgColor);
 }
-private void AddMessageBlock(string author, string text, string bgColor)
+private void AddMessageBlock(string author, string text, string bg)
 {
-var isUser = bgColor == "#0f3460";
-var isCancel = text.StartsWith("⏹");
-var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
-row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-var avatar = new Border
-{
-Width = 38,
-Height = 38,
-CornerRadius = new CornerRadius(19),
-Background = B("#0d2418"),
-BorderBrush = B(isUser ? "#00ff88" : "#1d5c3d"),
-BorderThickness = new Thickness(1),
-Margin = new Thickness(0, 2, 10, 0),
-VerticalAlignment = VerticalAlignment.Top,
-Visibility = isCancel ? Visibility.Collapsed : Visibility.Visible
-};
-avatar.Child = new TextBlock
-{
-Text = ">_",
-FontFamily = Mono,
-FontSize = 13,
-Foreground = B("#00ff88"),
-HorizontalAlignment = HorizontalAlignment.Center,
-VerticalAlignment = VerticalAlignment.Center
-};
-Grid.SetColumn(avatar, 0);
-var time = new TextBlock
-{
-Text = DateTime.Now.ToString("HH:mm"),
-FontFamily = Mono,
-FontSize = 12,
-Foreground = B("#447a5a"),
-Margin = new Thickness(0, 8, 12, 0),
-VerticalAlignment = VerticalAlignment.Top
-};
-Grid.SetColumn(time, 1);
-var bubble = new Border
-{
-Background = B(isCancel ? "#0a1410" : isUser ? "#0f241a" : "#0a1410"),
-BorderBrush = B(isCancel ? "#1a3a2a" : isUser ? "#00ff88" : "#1a3a2a"),
-BorderThickness = new Thickness(1),
-CornerRadius = new CornerRadius(8),
-Padding = new Thickness(12, 8, 12, 8)
-};
-var stack = new StackPanel();
-stack.Children.Add(new TextBlock
-{
-Text = author.ToUpper(),
-FontFamily = Mono,
-FontSize = 11,
-FontWeight = FontWeights.Bold,
-Foreground = B(isUser ? "#00ff88" : "#4a7a5a"),
-Margin = new Thickness(0, 0, 0, 4)
-});
-stack.Children.Add(new TextBlock
-{
-Text = text,
-Foreground = B(isCancel ? "#447a5a" : "#c8ffd8"),
-FontStyle = isCancel ? FontStyles.Italic : FontStyles.Normal,
-TextWrapping = TextWrapping.Wrap,
-FontSize = 14
-});
-bubble.Child = stack;
-Grid.SetColumn(bubble, 2);
-row.Children.Add(avatar);
-row.Children.Add(time);
-row.Children.Add(bubble);
-ChatMessages.Children.Add(row);
-ChatScroll.ScrollToEnd();
+    bool isUser = author.Trim().Equals("ТЫ", StringComparison.OrdinalIgnoreCase);
+
+    var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
+    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) });
+    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+    row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+    row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+    // время сверху над пузырем
+    var time = new TextBlock
+    {
+        Text = DateTime.Now.ToString("HH:mm"),
+        FontFamily = Theme.Font(),
+        FontSize = 12,
+        Foreground = Theme.B("#447a5a"),
+        Margin = new Thickness(4, 0, 0, 4)
+    };
+    Grid.SetRow(time, 0);
+    Grid.SetColumn(time, 1);
+    row.Children.Add(time);
+
+    // аватар прижат к НИЗУ пузыря — как в Telegram
+    var avatar = new Border
+    {
+        Width = 40,
+        Height = 40,
+        CornerRadius = new CornerRadius(20),
+        Background = Theme.B("#0d2418"),
+        BorderBrush = isUser ? Theme.B("#00ff88") : Theme.B("#1d5c3d"),
+        BorderThickness = new Thickness(1),
+        VerticalAlignment = VerticalAlignment.Bottom,
+        HorizontalAlignment = HorizontalAlignment.Center
+    };
+    if (isUser)
+    {
+        avatar.Child = new System.Windows.Shapes.Path
+        {
+            Fill = Theme.B("#00ff88"),
+            Width = 16,
+            Height = 16,
+            Stretch = System.Windows.Media.Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Data = System.Windows.Media.Geometry.Parse(
+                "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z")
+        };
+    }
+    else
+    {
+        avatar.Child = new TextBlock
+        {
+            Text = ">_",
+            FontFamily = Theme.Font(),
+            FontSize = 15,
+            FontWeight = FontWeights.Bold,
+            Foreground = Theme.B("#7dffa8"),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+    }
+    Grid.SetRow(avatar, 1);
+    Grid.SetColumn(avatar, 0);
+    row.Children.Add(avatar);
+
+    var bubble = new Border
+    {
+        Background = Theme.B("#0a1a12"),
+        BorderBrush = isUser ? Theme.B("#00ff88") : Theme.B(bg),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(8),
+        Padding = new Thickness(12, 8, 12, 10),
+        Margin = new Thickness(4, 0, 0, 0)
+    };
+    var inner = new StackPanel();
+    inner.Children.Add(new TextBlock
+    {
+        Text = author,
+        FontFamily = Theme.Font(),
+        FontSize = 11,
+        Foreground = isUser ? Theme.B("#00ff88") : Theme.B("#447a5a"),
+        Margin = new Thickness(0, 0, 0, 4)
+    });
+    inner.Children.Add(new TextBlock
+    {
+        Text = text,
+        FontFamily = Theme.Font(),
+        FontSize = 14,
+        Foreground = Theme.B("#d9ffe7"),
+        TextWrapping = TextWrapping.Wrap
+    });
+    bubble.Child = inner;
+    Grid.SetRow(bubble, 1);
+    Grid.SetColumn(bubble, 1);
+    row.Children.Add(bubble);
+
+    ChatMessages.Children.Add(row);
+    ChatScroll.ScrollToEnd();
 }
 private void OnInputKeyDown(object sender, KeyEventArgs e)
 {
@@ -2565,118 +2710,119 @@ Save(map);
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubWindow.xaml
-SIZE: 5438 bytes
+SIZE: 7561 bytes
 ------------------------------------------------
 <local:ChromeWindow x:Class="MainApp.ProjectHubWindow"
-xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-xmlns:local="clr-namespace:MainApp"
-Title="LERON GUI — проекты"
-Width="1100" Height="760"
-KeyDown="OnKeyDown">
-<WindowChrome.WindowChrome>
-<WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
-</WindowChrome.WindowChrome>
-<local:ChromeWindow.Resources>
-<Style TargetType="Button">
-<Setter Property="Foreground" Value="#c8ffd8"/>
-<Setter Property="Background" Value="#0b1d14"/>
-<Setter Property="BorderBrush" Value="#1d5c3d"/>
-<Setter Property="BorderThickness" Value="1"/>
-<Setter Property="FontFamily" Value="Consolas"/>
-<Setter Property="FontSize" Value="14"/>
-<Setter Property="Padding" Value="12,7"/>
-<Setter Property="Cursor" Value="Hand"/>
-<Setter Property="Template">
-<Setter.Value>
-<ControlTemplate TargetType="Button">
-<Border x:Name="bd"
-Background="{TemplateBinding Background}"
-BorderBrush="{TemplateBinding BorderBrush}"
-BorderThickness="{TemplateBinding BorderThickness}"
-CornerRadius="8"
-Padding="{TemplateBinding Padding}">
-<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-</Border>
-<ControlTemplate.Triggers>
-<Trigger Property="IsMouseOver" Value="True">
-<Setter TargetName="bd" Property="Background" Value="#123726"/>
-<Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
-</Trigger>
-<Trigger Property="IsEnabled" Value="False">
-<Setter Property="Opacity" Value="0.45"/>
-</Trigger>
-</ControlTemplate.Triggers>
-</ControlTemplate>
-</Setter.Value>
-</Setter>
-</Style>
-</local:ChromeWindow.Resources>
-<Border BorderBrush="#123626" BorderThickness="1" Background="#04150c">
-<Grid x:Name="RootGrid" Background="#04150c">
-<Grid.RowDefinitions>
-<RowDefinition Height="56"/>
-<RowDefinition Height="Auto"/>
-<RowDefinition Height="*"/>
-<RowDefinition Height="Auto"/>
-</Grid.RowDefinitions>
-<Border Grid.Row="0" Background="#081711" MouseLeftButtonDown="DragWindow">
-<Grid>
-<StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-<Border Width="40" Height="40" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
-<TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-</Border>
-<TextBlock Text="LERON GUI" FontSize="20" FontWeight="Bold" Foreground="#00ff88" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0"/>
-<TextBlock Text="· хаб проектов" Margin="10,0,0,0" Foreground="#447a5a" FontSize="14" VerticalAlignment="Center"/>
-</StackPanel>
-<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
-<Button Content="⛶" Width="46" Height="34" Margin="0,0,6,0" Click="ToggleSize"/>
-<Button Content="✕" Width="46" Height="34" Click="CloseClick" Foreground="#e94560"/>
-</StackPanel>
-</Grid>
-</Border>
-<Grid Grid.Row="1" Margin="20,16,20,12" Background="#04150c">
-<Grid.ColumnDefinitions>
-<ColumnDefinition Width="*"/>
-<ColumnDefinition Width="Auto"/>
-</Grid.ColumnDefinitions>
-<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-<TextBlock Text="ПРОЕКТЫ" FontSize="18" FontWeight="Bold" Foreground="#c8ffd8"/>
-<Border Background="#123020" CornerRadius="6" Padding="10,4" Margin="12,0,0,0">
-<TextBlock x:Name="CountText" Text="0" FontSize="15" Foreground="#00ff88"/>
-</Border>
-</StackPanel>
-<Button Grid.Column="1" Content="+ новый проект (N)" Padding="18,10" Click="OnNewProjectButtonClick"/>
-</Grid>
-<ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="20,0,20,0" Padding="0,0,0,12" Background="#04150c">
-<StackPanel>
-<StackPanel x:Name="ProjectsPanel"/>
-<Grid x:Name="EmptyState" HorizontalAlignment="Center" Margin="0,28,0,0" Width="460" Height="180">
-<Rectangle Stroke="#1d5c3d" StrokeThickness="1" StrokeDashArray="4 3" RadiusX="12" RadiusY="12" Fill="#061a10"/>
-<StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-<TextBlock Text="📁+" FontSize="28" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
-<TextBlock Text="Больше проектов нет" FontSize="14" Foreground="#4a7a5a" HorizontalAlignment="Center" Margin="0,10,0,4"/>
-<TextBlock Text="Нажмите N, чтобы создать новый проект" FontSize="13" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
-</StackPanel>
-</Grid>
-</StackPanel>
-</ScrollViewer>
-<Border Grid.Row="3" Background="#081711" Padding="16,12">
-<Grid>
-<Grid.ColumnDefinitions>
-<ColumnDefinition Width="*"/>
-<ColumnDefinition Width="Auto"/>
-</Grid.ColumnDefinitions>
-<TextBlock x:Name="FooterLeft" Text="Нет проектов — нажми N" Foreground="#8fe3ae" FontSize="15" VerticalAlignment="Center"/>
-<StackPanel Grid.Column="1" Orientation="Horizontal">
-<TextBlock Text="Enter — открыть · N — новый · S — чат · Q — выход" Foreground="#447a5a" FontSize="13" VerticalAlignment="Center" Margin="0,0,14,0"/>
-<Button Content="чат (S)" Padding="14,8" Margin="0,0,8,0" Click="OnConfigureClick"/>
-<Button Content="выход (Q)" Padding="14,8" Click="OnExitClick"/>
-</StackPanel>
-</Grid>
-</Border>
-</Grid>
-</Border>
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MainApp"
+                    Title="LERON GUI — проекты"
+                    Width="1100" Height="760"
+                    KeyDown="OnKeyDown">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
+    </WindowChrome.WindowChrome>
+    <local:ChromeWindow.Resources>
+        <Style TargetType="ScrollBar" BasedOn="{StaticResource LeronScrollBar}"/>
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="#c8ffd8"/>
+            <Setter Property="Background" Value="#0b1d14"/>
+            <Setter Property="BorderBrush" Value="#1d5c3d"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#123726"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#00ff88"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </local:ChromeWindow.Resources>
+    <Border BorderBrush="#123626" BorderThickness="1" Background="#04150c">
+        <Grid x:Name="RootGrid" Background="#04150c">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="56"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" Background="#081711" MouseLeftButtonDown="DragWindow">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <Border Width="40" Height="40" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
+                            <TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="LERON GUI" FontSize="20" FontWeight="Bold" Foreground="#00ff88" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        <TextBlock Text="· хаб проектов" Margin="10,0,0,0" Foreground="#447a5a" FontSize="14" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
+                        <Button Content="⛶" Width="46" Height="34" Margin="0,0,6,0" Click="ToggleSize"/>
+                        <Button Content="✕" Width="46" Height="34" Click="CloseClick" Foreground="#e94560"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <Grid Grid.Row="1" Margin="20,16,20,12" Background="#04150c">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="ПРОЕКТЫ" FontSize="18" FontWeight="Bold" Foreground="#c8ffd8"/>
+                    <Border Background="#123020" CornerRadius="6" Padding="10,4" Margin="12,0,0,0">
+                        <TextBlock x:Name="CountText" Text="0" FontSize="15" Foreground="#00ff88"/>
+                    </Border>
+                </StackPanel>
+                <Button Grid.Column="1" Content="+ новый проект (N)" Padding="18,10" Click="OnNewProjectButtonClick"/>
+            </Grid>
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="20,0,20,0" Padding="0,0,0,12" Background="#04150c">
+                <StackPanel>
+                    <StackPanel x:Name="ProjectsPanel"/>
+                    <Grid x:Name="EmptyState" HorizontalAlignment="Center" Margin="0,28,0,0" Width="460" Height="180">
+                        <Rectangle Stroke="#1d5c3d" StrokeThickness="1" StrokeDashArray="4 3" RadiusX="12" RadiusY="12" Fill="#061a10"/>
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="📁+" FontSize="28" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Больше проектов нет" FontSize="14" Foreground="#4a7a5a" HorizontalAlignment="Center" Margin="0,10,0,4"/>
+                            <TextBlock Text="Нажмите N, чтобы создать новый проект" FontSize="13" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+            <Border Grid.Row="3" Background="#081711" Padding="16,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="FooterLeft" Text="Нет проектов — нажми N" Foreground="#8fe3ae" FontSize="15" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="Enter — открыть · N — новый · S — чат · Q — выход" Foreground="#447a5a" FontSize="13" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                        <Button Content="чат (S)" Padding="14,8" Margin="0,0,8,0" Click="OnConfigureClick"/>
+                        <Button Content="выход (Q)" Padding="14,8" Click="OnExitClick"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
 </local:ChromeWindow>
 
 
@@ -3181,7 +3327,7 @@ SelectionBrush="#123626" VerticalAlignment="Center" KeyDown="OnInputKeyDown"/>
 
 ------------------------------------------------
 FILE: program\main\splash\SplashWindow.xaml.cs
-SIZE: 10442 bytes
+SIZE: 10799 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -3283,6 +3429,8 @@ public partial class SplashWindow : ChromeWindow
             {
                 TypeLine("> PHOSPHOR P1-GREEN .... OK", () =>
                 {
+                    // Регистрация — только самый первый запуск.
+                    // Потом профиль уже есть и идёт обычное приветствие.
                     if (UserProfile.Exists()) StartGreet();
                     else TypeLine("> первый запуск · регистрация пользователя", AskNick);
                 });
@@ -3299,19 +3447,18 @@ public partial class SplashWindow : ChromeWindow
         Topmost = true;
         var next = new ProjectHubWindow();
         next.UseFadeIn = false;
-        next.Opacity = 1;
+        next.Opacity = 0;
         next.Show();
-        
+
         var skipOff = Theme.Crt.PowerOff(RootGrid, () =>
         {
             Topmost = false;
             Close();
-            var hg = (next.Content as Border)?.Child as Grid ?? next.Content as Grid;
-            if (hg != null)
+            var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(350))
             {
-                var skipOn = Theme.Crt.PowerOn(hg);
-                HookSkip(next, skipOn);
-            }
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+            next.BeginAnimation(OpacityProperty, fadeIn);
         });
         HookSkip(this, skipOff);
     }
@@ -3344,7 +3491,13 @@ public partial class SplashWindow : ChromeWindow
         catch { }
     }
 
-    private void AskNick() { _stage = Stage.AskNick; Print("> введи ник: "); InputLine.Visibility = Visibility.Visible; InputBox.Focus(); }
+    private void AskNick()
+    {
+        _stage = Stage.AskNick;
+        Print("> введи ник: ");
+        InputLine.Visibility = Visibility.Visible;
+        InputBox.Focus();
+    }
 
     private void OnInputKeyDown(object sender, KeyEventArgs e)
     {
@@ -3354,14 +3507,20 @@ public partial class SplashWindow : ChromeWindow
         if (_stage == Stage.AskNick)
         {
             if (text.Length == 0) { Print("  ⚠ ник не может быть пустым"); return; }
-            _nick = text; Print("  ✓ ник: " + _nick); InputBox.Clear();
-            _stage = Stage.AskAbout; Print("> расскажи о себе в паре слов: ");
+            _nick = text;
+            Print("  ✓ ник: " + _nick);
+            InputBox.Clear();
+            _stage = Stage.AskAbout;
+            Print("> расскажи о себе в паре слов: ");
         }
         else if (_stage == Stage.AskAbout)
         {
-            UserProfile.Save(_nick, text); Print("  ✓ профиль сохранён");
-            InputLine.Visibility = Visibility.Collapsed; SessionUser.Text = _nick;
-            FooterRight.Text = $"USER: {_nick} // TTY1"; StartGreet();
+            UserProfile.Save(_nick, text);
+            Print("  ✓ профиль сохранён");
+            InputLine.Visibility = Visibility.Collapsed;
+            SessionUser.Text = _nick;
+            FooterRight.Text = $"USER: {_nick} // TTY1";
+            StartGreet();
         }
     }
 
@@ -3468,7 +3627,7 @@ public static class UserProfile
 
 ------------------------------------------------
 FILE: program\sending and receiving\config.json
-SIZE: 916 bytes
+SIZE: 669 bytes
 ------------------------------------------------
 {
   "Roles": {
@@ -3484,13 +3643,13 @@ SIZE: 916 bytes
       "Name": "test_qwen",
       "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen",
       "Role": "team",
-      "LastOpened": "2026-08-21T03:10:52.9422435\u002B03:00"
+      "LastOpened": "2026-08-21T04:54:11.7825031\u002B03:00"
     }
   ],
   "AutoApprove": [],
   "UserProfile": {
-    "Nick": "LERON",
-    "About": "\u042F \u0437\u0430\u043D\u0438\u043C\u0430\u044E\u0441\u044C \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435\u043C, \u0445\u043E\u0447\u0443 \u043F\u043E\u043B\u0443\u0447\u0430\u0442\u044C \u043F\u0440\u044F\u043C\u044B\u0435 \u043E\u0442\u0432\u0435\u0442\u044B \u043E\u0442 \u0438\u0438"
+    "Nick": "\u041C\u0430\u0440\u043A",
+    "About": "\u042F \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0438\u0441\u0442"
   }
 }
 
@@ -4509,7 +4668,7 @@ class PendingTool
 
 ------------------------------------------------
 FILE: program\sending and receiving\history.json
-SIZE: 36757 bytes
+SIZE: 57482 bytes
 ------------------------------------------------
 {
   "coder": [
@@ -5038,6 +5197,66 @@ SIZE: 36757 bytes
     {
       "Author": "coder",
       "Text": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0441 \u0444\u0430\u0439\u043B\u0430\u043C\u0438 \u043D\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F. \u0422\u0435\u043A\u0441\u0442 \u0438\u0437 20 \u043F\u0440\u0435\u0434\u043B\u043E\u0436\u0435\u043D\u0438\u0439:\n\n1. \u041F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u0432\u043D\u0438\u043C\u0430\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u0438 \u043A \u0434\u0435\u0442\u0430\u043B\u044F\u043C.\n2. \u041A\u0430\u0436\u0434\u044B\u0439 \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A \u0441\u0442\u0430\u043B\u043A\u0438\u0432\u0430\u0435\u0442\u0441\u044F \u0441 \u043E\u0448\u0438\u0431\u043A\u0430\u043C\u0438 \u0432 \u043A\u043E\u0434\u0435.\n3. \u041E\u0442\u043B\u0430\u0434\u043A\u0430 \u043F\u043E\u043C\u043E\u0433\u0430\u0435\u0442 \u043D\u0430\u0439\u0442\u0438 \u0438 \u0438\u0441\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u043F\u0440\u043E\u0431\u043B\u0435\u043C\u044B.\n4. \u0427\u0438\u0441\u0442\u044B\u0439 \u043A\u043E\u0434 \u0443\u043F\u0440\u043E\u0449\u0430\u0435\u0442 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u043A\u0443 \u043F\u0440\u043E\u0435\u043A\u0442\u0430.\n5. \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430\u0446\u0438\u044F \u0432\u0430\u0436\u043D\u0430 \u0434\u043B\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u043E\u0439 \u0440\u0430\u0431\u043E\u0442\u044B.\n6. \u0422\u0435\u0441\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u043F\u043E\u0432\u044B\u0448\u0430\u0435\u0442 \u043D\u0430\u0434\u0435\u0436\u043D\u043E\u0441\u0442\u044C \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u043D\u043E\u0433\u043E \u043E\u0431\u0435\u0441\u043F\u0435\u0447\u0435\u043D\u0438\u044F.\n7. \u0410\u043B\u0433\u043E\u0440\u0438\u0442\u043C\u044B \u043B\u0435\u0436\u0430\u0442 \u0432 \u043E\u0441\u043D\u043E\u0432\u0435 \u044D\u0444\u0444\u0435\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0440\u0435\u0448\u0435\u043D\u0438\u0439.\n8. \u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u044B \u0434\u0430\u043D\u043D\u044B\u0445 \u043E\u0440\u0433\u0430\u043D\u0438\u0437\u0443\u044E\u0442 \u0438\u043D\u0444\u043E\u0440\u043C\u0430\u0446\u0438\u044E \u043E\u043F\u0442\u0438\u043C\u0430\u043B\u044C\u043D\u043E.\n9. \u042F\u0437\u044B\u043A\u0438 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044F \u043F\u043E\u0441\u0442\u043E\u044F\u043D\u043D\u043E \u0440\u0430\u0437\u0432\u0438\u0432\u0430\u044E\u0442\u0441\u044F.\n10. \u041D\u043E\u0432\u044B\u0435 \u0444\u0440\u0435\u0439\u043C\u0432\u043E\u0440\u043A\u0438 \u0443\u0441\u043A\u043E\u0440\u044F\u044E\u0442 \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u043A\u0443 \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u0439.\n11. \u0412\u0435\u0440\u0441\u0438\u043E\u043D\u043D\u044B\u0439 \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442 \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439.\n12. Code review \u0443\u043B\u0443\u0447\u0448\u0430\u0435\u0442 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u043E \u043A\u043E\u0434\u0430.\n13. \u0410\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0437\u0430\u0446\u0438\u044F \u0440\u0443\u0442\u0438\u043D\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u044D\u043A\u043E\u043D\u043E\u043C\u0438\u0442 \u0432\u0440\u0435\u043C\u044F.\n14. \u0411\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u044C \u0434\u043E\u043B\u0436\u043D\u0430 \u0443\u0447\u0438\u0442\u044B\u0432\u0430\u0442\u044C\u0441\u044F \u043D\u0430 \u043A\u0430\u0436\u0434\u043E\u043C \u044D\u0442\u0430\u043F\u0435.\n15. \u041F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C \u0432\u043B\u0438\u044F\u0435\u0442 \u043D\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439 \u043E\u043F\u044B\u0442.\n16. \u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u0430 \u0441\u0438\u0441\u0442\u0435\u043C\u044B \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u044F\u0435\u0442 \u0435\u0451 \u043C\u0430\u0441\u0448\u0442\u0430\u0431\u0438\u0440\u0443\u0435\u043C\u043E\u0441\u0442\u044C.\n17. \u041D\u0435\u043F\u0440\u0435\u0440\u044B\u0432\u043D\u043E\u0435 \u043E\u0431\u0443\u0447\u0435\u043D\u0438\u0435 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E \u0432 IT-\u0441\u0444\u0435\u0440\u0435.\n18. \u0421\u043E\u043E\u0431\u0449\u0435\u0441\u0442\u0432\u043E \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u043E\u0432 \u0434\u0435\u043B\u0438\u0442\u0441\u044F \u0437\u043D\u0430\u043D\u0438\u044F\u043C\u0438 \u043E\u0442\u043A\u0440\u044B\u0442\u043E.\n19. \u041F\u0440\u0430\u043A\u0442\u0438\u043A\u0430 \u0432\u0430\u0436\u043D\u0435\u0435 \u0442\u0435\u043E\u0440\u0438\u0438 \u043F\u0440\u0438 \u043E\u0441\u0432\u043E\u0435\u043D\u0438\u0438 \u043D\u0430\u0432\u044B\u043A\u043E\u0432.\n20. \u0423\u0441\u043F\u0435\u0445 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u0437\u0430\u0432\u0438\u0441\u0438\u0442 \u043E\u0442 \u0441\u043B\u0430\u0436\u0435\u043D\u043D\u043E\u0439 \u043A\u043E\u043C\u0430\u043D\u0434\u044B.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0411\u044B\u0441\u0442\u0440\u044B\u0439 \u0442\u0435\u0441\u0442, \u043D\u0430\u043F\u0438\u0448\u0438 100 \u043F\u0440\u0435\u0434\u043B\u043E\u0436\u0435\u043D\u0438\u0439 \u0440\u0430\u0437\u043D\u044B\u0445",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441 \u0444\u0430\u0439\u043B\u0430\u043C\u0438 \u043D\u0435 \u0442\u0440\u0435\u0431\u0443\u044E\u0442\u0441\u044F. \u0412\u043E\u0442 100 \u0440\u0430\u0437\u043D\u044B\u0445 \u043F\u0440\u0435\u0434\u043B\u043E\u0436\u0435\u043D\u0438\u0439:\n\n1. \u0421\u043E\u043B\u043D\u0446\u0435 \u043C\u0435\u0434\u043B\u0435\u043D\u043D\u043E \u043F\u043E\u0434\u043D\u0438\u043C\u0430\u043B\u043E\u0441\u044C \u043D\u0430\u0434 \u0433\u043E\u0440\u0438\u0437\u043E\u043D\u0442\u043E\u043C.\n2. \u041A\u043E\u0442 \u043B\u0435\u043D\u0438\u0432\u043E \u043F\u043E\u0442\u044F\u043D\u0443\u043B\u0441\u044F \u043D\u0430 \u043F\u043E\u0434\u043E\u043A\u043E\u043D\u043D\u0438\u043A\u0435.\n3. \u0412\u0435\u0442\u0435\u0440 \u0448\u0443\u043C\u0435\u043B \u0432 \u043A\u0440\u043E\u043D\u0430\u0445 \u0441\u0442\u0430\u0440\u044B\u0445 \u0441\u043E\u0441\u0435\u043D.\n4. \u041E\u043D\u0430 \u043E\u0442\u043A\u0440\u044B\u043B\u0430 \u043A\u043D\u0438\u0433\u0443 \u0438 \u043D\u0430\u0447\u0430\u043B\u0430 \u0447\u0438\u0442\u0430\u0442\u044C.\n5. \u0414\u043E\u0436\u0434\u044C \u0431\u0430\u0440\u0430\u0431\u0430\u043D\u0438\u043B \u043F\u043E \u043A\u0440\u044B\u0448\u0435 \u0434\u043E\u043C\u0430.\n6. \u0413\u043E\u0440\u043E\u0434 \u043F\u0440\u043E\u0441\u044B\u043F\u0430\u043B\u0441\u044F \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u043F\u0435\u0440\u0432\u044B\u043C\u0438 \u043B\u0443\u0447\u0430\u043C\u0438 \u0441\u0432\u0435\u0442\u0430.\n7. \u041A\u043E\u0444\u0435 \u043F\u0430\u0445\u043D\u0443\u043B \u043D\u0435\u0432\u0435\u0440\u043E\u044F\u0442\u043D\u043E \u0432\u043A\u0443\u0441\u043D\u043E.\n8. \u041E\u043D \u0437\u0430\u0431\u044B\u043B \u043A\u043B\u044E\u0447\u0438 \u043D\u0430 \u0441\u0442\u043E\u043B\u0435.\n9. \u041F\u0442\u0438\u0446\u044B \u043F\u0435\u043B\u0438 \u0441\u0432\u043E\u0438 \u0443\u0442\u0440\u0435\u043D\u043D\u0438\u0435 \u043F\u0435\u0441\u043D\u0438.\n10. \u0412\u0440\u0435\u043C\u044F \u043B\u0435\u0442\u0438\u0442 \u043D\u0435\u0437\u0430\u043C\u0435\u0442\u043D\u043E, \u043A\u043E\u0433\u0434\u0430 \u0442\u044B \u0437\u0430\u043D\u044F\u0442.\n11. \u0421\u043D\u0435\u0433 \u0441\u043A\u0440\u0438\u043F\u0435\u043B \u043F\u043E\u0434 \u043D\u043E\u0433\u0430\u043C\u0438 \u043F\u0440\u043E\u0445\u043E\u0436\u0438\u0445.\n12. \u041C\u043E\u0440\u0435 \u0441\u0435\u0433\u043E\u0434\u043D\u044F \u0431\u044B\u043B\u043E \u043E\u0441\u043E\u0431\u0435\u043D\u043D\u043E \u0441\u043F\u043E\u043A\u043E\u0439\u043D\u044B\u043C.\n13. \u0414\u0435\u0442\u0438 \u0438\u0433\u0440\u0430\u043B\u0438 \u0432\u043E \u0434\u0432\u043E\u0440\u0435 \u0434\u043E \u0441\u0430\u043C\u043E\u0433\u043E \u0432\u0435\u0447\u0435\u0440\u0430.\n14. \u0421\u0442\u0430\u0440\u044B\u0439 \u0447\u0430\u0441\u044B \u043F\u0440\u043E\u0431\u0438\u043B\u0438 \u043F\u043E\u043B\u043D\u043E\u0447\u044C.\n15. \u041B\u0438\u0441\u0442\u044C\u044F \u043E\u043F\u0430\u0434\u0430\u043B\u0438 \u0441 \u0434\u0435\u0440\u0435\u0432\u044C\u0435\u0432 \u0437\u043E\u043B\u043E\u0442\u044B\u043C \u043A\u043E\u0432\u0440\u043E\u043C.\n16. \u041C\u0443\u0437\u044B\u043A\u0430\u043D\u0442 \u043D\u0430\u0441\u0442\u0440\u043E\u0438\u043B \u0441\u0432\u043E\u044E \u0433\u0438\u0442\u0430\u0440\u0443.\n17. \u041F\u043E\u0435\u0437\u0434 \u043F\u0440\u0438\u0431\u044B\u043B \u043D\u0430 \u0432\u043E\u043A\u0437\u0430\u043B \u0441 \u043E\u043F\u043E\u0437\u0434\u0430\u043D\u0438\u0435\u043C.\n18. \u0417\u0432\u0435\u0437\u0434\u044B \u044F\u0440\u043A\u043E \u0441\u0438\u044F\u043B\u0438 \u0432 \u043D\u043E\u0447\u043D\u043E\u043C \u043D\u0435\u0431\u0435.\n19. \u0425\u0443\u0434\u043E\u0436\u043D\u0438\u043A \u0441\u043C\u0435\u0448\u0438\u0432\u0430\u043B \u043A\u0440\u0430\u0441\u043A\u0438 \u043D\u0430 \u043F\u0430\u043B\u0438\u0442\u0440\u0435.\n20. \u0420\u0435\u043A\u0430 \u0442\u0435\u043A\u043B\u0430 \u0431\u044B\u0441\u0442\u0440\u043E \u0438 \u0448\u0443\u043C\u043D\u043E \u043F\u043E\u0441\u043B\u0435 \u0434\u043E\u0436\u0434\u044F.\n21. \u0411\u0430\u0431\u0443\u0448\u043A\u0430 \u0438\u0441\u043F\u0435\u043A\u043B\u0430 \u0432\u043A\u0443\u0441\u043D\u044B\u0439 \u043F\u0438\u0440\u043E\u0433 \u0441 \u044F\u0431\u043B\u043E\u043A\u0430\u043C\u0438.\n22. \u0422\u0435\u043B\u0435\u0444\u043E\u043D \u0437\u0430\u0437\u0432\u043E\u043D\u0438\u043B \u0432 \u0441\u0430\u043C\u044B\u0439 \u043D\u0435\u043F\u043E\u0434\u0445\u043E\u0434\u044F\u0449\u0438\u0439 \u043C\u043E\u043C\u0435\u043D\u0442.\n23. \u041E\u0431\u043B\u0430\u043A\u0430 \u043F\u043B\u044B\u043B\u0438 \u043F\u043E \u043D\u0435\u0431\u0443, \u043A\u0430\u043A \u0431\u0435\u043B\u044B\u0435 \u043A\u043E\u0440\u0430\u0431\u043B\u0438.\n24. \u0421\u0442\u0443\u0434\u0435\u043D\u0442 \u0433\u043E\u0442\u043E\u0432\u0438\u043B\u0441\u044F \u043A \u0432\u0430\u0436\u043D\u043E\u043C\u0443 \u044D\u043A\u0437\u0430\u043C\u0435\u043D\u0443.\n25. \u041B\u0435\u0441 \u043D\u0430\u043F\u043E\u043B\u043D\u044F\u043B\u0441\u044F \u0442\u0430\u0438\u043D\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u043C\u0438 \u0437\u0432\u0443\u043A\u0430\u043C\u0438 \u043D\u043E\u0447\u0438.\n26. \u041C\u0430\u0448\u0438\u043D\u0430 \u0435\u0445\u0430\u043B\u0430 \u043F\u043E \u043F\u0443\u0441\u0442\u043E\u0439 \u0442\u0440\u0430\u0441\u0441\u0435.\n27. \u0426\u0432\u0435\u0442\u044B \u0440\u0430\u0441\u043F\u0443\u0441\u0442\u0438\u043B\u0438\u0441\u044C \u0440\u0430\u043D\u043D\u0435\u0439 \u0432\u0435\u0441\u043D\u043E\u0439.\n28. \u041F\u0438\u0441\u0430\u0442\u0435\u043B\u044C \u0438\u0441\u043A\u0430\u043B \u0432\u0434\u043E\u0445\u043D\u043E\u0432\u0435\u043D\u0438\u0435 \u0432 \u0442\u0438\u0448\u0438\u043D\u0435.\n29. \u041E\u0433\u043E\u043D\u044C \u0432 \u043A\u0430\u043C\u0438\u043D\u0435 \u0443\u044E\u0442\u043D\u043E \u043F\u043E\u0442\u0440\u0435\u0441\u043A\u0438\u0432\u0430\u043B.\n30. \u0421\u0430\u043C\u043E\u043B\u0435\u0442 \u0432\u0437\u043C\u044B\u043B \u0432 \u043E\u0431\u043B\u0430\u043A\u0430.\n31. \u0414\u0435\u0432\u043E\u0447\u043A\u0430 \u0440\u0438\u0441\u043E\u0432\u0430\u043B\u0430 \u043C\u0435\u043B\u043E\u043C \u043D\u0430 \u0430\u0441\u0444\u0430\u043B\u044C\u0442\u0435.\n32. \u0413\u043E\u0440\u044B \u0432\u043E\u0437\u0432\u044B\u0448\u0430\u043B\u0438\u0441\u044C \u0432\u0435\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u0435\u043D\u043D\u043E\u0439 \u0441\u0442\u0435\u043D\u043E\u0439.\n33. \u0427\u0430\u0439 \u043E\u0441\u0442\u044B\u0432\u0430\u043B \u0432 \u0437\u0430\u0431\u044B\u0442\u043E\u0439 \u0447\u0430\u0448\u043A\u0435.\n34. \u0421\u043E\u0431\u0430\u043A\u0430 \u0440\u0430\u0434\u043E\u0441\u0442\u043D\u043E \u0432\u0441\u0442\u0440\u0435\u0442\u0438\u043B\u0430 \u0445\u043E\u0437\u044F\u0438\u043D\u0430 \u0443 \u0434\u0432\u0435\u0440\u0438.\n35. \u0424\u043E\u043D\u0430\u0440\u0438 \u0437\u0430\u0436\u0433\u043B\u0438\u0441\u044C \u043D\u0430 \u0432\u0435\u0447\u0435\u0440\u043D\u0438\u0445 \u0443\u043B\u0438\u0446\u0430\u0445.\n36. \u041A\u043D\u0438\u0433\u0430 \u043B\u0435\u0436\u0430\u043B\u0430 \u043E\u0442\u043A\u0440\u044B\u0442\u043E\u0439 \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0441\u0442\u043E.\n37. \u0412\u043E\u043B\u043D\u044B \u0431\u0438\u043B\u0438\u0441\u044C \u043E \u0441\u043A\u0430\u043B\u044B \u0441 \u0433\u0440\u043E\u0445\u043E\u0442\u043E\u043C.\n38. \u0421\u0430\u0434\u043E\u0432\u043D\u0438\u043A \u043F\u043E\u043B\u0438\u0432\u0430\u043B \u043A\u043B\u0443\u043C\u0431\u044B \u0440\u0430\u043D\u043E \u0443\u0442\u0440\u043E\u043C.\n39. \u041B\u0443\u043D\u0430 \u043E\u0441\u0432\u0435\u0449\u0430\u043B\u0430 \u043F\u0443\u0442\u044C \u043F\u0443\u0442\u043D\u0438\u043A\u0443.\n40. \u041A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440 \u0437\u0430\u0432\u0438\u0441 \u0432 \u0441\u0430\u043C\u044B\u0439 \u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0439 \u043C\u043E\u043C\u0435\u043D\u0442.\n41. \u0410\u0440\u043E\u043C\u0430\u0442 \u0441\u0432\u0435\u0436\u0435\u0439 \u0432\u044B\u043F\u0435\u0447\u043A\u0438 \u0440\u0430\u0437\u043D\u043E\u0441\u0438\u043B\u0441\u044F \u043F\u043E \u043A\u0443\u0445\u043D\u0435.\n42. \u0420\u044B\u0431\u0430\u043A \u0437\u0430\u0431\u0440\u043E\u0441\u0438\u043B \u0443\u0434\u043E\u0447\u043A\u0443 \u0432 \u0442\u0438\u0445\u0443\u044E \u0437\u0430\u0432\u043E\u0434\u044C.\n43. \u041E\u0441\u0435\u043D\u044C \u043E\u043A\u0440\u0430\u0441\u0438\u043B\u0430 \u043F\u0430\u0440\u043A \u0432 \u044F\u0440\u043A\u0438\u0435 \u0446\u0432\u0435\u0442\u0430.\n44. \u041F\u0443\u0442\u0435\u0448\u0435\u0441\u0442\u0432\u0435\u043D\u043D\u0438\u043A \u0440\u0430\u0437\u0433\u043B\u044F\u0434\u044B\u0432\u0430\u043B \u0441\u0442\u0430\u0440\u0438\u043D\u043D\u0443\u044E \u043A\u0430\u0440\u0442\u0443.\n45. \u0413\u0440\u043E\u0437\u0430 \u043F\u0440\u0438\u0431\u043B\u0438\u0436\u0430\u043B\u0430\u0441\u044C \u0441 \u0437\u0430\u043F\u0430\u0434\u0430.\n46. \u041C\u0430\u043B\u044B\u0448 \u0441\u0434\u0435\u043B\u0430\u043B \u0441\u0432\u043E\u0439 \u043F\u0435\u0440\u0432\u044B\u0439 \u0448\u0430\u0433.\n47. \u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430\u0440\u044C \u0440\u0430\u0441\u0441\u0442\u0430\u0432\u043B\u044F\u043B \u043A\u043D\u0438\u0433\u0438 \u043F\u043E \u043F\u043E\u043B\u043A\u0430\u043C.\n48. \u0417\u0430\u043A\u0430\u0442 \u043E\u043A\u0440\u0430\u0441\u0438\u043B \u043D\u0435\u0431\u043E \u0432 \u0431\u0430\u0433\u0440\u043E\u0432\u044B\u0435 \u0442\u043E\u043D\u0430.\n49. \u0412\u0435\u043B\u043E\u0441\u0438\u043F\u0435\u0434\u0438\u0441\u0442 \u043C\u0447\u0430\u043B\u0441\u044F \u0432\u043D\u0438\u0437 \u043F\u043E \u0441\u043A\u043B\u043E\u043D\u0443.\n50. \u0422\u0438\u0448\u0438\u043D\u0430 \u0432 \u043B\u0435\u0441\u0443 \u0431\u044B\u043B\u0430 \u0430\u0431\u0441\u043E\u043B\u044E\u0442\u043D\u043E\u0439.\n51. \u041F\u043E\u0447\u0442\u0430\u043B\u044C\u043E\u043D \u043F\u0440\u0438\u043D\u0435\u0441 \u0434\u043E\u043B\u0433\u043E\u0436\u0434\u0430\u043D\u043D\u043E\u0435 \u043F\u0438\u0441\u044C\u043C\u043E.\n52. \u041B\u0435\u0434 \u043D\u0430 \u043E\u0437\u0435\u0440\u0435 \u043D\u0430\u0447\u0430\u043B \u0442\u0430\u044F\u0442\u044C.\n53. \u0410\u043A\u0442\u0435\u0440 \u0432\u044B\u0448\u0435\u043B \u043D\u0430 \u0441\u0446\u0435\u043D\u0443 \u043F\u043E\u0434 \u0430\u043F\u043B\u043E\u0434\u0438\u0441\u043C\u0435\u043D\u0442\u044B.\n54. \u0422\u0443\u043C\u0430\u043D \u043E\u043A\u0443\u0442\u0430\u043B \u0433\u043E\u0440\u043E\u0434 \u043F\u043B\u043E\u0442\u043D\u043E\u0439 \u043F\u0435\u043B\u0435\u043D\u043E\u0439.\n55. \u0421\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u0438 \u0432\u043E\u0437\u0432\u0435\u043B\u0438 \u043D\u043E\u0432\u044B\u0439 \u0434\u043E\u043C \u0437\u0430 \u0433\u043E\u0434.\n56. \u0411\u0430\u0431\u043E\u0447\u043A\u0430 \u0441\u0435\u043B\u0430 \u043D\u0430 \u044F\u0440\u043A\u0438\u0439 \u0446\u0432\u0435\u0442\u043E\u043A.\n57. \u0423\u0447\u0438\u0442\u0435\u043B\u044C \u043E\u0431\u044A\u044F\u0441\u043D\u044F\u043B \u0441\u043B\u043E\u0436\u043D\u0443\u044E \u0442\u0435\u043C\u0443 \u0443\u0447\u0435\u043D\u0438\u043A\u0430\u043C.\n58. \u041D\u043E\u0447\u044C \u0431\u044B\u043B\u0430 \u0442\u0435\u043F\u043B\u043E\u0439 \u0438 \u0437\u0432\u0435\u0437\u0434\u043D\u043E\u0439.\n59. \u0420\u0443\u0447\u0435\u0439 \u0436\u0443\u0440\u0447\u0430\u043B \u0441\u0440\u0435\u0434\u0438 \u043A\u0430\u043C\u043D\u0435\u0439.\n60. \u041F\u043E\u0440\u0442\u043D\u043E\u0439 \u0448\u0438\u043B \u043A\u043E\u0441\u0442\u044E\u043C \u043D\u0430 \u0437\u0430\u043A\u0430\u0437.\n61. \u0412\u0435\u0441\u043D\u0430 \u043F\u0440\u0438\u0448\u043B\u0430 \u043D\u0435\u043E\u0436\u0438\u0434\u0430\u043D\u043D\u043E \u0440\u0430\u043D\u043E.\n62. \u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u043E\u0440 \u0447\u0435\u0440\u0442\u0438\u043B \u043F\u043B\u0430\u043D \u043D\u043E\u0432\u043E\u0433\u043E \u0437\u0434\u0430\u043D\u0438\u044F.\n63. \u0413\u0440\u0438\u0431\u044B \u043F\u0440\u044F\u0442\u0430\u043B\u0438\u0441\u044C \u0432\u043E \u043C\u0445\u0443.\n64. \u041A\u043E\u0440\u0430\u0431\u043B\u044C \u043F\u043E\u043A\u0438\u043D\u0443\u043B \u0433\u0430\u0432\u0430\u043D\u044C \u043D\u0430 \u0440\u0430\u0441\u0441\u0432\u0435\u0442\u0435.\n65. \u041F\u043E\u044D\u0442 \u0447\u0438\u0442\u0430\u043B \u0441\u0442\u0438\u0445\u0438 \u043F\u0440\u0438 \u0441\u0432\u0435\u0447\u0430\u0445.\n66. \u0421\u043D\u0435\u0436\u0438\u043D\u043A\u0438 \u043A\u0440\u0443\u0436\u0438\u043B\u0438\u0441\u044C \u0432 \u0432\u043E\u0437\u0434\u0443\u0445\u0435.\n67. \u0412\u0440\u0430\u0447 \u0432\u043D\u0438\u043C\u0430\u0442\u0435\u043B\u044C\u043D\u043E \u0441\u043B\u0443\u0448\u0430\u043B \u043F\u0430\u0446\u0438\u0435\u043D\u0442\u0430.\n68. \u041B\u0435\u0442\u043D\u0438\u0439 \u0434\u0435\u043D\u044C \u0431\u044B\u043B \u0436\u0430\u0440\u043A\u0438\u043C \u0438 \u0434\u043E\u043B\u0433\u0438\u043C.\n69. \u041A\u0443\u0437\u043D\u0435\u0446 \u043A\u043E\u0432\u0430\u043B \u0436\u0435\u043B\u0435\u0437\u043E \u0432 \u0441\u0432\u043E\u0435\u0439 \u043C\u0430\u0441\u0442\u0435\u0440\u0441\u043A\u043E\u0439.\n70. \u041E\u0437\u0435\u0440\u043E \u043E\u0442\u0440\u0430\u0436\u0430\u043B\u043E \u0433\u043E\u043B\u0443\u0431\u043E\u0435 \u043D\u0435\u0431\u043E.\n71. \u041F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0438\u0441\u0442 \u043F\u0438\u0441\u0430\u043B \u043A\u043E\u0434 \u0434\u043E \u0433\u043B\u0443\u0431\u043E\u043A\u043E\u0439 \u043D\u043E\u0447\u0438.\n72. \u0412\u0435\u0442\u0432\u0438 \u0434\u0435\u0440\u0435\u0432\u044C\u0435\u0432 \u043A\u0430\u0447\u0430\u043B\u0438\u0441\u044C \u043E\u0442 \u0432\u0435\u0442\u0440\u0430.\n73. \u041A\u043E\u043D\u0434\u0438\u0442\u0435\u0440 \u0443\u043A\u0440\u0430\u0441\u0438\u043B \u0442\u043E\u0440\u0442 \u044F\u0433\u043E\u0434\u0430\u043C\u0438.\n74. \u0417\u0438\u043C\u043D\u0438\u0439 \u043B\u0435\u0441 \u0441\u0442\u043E\u044F\u043B \u0432 \u0431\u0435\u043B\u043E\u043C \u0443\u0431\u0440\u0430\u043D\u0441\u0442\u0432\u0435.\n75. \u0410\u0441\u0442\u0440\u043E\u043D\u043E\u043C \u043D\u0430\u0431\u043B\u044E\u0434\u0430\u043B \u0437\u0430 \u043A\u043E\u043C\u0435\u0442\u043E\u0439 \u0432 \u0442\u0435\u043B\u0435\u0441\u043A\u043E\u043F.\n76. \u0422\u0440\u0430\u0432\u0430 \u0431\u043B\u0435\u0441\u0442\u0435\u043B\u0430 \u043E\u0442 \u0443\u0442\u0440\u0435\u043D\u043D\u0435\u0439 \u0440\u043E\u0441\u044B.\n77. \u041C\u0443\u0437\u0435\u0439 \u043E\u0442\u043A\u0440\u044B\u043B \u0441\u0432\u043E\u0438 \u0434\u0432\u0435\u0440\u0438 \u0434\u043B\u044F \u043F\u043E\u0441\u0435\u0442\u0438\u0442\u0435\u043B\u0435\u0439.\n78. \u041F\u0447\u0435\u043B\u0430 \u0441\u043E\u0431\u0438\u0440\u0430\u043B\u0430 \u043D\u0435\u043A\u0442\u0430\u0440 \u0441 \u0446\u0432\u0435\u0442\u043E\u0432.\n79. \u0412\u043E\u0434\u043E\u043F\u0430\u0434 \u0448\u0443\u043C\u0435\u043B \u0432\u0434\u0430\u043B\u0438.\n80. \u0428\u0432\u0435\u044F \u043F\u0440\u0438\u043C\u0435\u0440\u044F\u043B\u0430 \u043D\u043E\u0432\u043E\u0435 \u043F\u043B\u0430\u0442\u044C\u0435.\n81. \u0420\u0430\u0441\u0441\u0432\u0435\u0442 \u043E\u043A\u0440\u0430\u0441\u0438\u043B \u0433\u043E\u0440\u044B \u0432 \u0440\u043E\u0437\u043E\u0432\u044B\u0439 \u0446\u0432\u0435\u0442.\n82. \u0428\u0430\u0445\u043C\u0430\u0442\u0438\u0441\u0442 \u043E\u0431\u0434\u0443\u043C\u044B\u0432\u0430\u043B \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u0445\u043E\u0434.\n83. \u042F\u0433\u043E\u0434\u044B \u0441\u043E\u0437\u0440\u0435\u043B\u0438 \u0432 \u0441\u0430\u0434\u0443.\n84. \u041A\u0430\u043F\u0438\u0442\u0430\u043D \u0432\u0435\u043B \u043A\u043E\u0440\u0430\u0431\u043B\u044C \u0441\u043A\u0432\u043E\u0437\u044C \u0448\u0442\u043E\u0440\u043C.\n85. \u0421\u043A\u0443\u043B\u044C\u043F\u0442\u043E\u0440 \u043B\u0435\u043F\u0438\u043B \u0444\u0438\u0433\u0443\u0440\u0443 \u0438\u0437 \u0433\u043B\u0438\u043D\u044B.\n86. \u0412\u0435\u0447\u0435\u0440\u043D\u0438\u0439 \u0433\u043E\u0440\u043E\u0434 \u0441\u0432\u0435\u0442\u0438\u043B\u0441\u044F \u043E\u0433\u043D\u044F\u043C\u0438.\n87. \u041E\u043B\u0435\u043D\u044C \u0441\u043A\u0440\u044B\u043B\u0441\u044F \u0432 \u0447\u0430\u0449\u0435 \u043B\u0435\u0441\u0430.\n88. \u041F\u0435\u043A\u0430\u0440\u044C \u0437\u0430\u043C\u0435\u0448\u0438\u0432\u0430\u043B \u0442\u0435\u0441\u0442\u043E \u0434\u043B\u044F \u0445\u043B\u0435\u0431\u0430.\n89. \u0420\u0430\u0434\u0443\u0433\u0430 \u043F\u043E\u044F\u0432\u0438\u043B\u0430\u0441\u044C \u043F\u043E\u0441\u043B\u0435 \u0434\u043E\u0436\u0434\u044F.\n90. \u0418\u0441\u0442\u043E\u0440\u0438\u043A \u0438\u0437\u0443\u0447\u0430\u043B \u0434\u0440\u0435\u0432\u043D\u0438\u0435 \u043C\u0430\u043D\u0443\u0441\u043A\u0440\u0438\u043F\u0442\u044B.\n91. \u041F\u0435\u0441\u043E\u043A \u0431\u044B\u043B \u0433\u043E\u0440\u044F\u0447\u0438\u043C \u043D\u0430 \u0441\u043E\u043B\u043D\u0446\u0435.\n92. \u0414\u0438\u0440\u0438\u0436\u0435\u0440 \u0443\u043F\u0440\u0430\u0432\u043B\u044F\u043B \u043E\u0440\u043A\u0435\u0441\u0442\u0440\u043E\u043C \u0443\u0432\u0435\u0440\u0435\u043D\u043D\u043E.\n93. \u0418\u0432\u0430 \u0441\u043A\u043B\u043E\u043D\u0438\u043B\u0430\u0441\u044C \u043D\u0430\u0434 \u0432\u043E\u0434\u043E\u0439.\n94. \u0424\u0435\u0440\u043C\u0435\u0440 \u0441\u043E\u0431\u0438\u0440\u0430\u043B \u0443\u0440\u043E\u0436\u0430\u0439 \u043A\u0430\u0440\u0442\u043E\u0444\u0435\u043B\u044F.\n95. \u041A\u043E\u043C\u0435\u0442\u0430 \u043F\u0440\u043E\u043D\u0435\u0441\u043B\u0430\u0441\u044C \u043F\u043E \u043D\u0435\u0431\u043E\u0441\u0432\u043E\u0434\u0443.\n96. \u042E\u0432\u0435\u043B\u0438\u0440 \u0433\u0440\u0430\u043D\u0438\u0442 \u0434\u0440\u0430\u0433\u043E\u0446\u0435\u043D\u043D\u044B\u0439 \u043A\u0430\u043C\u0435\u043D\u044C.\n97. \u0423\u0442\u0440\u043E \u043D\u0430\u0447\u0430\u043B\u043E\u0441\u044C \u0441 \u043F\u0435\u043D\u0438\u044F \u043F\u0442\u0438\u0446.\n98. \u0413\u0435\u043E\u043B\u043E\u0433 \u0438\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u043B \u0433\u043E\u0440\u043D\u044B\u0435 \u043F\u043E\u0440\u043E\u0434\u044B.\n99. \u041A\u043B\u0435\u043D \u0441\u0431\u0440\u043E\u0441\u0438\u043B \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0435 \u043B\u0438\u0441\u0442\u044C\u044F.\n100. \u0416\u0438\u0437\u043D\u044C \u043F\u043E\u043B\u043D\u0430 \u043D\u0435\u043E\u0436\u0438\u0434\u0430\u043D\u043D\u044B\u0445 \u0441\u044E\u0440\u043F\u0440\u0438\u0437\u043E\u0432.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0427\u0435\u043C \u043C\u043E\u0433\u0443 \u043F\u043E\u043C\u043E\u0447\u044C?\u0434\u0443 \u0432\u0430\u0448\u0438\u0445 \u043A\u043E\u043C\u0430\u043D\u0434.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0427\u0435\u043C \u043C\u043E\u0433\u0443 \u043F\u043E\u043C\u043E\u0447\u044C?",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0430\u0443?",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041D\u0430 \u0441\u0432\u044F\u0437\u0438. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0442\u043E\u0447\u043D\u043E",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u043E\u043D\u044F\u043B. \u0416\u0434\u0443 \u043A\u043E\u043C\u0430\u043D\u0434\u0443.",
       "Bg": "#16213e"
     }
   ]

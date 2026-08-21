@@ -45,7 +45,6 @@ public static class Theme
         };
         ambienceBrush.Freeze();
         grid.Children.Add(new Rectangle { Fill = ambienceBrush });
-
         var scanGeom = new GeometryGroup();
         for (int y = 0; y < 192; y += 3)
             scanGeom.Children.Add(new RectangleGeometry(new Rect(0, y, 64, 1)));
@@ -69,7 +68,6 @@ public static class Theme
         };
         crtBrush.Freeze();
         grid.Children.Add(new Rectangle { Fill = crtBrush });
-
         var canvas = new Canvas();
         grid.Children.Add(canvas);
         var parts = new List<(TranslateTransform tr, double y, double v)>();
@@ -93,7 +91,6 @@ public static class Theme
             }
         }
         canvas.SizeChanged += (_, _) => Seed();
-
         var bandBrush = new LinearGradientBrush
         {
             StartPoint = new Point(0.5, 0),
@@ -116,12 +113,10 @@ public static class Theme
             RenderTransform = new TranslateTransform(0, -420)
         };
         grid.Children.Add(band);
-
         var glowBrush = B("#00ff88");
         glowBrush.Freeze();
         var glow = new Rectangle { Fill = glowBrush, Opacity = 0.028 };
         grid.Children.Add(glow);
-
         var vigBrush = new RadialGradientBrush
         {
             GradientOrigin = new Point(0.5, 0.5),
@@ -134,7 +129,6 @@ public static class Theme
         };
         vigBrush.Freeze();
         grid.Children.Add(new Rectangle { Fill = vigBrush });
-
         var last = DateTime.Now;
         var start = DateTime.Now;
         void Tick(object? s, EventArgs e)
@@ -166,6 +160,8 @@ public static class Theme
 
     public static class Crt
     {
+        // ВКЛ: тусклая бледно-зелёная точка → линия → раскрытие.
+        // Яркость нарастает от точки к полному экрану, цвет плавно до #00ff88.
         public static Action PowerOn(Grid g, Action? done = null)
         {
             Action? skipAction = null;
@@ -174,48 +170,53 @@ public static class Theme
             {
                 double W = g.ActualWidth, H = g.ActualHeight;
                 if (W < 10 || H < 10) { done?.Invoke(); return; }
-
                 var black = new Rectangle { Fill = Brushes.Black, Opacity = 1 };
                 Grid.SetRowSpan(black, 100);
-                var beamBrush = new SolidColorBrush(Colors.White);
+                var beamBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7dffa8"));
                 var beam = new Rectangle
                 {
                     Fill = beamBrush, Width = 4, Height = 4,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     Opacity = 0,
-                    Effect = new BlurEffect { Radius = 8 }
+                    Effect = new BlurEffect { Radius = 4 }
                 };
                 Grid.SetRowSpan(beam, 100);
-
                 g.Children.Add(black);
                 g.Children.Add(beam);
-
                 skipAction = () =>
                 {
                     if (finished) return;
                     finished = true;
-                    var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
-                    fade.Completed += (_, _) => { g.Children.Remove(black); g.Children.Remove(beam); done?.Invoke(); };
-                    black.BeginAnimation(UIElement.OpacityProperty, fade);
-                    beam.BeginAnimation(UIElement.OpacityProperty, fade);
+                    var fadeBlack = new DoubleAnimation(black.Opacity, 0, TimeSpan.FromMilliseconds(200));
+                    var fadeBeam = new DoubleAnimation(beam.Opacity, 0, TimeSpan.FromMilliseconds(200));
+                    fadeBlack.Completed += (_, _) => { g.Children.Remove(black); g.Children.Remove(beam); done?.Invoke(); };
+                    black.BeginAnimation(UIElement.OpacityProperty, fadeBlack);
+                    beam.BeginAnimation(UIElement.OpacityProperty, fadeBeam);
                 };
-
                 try { System.Media.SystemSounds.Beep.Play(); } catch { }
-
-                var dotFadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150));
+                // 1) точка загорается тускло (45%), без белого
+                var dotFadeIn = new DoubleAnimation(0, 0.45, TimeSpan.FromMilliseconds(150));
                 dotFadeIn.Completed += (_, _) =>
                 {
                     if (finished) return;
+                    // рампа яркости: тускло в точке → полно на весь экран
+                    var ramp = new DoubleAnimation(0.45, 1.0, TimeSpan.FromMilliseconds(700))
+                    { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+                    beam.BeginAnimation(UIElement.OpacityProperty, ramp);
+                    // 2) точка ползёт в линию
                     var lineExpand = new DoubleAnimation(4, W, TimeSpan.FromMilliseconds(250))
-                        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+                    { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
                     lineExpand.Completed += (_, _) =>
                     {
                         if (finished) return;
+                        // 3) линия раскрывается, цвет плавно бледно-зелёный → #00ff88
                         var hExpand = new DoubleAnimation(4, H, TimeSpan.FromMilliseconds(450))
-                            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-                        var colorAnim = new ColorAnimation(Colors.White, (Color)ColorConverter.ConvertFromString("#00ff88"), TimeSpan.FromMilliseconds(450));
-
+                        { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+                        var colorAnim = new ColorAnimation(
+                            (Color)ColorConverter.ConvertFromString("#7dffa8"),
+                            (Color)ColorConverter.ConvertFromString("#00ff88"),
+                            TimeSpan.FromMilliseconds(450));
                         hExpand.Completed += (_, _) =>
                         {
                             if (finished) return;
@@ -238,7 +239,6 @@ public static class Theme
                 };
                 beam.BeginAnimation(UIElement.OpacityProperty, dotFadeIn);
             }
-
             if (g.ActualHeight >= 10) Run();
             else
             {
@@ -249,11 +249,11 @@ public static class Theme
             return () => skipAction?.Invoke();
         }
 
+        // ВЫКЛ: без изменений — шторки в линию, линия в точку, точка гаснет.
         public static Action PowerOff(Grid g, Action done)
         {
             double W = g.ActualWidth, H = g.ActualHeight;
             if (W < 10 || H < 10) { done(); return () => { }; }
-
             var top = new Rectangle { Fill = Brushes.Black, Height = 0, VerticalAlignment = VerticalAlignment.Top };
             Grid.SetRowSpan(top, 100);
             var bot = new Rectangle { Fill = Brushes.Black, Height = 0, VerticalAlignment = VerticalAlignment.Bottom };
@@ -278,12 +278,10 @@ public static class Theme
                 Effect = new BlurEffect { Radius = 6 }
             };
             Grid.SetRowSpan(dot, 100);
-
             g.Children.Add(top);
             g.Children.Add(bot);
             g.Children.Add(line);
             g.Children.Add(dot);
-
             bool finished = false;
             Action skipAction = () =>
             {
@@ -301,13 +299,10 @@ public static class Theme
                 line.BeginAnimation(UIElement.OpacityProperty, fade);
                 dot.BeginAnimation(UIElement.OpacityProperty, fade);
             };
-
             try { System.Media.SystemSounds.Beep.Play(); } catch { }
-
             var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
             var topAnim = new DoubleAnimation(0, H / 2 - 1, TimeSpan.FromMilliseconds(350)) { EasingFunction = easeIn };
             var botAnim = new DoubleAnimation(0, H / 2 - 1, TimeSpan.FromMilliseconds(350)) { EasingFunction = easeIn };
-
             topAnim.Completed += (_, _) =>
             {
                 if (finished) return;
@@ -319,7 +314,7 @@ public static class Theme
                     line.Opacity = 0;
                     dot.Opacity = 1;
                     var dotFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400))
-                        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+                    { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
                     dotFade.Completed += (_, _) =>
                     {
                         if (finished) return;
@@ -336,7 +331,6 @@ public static class Theme
             };
             top.BeginAnimation(FrameworkElement.HeightProperty, topAnim);
             bot.BeginAnimation(FrameworkElement.HeightProperty, botAnim);
-
             return () => skipAction();
         }
     }
