@@ -12,9 +12,8 @@ namespace MainApp;
 public class ChromeWindow : Window
 {
     public bool StartFullscreen = true;
-    // Сплэш выключает: его вход даёт PowerOn, а не дорогой фейд всего окна.
-    public bool UseFadeIn = true;
-    protected double FxIntensity = 0.5;
+    public bool UseFadeIn = false;
+    protected double FxIntensity = 0.0;
     private bool _full;
 
     public ChromeWindow()
@@ -31,53 +30,30 @@ public class ChromeWindow : Window
 
     private void OnChromeLoaded(object sender, RoutedEventArgs e)
     {
-        InjectFx();
         if (StartFullscreen) GoFull();
         if (UseFadeIn) FadeIn();
         Focus();
     }
 
-    private void InjectFx()
-    {
-        Grid? g = Content as Grid ?? (Content as Border)?.Child as Grid;
-        if (g == null) return;
-        g.Background = Theme.B("#04150c");
-        for (int i = g.Children.Count - 1; i >= 0; i--)
-        {
-            if (g.Children[i] is Rectangle r && r.Fill is RadialGradientBrush)
-                g.Children.RemoveAt(i);
-        }
-        var fx = Theme.MakeFx(FxIntensity);
-        g.Children.Insert(0, fx);
-        if (g.RowDefinitions.Count > 0)
-            Grid.SetRowSpan(fx, g.RowDefinitions.Count);
-    }
-
-    // Переход без зазора: старое окно непрозрачно, пока новое не отрисовано
-    // (ContentRendered) и не стало полностью непрозрачным поверх.
     protected void SwapTo(Window next)
     {
         if (next is ChromeWindow cw) cw.UseFadeIn = false;
         next.Opacity = 0;
-        bool started = false;
-        DispatcherTimer? fallback = null;
-        Action startFade = null!;
-        startFade = () =>
-        {
-            if (started) return;
-            started = true;
-            fallback?.Stop();
-            var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220))
-            {
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            };
-            fade.Completed += (_, _) => Close();
-            next.BeginAnimation(OpacityProperty, fade);
-        };
-        fallback = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
-        fallback.Tick += (_, _) => startFade();
-        next.ContentRendered += (_, _) => startFade();
         next.Show();
+
+        var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(220))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        fadeOut.Completed += (_, _) => Close();
+
+        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        BeginAnimation(OpacityProperty, fadeOut);
+        next.BeginAnimation(OpacityProperty, fadeIn);
     }
 
     public void GoFull()

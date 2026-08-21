@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 
 namespace MainApp;
@@ -13,7 +14,6 @@ public static class Theme
 {
     public static SolidColorBrush B(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
 
-    // Кэш: перебор системных шрифтов — дорогая операция, делаем её один раз.
     private static FontFamily? _font;
     public static FontFamily Font()
     {
@@ -28,13 +28,10 @@ public static class Theme
         return _font;
     }
 
-    // Единый слой "старого монитора". Минимум полноэкранных проходов.
     public static Grid MakeFx(double intensity)
     {
         var grid = new Grid { IsHitTestVisible = false, Opacity = intensity };
         var rnd = new Random();
-
-        // 1. Мягкое широкое свечение.
         var ambienceBrush = new RadialGradientBrush
         {
             GradientOrigin = new Point(0.5, 0.5),
@@ -49,7 +46,6 @@ public static class Theme
         ambienceBrush.Freeze();
         grid.Children.Add(new Rectangle { Fill = ambienceBrush });
 
-        // 2. Сканлайны + сетка ОДНИМ слоем. Клетки 64×64 — квадраты.
         var scanGeom = new GeometryGroup();
         for (int y = 0; y < 192; y += 3)
             scanGeom.Children.Add(new RectangleGeometry(new Rect(0, y, 64, 1)));
@@ -74,7 +70,6 @@ public static class Theme
         crtBrush.Freeze();
         grid.Children.Add(new Rectangle { Fill = crtBrush });
 
-        // 3. Пыль — 28 частиц, движение через RenderTransform.
         var canvas = new Canvas();
         grid.Children.Add(canvas);
         var parts = new List<(TranslateTransform tr, double y, double v)>();
@@ -99,7 +94,6 @@ public static class Theme
         }
         canvas.SizeChanged += (_, _) => Seed();
 
-        // 4. Регенерация — широкий медленный дрейф света.
         var bandBrush = new LinearGradientBrush
         {
             StartPoint = new Point(0.5, 0),
@@ -123,13 +117,11 @@ public static class Theme
         };
         grid.Children.Add(band);
 
-        // 5. Равномерное дыхание люминофора.
         var glowBrush = B("#00ff88");
         glowBrush.Freeze();
         var glow = new Rectangle { Fill = glowBrush, Opacity = 0.028 };
         grid.Children.Add(glow);
 
-        // 6. Виньетка.
         var vigBrush = new RadialGradientBrush
         {
             GradientOrigin = new Point(0.5, 0.5),
@@ -172,113 +164,180 @@ public static class Theme
         return grid;
     }
 
-    // "Включение" ЭЛТ: чёрный экран → вспышка линии → раскрытие из центра.
-    public static void PowerOn(Window w)
+    public static class Crt
     {
-        void TryRun()
+        public static Action PowerOn(Grid g, Action? done = null)
         {
-            var g = w.Content as Grid ?? (w.Content as Border)?.Child as Grid;
-            if (g == null) return;
-            if (g.ActualHeight >= 10) RunPowerOn(g, g.ActualHeight);
+            Action? skipAction = null;
+            bool finished = false;
+            void Run()
+            {
+                double W = g.ActualWidth, H = g.ActualHeight;
+                if (W < 10 || H < 10) { done?.Invoke(); return; }
+
+                var black = new Rectangle { Fill = Brushes.Black, Opacity = 1 };
+                Grid.SetRowSpan(black, 100);
+                var beamBrush = new SolidColorBrush(Colors.White);
+                var beam = new Rectangle
+                {
+                    Fill = beamBrush, Width = 4, Height = 4,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Opacity = 0,
+                    Effect = new BlurEffect { Radius = 8 }
+                };
+                Grid.SetRowSpan(beam, 100);
+
+                g.Children.Add(black);
+                g.Children.Add(beam);
+
+                skipAction = () =>
+                {
+                    if (finished) return;
+                    finished = true;
+                    var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
+                    fade.Completed += (_, _) => { g.Children.Remove(black); g.Children.Remove(beam); done?.Invoke(); };
+                    black.BeginAnimation(UIElement.OpacityProperty, fade);
+                    beam.BeginAnimation(UIElement.OpacityProperty, fade);
+                };
+
+                try { System.Media.SystemSounds.Beep.Play(); } catch { }
+
+                var dotFadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150));
+                dotFadeIn.Completed += (_, _) =>
+                {
+                    if (finished) return;
+                    var lineExpand = new DoubleAnimation(4, W, TimeSpan.FromMilliseconds(250))
+                        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+                    lineExpand.Completed += (_, _) =>
+                    {
+                        if (finished) return;
+                        var hExpand = new DoubleAnimation(4, H, TimeSpan.FromMilliseconds(450))
+                            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+                        var colorAnim = new ColorAnimation(Colors.White, (Color)ColorConverter.ConvertFromString("#00ff88"), TimeSpan.FromMilliseconds(450));
+
+                        hExpand.Completed += (_, _) =>
+                        {
+                            if (finished) return;
+                            var revealFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300));
+                            revealFade.Completed += (_, _) =>
+                            {
+                                if (finished) return;
+                                finished = true;
+                                g.Children.Remove(black);
+                                g.Children.Remove(beam);
+                                done?.Invoke();
+                            };
+                            black.BeginAnimation(UIElement.OpacityProperty, revealFade);
+                            beam.BeginAnimation(UIElement.OpacityProperty, revealFade);
+                        };
+                        beam.BeginAnimation(FrameworkElement.HeightProperty, hExpand);
+                        beamBrush.BeginAnimation(SolidColorBrush.ColorProperty, colorAnim);
+                    };
+                    beam.BeginAnimation(FrameworkElement.WidthProperty, lineExpand);
+                };
+                beam.BeginAnimation(UIElement.OpacityProperty, dotFadeIn);
+            }
+
+            if (g.ActualHeight >= 10) Run();
             else
             {
-                SizeChangedEventHandler? onSize = null;
-                onSize = (_, _) =>
-                {
-                    if (g.ActualHeight < 10) return;
-                    g.SizeChanged -= onSize;
-                    RunPowerOn(g, g.ActualHeight);
-                };
-                g.SizeChanged += onSize;
+                SizeChangedEventHandler? on = null;
+                on = (_, _) => { if (g.ActualHeight < 10) return; g.SizeChanged -= on; Run(); };
+                g.SizeChanged += on;
             }
+            return () => skipAction?.Invoke();
         }
-        if (w.IsLoaded) TryRun();
-        else w.Loaded += (_, _) => TryRun();
-    }
 
-    private static void RunPowerOn(Grid g, double H)
-    {
-        var overlay = new Grid { IsHitTestVisible = false };
-        var black = B("#000000"); black.Freeze();
-        var top = new Rectangle { Fill = black, Height = H, VerticalAlignment = VerticalAlignment.Top, RenderTransform = new TranslateTransform(0, 0) };
-        var bot = new Rectangle { Fill = black, Height = H, VerticalAlignment = VerticalAlignment.Bottom, RenderTransform = new TranslateTransform(0, 0) };
-        var lineFill = B("#d8ffe9"); lineFill.Freeze();
-        var line = new Rectangle { Fill = lineFill, Height = 2.5, VerticalAlignment = VerticalAlignment.Center, Opacity = 0 };
-        overlay.Children.Add(top);
-        overlay.Children.Add(bot);
-        overlay.Children.Add(line);
-        g.Children.Add(overlay);
-        var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
-        line.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)));
-        var aTop = new DoubleAnimation(0, -H, TimeSpan.FromMilliseconds(520)) { BeginTime = TimeSpan.FromMilliseconds(150), EasingFunction = ease };
-        var aBot = new DoubleAnimation(0, H, TimeSpan.FromMilliseconds(520)) { BeginTime = TimeSpan.FromMilliseconds(150), EasingFunction = ease };
-        aTop.Completed += (_, _) =>
+        public static Action PowerOff(Grid g, Action done)
         {
-            line.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(280)));
-            var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(220)) { BeginTime = TimeSpan.FromMilliseconds(280) };
-            fade.Completed += (_, _) => g.Children.Remove(overlay);
-            overlay.BeginAnimation(UIElement.OpacityProperty, fade);
-        };
-        ((TranslateTransform)top.RenderTransform).BeginAnimation(TranslateTransform.YProperty, aTop);
-        ((TranslateTransform)bot.RenderTransform).BeginAnimation(TranslateTransform.YProperty, aBot);
-    }
+            double W = g.ActualWidth, H = g.ActualHeight;
+            if (W < 10 || H < 10) { done(); return () => { }; }
 
-    // "Выключение" ЭЛТ: шторки схлопываются к центру, луч сжимается в точку.
-    public static void PowerOff(Window w, Action onDone)
-    {
-        var g = w.Content as Grid ?? (w.Content as Border)?.Child as Grid;
-        if (g == null) { onDone(); return; }
-        double H = g.ActualHeight, W = g.ActualWidth;
-        if (H < 10 || W < 10) { onDone(); return; }
-        var overlay = new Grid { IsHitTestVisible = false };
-        var black = B("#000000"); black.Freeze();
-        var top = new Rectangle { Fill = black, Height = 0, VerticalAlignment = VerticalAlignment.Top };
-        var bot = new Rectangle { Fill = black, Height = 0, VerticalAlignment = VerticalAlignment.Bottom };
-        var lineFill = B("#d8ffe9"); lineFill.Freeze();
-        var line = new Rectangle
-        {
-            Fill = lineFill,
-            Height = 2.5,
-            Width = W,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0
-        };
-        var dot = new Ellipse
-        {
-            Fill = lineFill,
-            Width = 6,
-            Height = 6,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0
-        };
-        overlay.Children.Add(top);
-        overlay.Children.Add(bot);
-        overlay.Children.Add(line);
-        overlay.Children.Add(dot);
-        g.Children.Add(overlay);
-        var easeIn = new QuadraticEase { EasingMode = EasingMode.EaseIn };
-        var aTop = new DoubleAnimation(0, H / 2, TimeSpan.FromMilliseconds(320)) { EasingFunction = easeIn };
-        var aBot = new DoubleAnimation(0, H / 2, TimeSpan.FromMilliseconds(320)) { EasingFunction = easeIn };
-        aTop.Completed += (_, _) =>
-        {
-            line.Opacity = 1;
-            var aLine = new DoubleAnimation(W, 0, TimeSpan.FromMilliseconds(300)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } };
-            aLine.Completed += (_, _) =>
+            var top = new Rectangle { Fill = Brushes.Black, Height = 0, VerticalAlignment = VerticalAlignment.Top };
+            Grid.SetRowSpan(top, 100);
+            var bot = new Rectangle { Fill = Brushes.Black, Height = 0, VerticalAlignment = VerticalAlignment.Bottom };
+            Grid.SetRowSpan(bot, 100);
+            var lineBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#00ff88"));
+            var line = new Rectangle
             {
-                dot.Opacity = 1;
-                var aDot = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(260));
-                aDot.Completed += (_, _) =>
-                {
-                    g.Children.Remove(overlay);
-                    onDone();
-                };
-                dot.BeginAnimation(UIElement.OpacityProperty, aDot);
+                Fill = lineBrush, Height = 2, Width = W,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Opacity = 0,
+                Effect = new BlurEffect { Radius = 4 }
             };
-            line.BeginAnimation(FrameworkElement.WidthProperty, aLine);
-        };
-        top.BeginAnimation(FrameworkElement.HeightProperty, aTop);
-        bot.BeginAnimation(FrameworkElement.HeightProperty, aBot);
+            Grid.SetRowSpan(line, 100);
+            var dotBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#00ff88"));
+            var dot = new Ellipse
+            {
+                Fill = dotBrush, Width = 6, Height = 6,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Opacity = 0,
+                Effect = new BlurEffect { Radius = 6 }
+            };
+            Grid.SetRowSpan(dot, 100);
+
+            g.Children.Add(top);
+            g.Children.Add(bot);
+            g.Children.Add(line);
+            g.Children.Add(dot);
+
+            bool finished = false;
+            Action skipAction = () =>
+            {
+                if (finished) return;
+                finished = true;
+                var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
+                fade.Completed += (_, _) =>
+                {
+                    g.Children.Remove(top);
+                    g.Children.Remove(bot);
+                    g.Children.Remove(line);
+                    g.Children.Remove(dot);
+                    done();
+                };
+                line.BeginAnimation(UIElement.OpacityProperty, fade);
+                dot.BeginAnimation(UIElement.OpacityProperty, fade);
+            };
+
+            try { System.Media.SystemSounds.Beep.Play(); } catch { }
+
+            var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
+            var topAnim = new DoubleAnimation(0, H / 2 - 1, TimeSpan.FromMilliseconds(350)) { EasingFunction = easeIn };
+            var botAnim = new DoubleAnimation(0, H / 2 - 1, TimeSpan.FromMilliseconds(350)) { EasingFunction = easeIn };
+
+            topAnim.Completed += (_, _) =>
+            {
+                if (finished) return;
+                line.Opacity = 1;
+                var lineShrink = new DoubleAnimation(W, 6, TimeSpan.FromMilliseconds(250)) { EasingFunction = easeIn };
+                lineShrink.Completed += (_, _) =>
+                {
+                    if (finished) return;
+                    line.Opacity = 0;
+                    dot.Opacity = 1;
+                    var dotFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400))
+                        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+                    dotFade.Completed += (_, _) =>
+                    {
+                        if (finished) return;
+                        finished = true;
+                        g.Children.Remove(top);
+                        g.Children.Remove(bot);
+                        g.Children.Remove(line);
+                        g.Children.Remove(dot);
+                        done();
+                    };
+                    dot.BeginAnimation(UIElement.OpacityProperty, dotFade);
+                };
+                line.BeginAnimation(FrameworkElement.WidthProperty, lineShrink);
+            };
+            top.BeginAnimation(FrameworkElement.HeightProperty, topAnim);
+            bot.BeginAnimation(FrameworkElement.HeightProperty, botAnim);
+
+            return () => skipAction();
+        }
     }
 }
