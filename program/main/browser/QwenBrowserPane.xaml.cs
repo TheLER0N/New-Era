@@ -11,13 +11,13 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
+
 namespace MainApp;
+
 public partial class QwenBrowserPane : UserControl
 {
-// Единственный экземпляр на всё приложение.
 public static QwenBrowserPane Shared { get; } = new();
-// Offscreen-окно для прелоада: WebView2 (HwndHost) нельзя накрыть WPF-слоем,
-// поэтому пока браузер не нужен — он живёт и грузится в окне за экраном.
+
 private static Window? _host;
 private ClientWebSocket? _ws;
 private bool _wsConnected;
@@ -28,267 +28,22 @@ private bool _lastThink;
 private bool _webInitialized;
 private readonly SemaphoreSlim _uiLock = new(1, 1);
 private readonly TaskCompletionSource<bool> _readyTcs = new();
+private TaskCompletionSource<string>? _syncTcs;
+private TaskCompletionSource<string>? _sendTcs;
+
 public Task<bool> ReadyTask => _readyTcs.Task;
 public event Action<string>? BootStatusChanged;
+
 private readonly DispatcherTimer _bootBarTimer = new() { Interval = TimeSpan.FromMilliseconds(110) };
 private int _bootTick;
-// Бридж: полный текст берём из SSE-стрима; DOM-захват — только фолбэк.
-// __LERON_STREAMING__ блокирует DOM-захват во время генерации, чтобы не резать текст.
-private const string BridgeScript = """
-(function(){
-if (window.__LERON_BRIDGE__) return;
-window.__LERON_BRIDGE__ = true;
-var lastText = '';
-var lastChange = 0;
-window.__LERON_STREAMING__ = false;
-function assistantEls(){
-var candidates = [
-'[data-testid="assistant-message"]',
-'[data-message-role="assistant"]',
-'[class*="message-assistant"]',
-'[class*="assistant-message"]',
-'[class*="response-message"]',
-'.assistant-message',
-'[data-role="assistant"]',
-'[class*="bot-message"]',
-'[class*="ai-message"]',
-'[class*="markdown-body"]'
-];
-for (var i=0;i<candidates.length;i++){
-var els = document.querySelectorAll(candidates[i]);
-if (els.length > 0) return Array.prototype.slice.call(els);
-}
-var containers = document.querySelectorAll('[class*="chat-message"], [class*="message-item"]');
-var out = [];
-for (var j=0;j<containers.length;j++){
-var cls = (typeof containers[j].className === 'string' ? containers[j].className : '').toLowerCase();
-if (cls.indexOf('user')>=0 || cls.indexOf('human')>=0) continue;
-if (containers[j].querySelector('[class*="markdown"], [class*="prose"], [class*="content"]'))
-out.push(containers[j]);
-}
-return out;
-}
-function extractText(el){
-var inner = el.querySelector('[class*="markdown"]') || el.querySelector('[class*="content"]') ||
-el.querySelector('[class*="prose"]') || el;
-return (inner.innerText || '').trim();
-}
-function findStopButton(){
-var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
-for (var i=0;i<btns.length;i++){
-var b = btns[i];
-var label = (b.getAttribute('aria-label') || '').toLowerCase();
-var text = (b.innerText || '').toLowerCase();
-if (label.indexOf('stop')>=0 || label.indexOf('cancel')>=0 || label.indexOf('останов')>=0 ||
-text.indexOf('stop')>=0 || text.indexOf('остановить')>=0) return b;
-}
-return null;
-}
-function reportAi(text){
-if (!text) return;
-window.__LERON_LAST_AI__ = text;
-lastText = text;
-lastChange = Date.now();
-if (window.chrome && window.chrome.webview)
-window.chrome.webview.postMessage({ action: 'aiResponse', text: text });
-}
-function check(){
-if (!window.__LERON_EXPECT__) return;
-if (window.__LERON_STREAMING__) return;
-if (findStopButton()) return;
-var els = assistantEls();
-if (els.length === 0) return;
-var cur = extractText(els[els.length-1]);
-if (cur !== lastText){ lastText = cur; lastChange = Date.now(); }
-if ((Date.now() - lastChange) < 3500) return;
-if (!cur || cur === window.__LERON_LAST_AI__) return;
-window.__LERON_EXPECT__ = false;
-reportAi(cur);
-}
-function startObserve(){
-if (!document.body){ setTimeout(startObserve, 100); return; }
-var observer = new MutationObserver(check);
-observer.observe(document.body, { childList:true, subtree:true, characterData:true });
-setInterval(check, 800);
-}
-startObserve();
-var origFetch = window.fetch;
-window.fetch = async function(){
-var response = await origFetch.apply(this, arguments);
-var url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url || '');
-if (response.ok && (url.indexOf('/chat')>=0 || url.indexOf('/completion')>=0)) {
-window.__LERON_STREAMING__ = true;
-try {
-var clone = response.clone();
-var reader = clone.body.getReader();
-var decoder = new TextDecoder();
-var full = '';
-var NL = String.fromCharCode(10);
-(async function(){
-try {
-while(true){
-var r = await reader.read();
-if (r.done){
-window.__LERON_STREAMING__ = false;
-if (window.__LERON_EXPECT__ && full){
-window.__LERON_EXPECT__ = false;
-reportAi(full);
-}
-break;
-}
-var chunk = decoder.decode(r.value, {stream:true});
-var lines = chunk.split(NL);
-for (var i=0;i<lines.length;i++){
-if (lines[i].indexOf('data: ')===0){
-var data = lines[i].substring(6).trim();
-if (data==='[DONE]') continue;
-try {
-var json = JSON.parse(data);
-var delta = (json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content) || '';
-if (delta){
-full += delta;
-if (window.chrome && window.chrome.webview)
-window.chrome.webview.postMessage({ action: 'aiStream', text: full, delta: delta });
-}
-} catch(e){}
-}
-}
-}
-} catch(e){ window.__LERON_STREAMING__ = false; }
-})();
-} catch(e){ window.__LERON_STREAMING__ = false; }
-}
-return response;
-};
-setInterval(function(){
-var c = document.querySelector('iframe[src*="challenges.cloudflare.com"], #challenge-stage, #px-captcha, [class*="captcha"], [id*="captcha"]');
-var t = (document.body ? document.body.innerText : '').slice(0,3000).toLowerCase();
-var hit = !!c || t.indexOf('verify you are human')>=0 || t.indexOf('checking your browser')>=0 || t.indexOf('проверьте, что вы человек')>=0;
-if (hit && window.chrome && window.chrome.webview)
-window.chrome.webview.postMessage({ action: 'captcha' });
-}, 3000);
-})();
-""";
-private const string SyncUiScript = @"
-(async function() {
-var wantThink = __THINK__;
-function wait(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
-function vis(el) { return !!el && (el.offsetParent !== null || el.getClientRects().length > 0); }
-function txt(el) { return (el.innerText || '').trim(); }
-var report = [];
-var modelLabel = document.querySelector('.wms-trigger__text');
-if (modelLabel) {
-var cm = txt(modelLabel).toLowerCase();
-if (cm.indexOf('3.8') < 0 || cm.indexOf('max') < 0) {
-var mt = document.querySelector('.wms-trigger');
-if (mt) {
-mt.click();
-await wait(300);
-var mEls = document.querySelectorAll('div, span, li');
-var mBest = null; var mLen = 1e9;
-for (var i = 0; i < mEls.length; i++) {
-var el = mEls[i];
-if (!vis(el)) continue;
-var t = txt(el).toLowerCase();
-if (!t || t.length > 40) continue;
-if (t.indexOf('3.8') >= 0 && t.indexOf('max') >= 0 && t.length < mLen) { mBest = el; mLen = t.length; }
-}
-if (mBest) { mBest.click(); await wait(200); } else { mt.click(); await wait(100); }
-report.push('model:' + txt(document.querySelector('.wms-trigger__text') || modelLabel));
-}
-} else report.push('model:ok');
-} else report.push('model:no-ui');
-var tLabel = document.querySelector('.qwen-thinking-selector .qwen-chat-v2-dropdown-menu-select-label');
-if (tLabel) {
-var cur = txt(tLabel).toLowerCase();
-var isThink = cur.indexOf('мышл') >= 0 || cur.indexOf('think') >= 0 || cur.indexOf('reason') >= 0;
-if (isThink !== wantThink) {
-var sel = document.querySelector('.qwen-thinking-selector .qwen-chat-v2-dropdown-menu-select');
-if (sel) {
-sel.click();
-await wait(250);
-var words = wantThink ? ['мышление', 'мышл', 'thinking', 'think'] : ['быстрый', 'быстр', 'fast'];
-var els = document.querySelectorAll('div, span, li');
-var best = null; var bLen = 1e9;
-for (var k = 0; k < els.length; k++) {
-var el2 = els[k];
-if (!vis(el2) || el2 === tLabel) continue;
-var t2 = txt(el2).toLowerCase();
-if (!t2 || t2.length > 20) continue;
-var hit = false;
-for (var w = 0; w < words.length; w++) { if (t2.indexOf(words[w]) >= 0) { hit = true; break; } }
-if (hit && t2.length < bLen) { best = el2; bLen = t2.length; }
-}
-if (best) { best.click(); await wait(150); } else { sel.click(); await wait(100); }
-var nl = document.querySelector('.qwen-thinking-selector .qwen-chat-v2-dropdown-menu-select-label');
-report.push('think:' + txt(nl || tLabel));
-}
-} else report.push('think:ok');
-} else report.push('think:no-ui');
-return report.join(' ');
-})();";
-private const string SendScript = @"
-(async function() {
-window.__LERON_EXPECT__ = true;
-var text = __TEXT__;
-function wait(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
-var input = document.querySelector('textarea') || document.querySelector('[contenteditable=""true""]');
-if (!input) return 'NO_INPUT';
-input.focus();
-var isTa = input.tagName === 'TEXTAREA' || input.tagName === 'INPUT';
-function put(chunk) {
-if (isTa) {
-var s = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-s.call(input, input.value + chunk);
-input.dispatchEvent(new Event('input', { bubbles: true }));
-} else {
-document.execCommand('insertText', false, chunk);
-}
-}
-function clearInput() {
-if (isTa) {
-var s2 = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-s2.call(input, '');
-input.dispatchEvent(new Event('input', { bubbles: true }));
-} else {
-document.execCommand('selectAll', false, null);
-document.execCommand('delete', false, null);
-}
-}
-function send() {
-var btns2 = Array.prototype.slice.call(document.querySelectorAll('button'));
-var sb = null;
-for (var j = 0; j < btns2.length; j++) {
-var b2 = btns2[j];
-if (!b2.disabled && (b2.getAttribute('aria-label') || '').toLowerCase().indexOf('send') >= 0) { sb = b2; break; }
-}
-if (sb) sb.click();
-else input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-}
-clearInput();
-if (text.length > 200) {
-put(text);
-await wait(300);
-send();
-} else {
-await new Promise(function(resolve) {
-var i = 0;
-(function step() {
-if (i >= text.length) { setTimeout(function() { send(); resolve(); }, 200 + Math.random() * 300); return; }
-var take = 1 + Math.floor(Math.random() * 3);
-put(text.substring(i, i + take));
-i += take;
-setTimeout(step, 20 + Math.random() * 60);
-})();
-});
-}
-return 'OK';
-})();";
+
 public QwenBrowserPane()
 {
 InitializeComponent();
+
 _wsReconnectTimer.Tick += (_, _) => ConnectWebSocket();
 _wsReconnectTimer.Start();
+
 _bootBarTimer.Tick += (_, _) =>
 {
 _bootTick++;
@@ -304,11 +59,13 @@ if (idx >= 0 && idx < cells) ch[idx] = (i == 3 || i == 4) ? '█' : '▒';
 BootBar.Text = "[" + new string(ch) + "]";
 };
 _bootBarTimer.Start();
+
 Loaded += async (_, _) =>
 {
 await InitWebView();
 ConnectWebSocket();
 };
+
 Unloaded += (_, _) =>
 {
 _wsReconnectTimer.Stop();
@@ -317,8 +74,9 @@ _ws = null;
 _wsConnected = false;
 };
 }
+
 public event Action? CaptchaDetected;
-// Старт прелоада: панель грузит Qwen в окне за экраном.
+
 public static void EnsureOffscreen()
 {
 if (_host != null) return;
@@ -336,23 +94,26 @@ Content = Shared
 };
 _host.Show();
 }
-// Вернуть панель в offscreen-окно (браузер остаётся живым и загруженным).
+
 public static void ParkOffscreen()
 {
 EnsureOffscreen();
 var pane = Shared;
 if (ReferenceEquals(pane.Parent, _host)) return;
+
 if (pane.Parent is Panel pp) pp.Children.Remove(pane);
 else if (pane.Parent is Decorator dd) dd.Child = null;
 else if (pane.Parent is ContentControl cc) cc.Content = null;
+
 _host!.Content = pane;
 }
-// Перенос единственной панели между окнами без пересоздания WebView2.
+
 public void MountIn(object host)
 {
 if (Parent is Panel p) p.Children.Remove(this);
 else if (Parent is Decorator d) d.Child = null;
 else if (Parent is ContentControl c) c.Content = null;
+
 if (host is Panel hp)
 {
 hp.Children.Insert(0, this);
@@ -360,11 +121,13 @@ if (hp is Grid g && g.RowDefinitions.Count > 0) Grid.SetRowSpan(this, g.RowDefin
 }
 else if (host is Decorator hd) hd.Child = this;
 }
+
 private void Boot(string s)
 {
 Dispatcher.InvokeAsync(() => BootText.Text = s);
 BootStatusChanged?.Invoke(s);
 }
+
 private void MarkReady(bool ok)
 {
 _readyTcs.TrySetResult(ok);
@@ -376,22 +139,28 @@ if (ok) BootOverlay.Visibility = Visibility.Collapsed;
 else { BootText.Text = "⚠ не загрузилось · нажми ⟳"; BootBar.Text = ""; }
 });
 }
+
 private async Task InitWebView()
 {
 if (_webInitialized) return;
 _webInitialized = true;
+
 try
 {
 ConnectionStatus.Text = "Инициализация WebView2...";
 Boot("инициализация WebView2...");
+
 var env = await CoreWebView2Environment.CreateAsync(
 userDataFolder: Path.Combine(
 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
 "LERON_CLI", "WebView2Profile"));
+
 await WebView.EnsureCoreWebView2Async(env);
+
 WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
 WebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 WebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+
 WebView.CoreWebView2.NavigationCompleted += async (_, e) =>
 {
 if (e.IsSuccess)
@@ -416,13 +185,17 @@ StatusText.Text = $"⚠ Не загрузилось: {e.WebErrorStatus}";
 MarkReady(false);
 }
 };
+
 WebView.CoreWebView2.WebMessageReceived += OnWebMessage;
+
 await InjectCrtCss();
-await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BridgeScript);
+await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BrowserBridge.BridgeScript);
+
 var url = GetStartUrl();
 StatusText.Text = $"Загружаю: {url}";
 Boot("загрузка chat.qwen.ai...");
 WebView.CoreWebView2.Navigate(url);
+
 ConnectionStatus.Text = "WebView2 готов. Загрузка Qwen...";
 }
 catch (Exception ex)
@@ -431,6 +204,7 @@ ConnectionStatus.Text = $"Ошибка WebView2: {ex.Message}";
 MarkReady(false);
 }
 }
+
 private static string GetStartUrl()
 {
 try
@@ -454,8 +228,7 @@ return $"https://chat.qwen.ai/c/{cid.GetString()}";
 catch { }
 return "https://chat.qwen.ai/";
 }
-// Единый тон фона во всём встроенном чате: ВСЕ фоновые переменные = #04150c,
-// элементы различаются только бордерами (#123626). Селекторы — по реальному DOM Qwen.
+
 private async Task InjectCrtCss()
 {
 const string css = @"
@@ -505,12 +278,15 @@ background-color: #0f241a !important;
 ::-webkit-scrollbar-thumb { background: #1d5c3d; border-radius: 4px; }
 ::selection { background: #123626; color: #c8ffd8; }
 ";
+
 var js = "(function(){var css=" + JsonSerializer.Serialize(css) +
 ";function add(){var t=document.head||document.documentElement;" +
 "if(!t){setTimeout(add,100);return;}" +
 "var s=document.createElement('style');s.textContent=css;t.appendChild(s);}add();})();";
+
 await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(js);
 }
+
 private void DetectChatId()
 {
 try
@@ -528,28 +304,43 @@ WebSocketMessageType.Text, true, CancellationToken.None);
 }
 catch { }
 }
+
 private async void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
 {
 try
 {
 var msg = e.WebMessageAsJson;
 if (string.IsNullOrEmpty(msg)) return;
+
 var node = JsonDocument.Parse(msg).RootElement;
+
+// Строковые сообщения — это результаты скриптов (SYNC:/SENDRES:),
+// т.к. ExecuteScriptAsync не ждёт Promise.
+if (node.ValueKind == JsonValueKind.String)
+{
+var s = node.GetString() ?? "";
+if (s.StartsWith("SYNC:")) _syncTcs?.TrySetResult(s.Substring(5));
+else if (s.StartsWith("SENDRES:")) _sendTcs?.TrySetResult(s.Substring(8));
+return;
+}
+
 if (node.TryGetProperty("action", out var action))
 {
 var act = action.GetString();
+
 if (act == "aiResponse" && node.TryGetProperty("text", out var textProp))
 {
 var text = textProp.GetString() ?? "";
+var reqid = node.TryGetProperty("reqid", out var rp) ? (rp.GetString() ?? "") : "";
 if (_wsConnected && _ws != null)
 {
 await _ws.SendAsync(
-Encoding.UTF8.GetBytes($"AI:{_currentChatId}|{text}"),
+Encoding.UTF8.GetBytes($"AI:{_currentChatId}|{reqid}|{text}"),
 WebSocketMessageType.Text, true, CancellationToken.None);
 PlayNotificationSound();
 }
 }
-if (act == "aiStream" && node.TryGetProperty("text", out var streamText))
+else if (act == "aiStream" && node.TryGetProperty("text", out var streamText))
 {
 var text = streamText.GetString() ?? "";
 Dispatcher.InvokeAsync(() =>
@@ -557,7 +348,17 @@ Dispatcher.InvokeAsync(() =>
 StatusText.Text = $"Стриминг: {text.Length} симв...";
 });
 }
-if (act == "captcha")
+else if (act == "sendfail")
+{
+if (_wsConnected && _ws != null)
+{
+await _ws.SendAsync(
+Encoding.UTF8.GetBytes("SENDFAIL"),
+WebSocketMessageType.Text, true, CancellationToken.None);
+}
+Dispatcher.InvokeAsync(() => StatusText.Text = "⚠ Qwen не отправил — gateway повторит");
+}
+else if (act == "captcha")
 {
 Dispatcher.InvokeAsync(() =>
 {
@@ -569,10 +370,12 @@ StatusText.Text = "⚠ Капча — открой браузер (🌐) и пр
 }
 catch { }
 }
+
 private static void PlayNotificationSound()
 {
 try { SystemSounds.Asterisk.Play(); } catch { }
 }
+
 private async void ConnectWebSocket()
 {
 if (_wsConnected) return;
@@ -592,6 +395,7 @@ ConnectionStatus.Text = "Gateway недоступен, переподключе�
 Dispatcher.InvokeAsync(() => LinkDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#5a2430")));
 }
 }
+
 private async Task ListenWebSocket()
 {
 var buffer = new byte[4096];
@@ -601,15 +405,24 @@ while (_ws != null && _ws.State == WebSocketState.Open)
 {
 var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
 if (result.MessageType == WebSocketMessageType.Close) break;
+
 var msg = Encoding.UTF8.GetString(buffer, 0, result.Count);
+
 if (msg.StartsWith("TYPE:"))
 {
 var parts = msg[5..].Split('|');
-if (parts.Length >= 4)
+if (parts.Length >= 5)
 {
-var text = string.Join('|', parts[4..]);
+var chatId = parts[1];
 var think = parts[3] == "1";
-await Dispatcher.InvokeAsync(() => SendToQwen(text, think));
+var reqid = parts[4];
+var text = string.Join('|', parts[5..]);
+
+await Dispatcher.InvokeAsync(() =>
+{
+if (!string.IsNullOrEmpty(chatId)) _currentChatId = chatId;
+SendToQwen(text, think, reqid);
+});
 }
 }
 }
@@ -620,63 +433,214 @@ finally
 _wsConnected = false;
 }
 }
+
 private async Task SyncQwenUi()
 {
 try
 {
 await Task.Delay(1200);
 if (WebView?.CoreWebView2 == null) return;
+
 await _uiLock.WaitAsync();
 try
 {
-await WebView.CoreWebView2.ExecuteScriptAsync(
-SyncUiScript.Replace("__THINK__", _lastThink ? "true" : "false"));
-}
-finally { _uiLock.Release(); }
-}
-catch { }
-}
-public async void SetThinkMode(bool think)
-{
-_lastThink = think;
-try
-{
-if (WebView?.CoreWebView2 == null) return;
-Dispatcher.InvokeAsync(() =>
-StatusText.Text = think ? "🧠 переключаю на мышление..." : "⚡ переключаю на быстрый...");
-await _uiLock.WaitAsync();
-try
-{
-var result = await WebView.CoreWebView2.ExecuteScriptAsync(
-SyncUiScript.Replace("__THINK__", think ? "true" : "false"));
-var r = result?.Trim('"');
+var report = await SyncUiNoLockAsync(_lastThink);
 Dispatcher.InvokeAsync(() =>
 {
-if (r != null && r.Contains("no-ui"))
-StatusText.Text = "⚠ Не нашёл тумблер мышления/модели в Qwen";
-else
-StatusText.Text = (think ? "🧠 Qwen: мышление" : "⚡ Qwen: быстро") + " · " + r;
+StatusText.Text = SyncStatusText(report, _lastThink);
+ConnectionStatus.Text = "Синхронизация: " + SyncStatusText(report, _lastThink);
 });
 }
 finally { _uiLock.Release(); }
 }
 catch { }
 }
-private async void SendToQwen(string text, bool think)
+
+private async Task<string> SyncUiNoLockAsync(bool think)
+{
+if (WebView?.CoreWebView2 == null) return "sync:no-corewebview";
+
+var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+_syncTcs = tcs;
+
+await WebView.CoreWebView2.ExecuteScriptAsync(
+BrowserBridge.SyncUiScript.Replace("__THINK__", think ? "true" : "false"));
+
+// 15 секунд: открытие меню + переключение модели (перезагрузка чата ~1.5с) + повтор.
+var finished = await Task.WhenAny(tcs.Task, Task.Delay(15000));
+if (finished != tcs.Task) return "sync-timeout";
+return await tcs.Task;
+}
+
+private async Task<string> WaitSendAsync(string script)
+{
+var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+_sendTcs = tcs;
+
+await WebView.CoreWebView2.ExecuteScriptAsync(script);
+
+var finished = await Task.WhenAny(tcs.Task, Task.Delay(25000));
+return finished == tcs.Task ? await tcs.Task : "send-timeout";
+}
+
+private static (bool allowed, string reason) ModelGate(string report)
+{
+if (string.IsNullOrWhiteSpace(report)) return (true, "");
+
+bool sawModel = false;
+string model = "";
+
+foreach (var raw in report.Split(' '))
+{
+var p = raw.Trim();
+if (!p.StartsWith("model:", StringComparison.OrdinalIgnoreCase)) continue;
+
+sawModel = true;
+var v = p.Substring(6).Trim().ToLowerInvariant();
+
+if (v == "ok" || v == "no-ui" || v == "?" || v == "")
+return (true, "");
+
+if (v == "menu-fail" || v.Contains("menu-fail"))
+return (false, "не удалось открыть/выбрать модель 3.8-Max");
+
+if (v.Contains("3.8") && v.Contains("max"))
+return (true, "");
+
+model = v;
+}
+
+if (!sawModel || string.IsNullOrWhiteSpace(model)) return (true, "");
+return (false, $"модель не 3.8-Max ({model})");
+}
+
+private static string SyncStatusText(string report, bool think)
+{
+if (string.IsNullOrWhiteSpace(report)) return "⚠ синхронизация: нет ответа";
+
+bool warn =
+report.Contains("no-ui") ||
+report.Contains("timeout") ||
+report.Contains("sync-err") ||
+report.Contains("menu-fail") ||
+report.StartsWith("sync:");
+
+string desired = think ? "🧠 мышление" : "⚡ быстро";
+
+if (report.Contains("model:ok") && report.Contains("think:ok"))
+return $"3.8 max · {(think ? "мышление" : "быстро")}";
+
+if (warn) return $"⚠ {desired} · {report}";
+return $"{desired} · {report}";
+}
+
+public async void SetThinkMode(bool think)
+{
+_lastThink = think;
+try
+{
+if (WebView?.CoreWebView2 == null) return;
+
+Dispatcher.InvokeAsync(() =>
+StatusText.Text = think ? "🧠 переключаю на мышление..." : "⚡ переключаю на быстрый...");
+
+await _uiLock.WaitAsync();
+try
+{
+var r = await SyncUiNoLockAsync(think);
+Dispatcher.InvokeAsync(() =>
+{
+if (r.Contains("no-ui") || r.Contains("timeout") || r.Contains("menu-fail"))
+{
+StatusText.Text = "⚠ Не нашёл тумблер мышления/модели в Qwen";
+ConnectionStatus.Text = "Синхронизация: ⚠ " + r;
+}
+else
+{
+StatusText.Text = (think ? "🧠 Qwen: мышление" : "⚡ Qwen: быстро") + " · " + r;
+ConnectionStatus.Text = "Синхронизация: " + r;
+}
+});
+}
+finally { _uiLock.Release(); }
+}
+catch { }
+}
+
+private async Task SendBlockedResponseAsync(string reqid, string reason)
+{
+try
+{
+if (_ws == null || !_wsConnected || _ws.State != WebSocketState.Open) return;
+
+var safe = (reason ?? "").Replace('|', '/');
+var text = $"⚠ {safe}";
+var payload = $"AI:{_currentChatId}|{reqid}|{text}";
+
+await _ws.SendAsync(
+Encoding.UTF8.GetBytes(payload),
+WebSocketMessageType.Text, true, CancellationToken.None);
+}
+catch { }
+}
+
+private async void SendToQwen(string text, bool think, string reqid)
 {
 try
 {
 _lastThink = think;
-Dispatcher.InvokeAsync(() => StatusText.Text = "⏳ режим + отправка...");
+
+Dispatcher.InvokeAsync(() =>
+StatusText.Text = think ? "🧠 проверяю 3.8 max и режим..." : "⚡ проверяю 3.8 max и режим...");
+
 await _uiLock.WaitAsync();
 try
 {
-await WebView.CoreWebView2.ExecuteScriptAsync(
-SyncUiScript.Replace("__THINK__", think ? "true" : "false"));
-var script = SendScript.Replace("__TEXT__", JsonSerializer.Serialize(text));
-var result = await WebView.CoreWebView2.ExecuteScriptAsync(script);
+if (WebView?.CoreWebView2 == null)
+{
+Dispatcher.InvokeAsync(() => StatusText.Text = "⚠ WebView2 не готов");
+await SendBlockedResponseAsync(reqid, "WebView2 не готов");
+return;
+}
+
+string syncReport;
+try { syncReport = await SyncUiNoLockAsync(think); }
+catch (Exception ex) { syncReport = "sync-error:" + ex.Message; }
+
+var gate = ModelGate(syncReport);
+if (!gate.allowed)
+{
 Dispatcher.InvokeAsync(() =>
-StatusText.Text = result?.Contains("OK") == true ? "Отправлено" : "Ошибка ввода");
+{
+StatusText.Text = $"⚠ заблокировано: {gate.reason}";
+ConnectionStatus.Text = $"Синхронизация: ⚠ {gate.reason} · {syncReport}";
+});
+await SendBlockedResponseAsync(reqid, gate.reason);
+return;
+}
+
+var syncStatus = SyncStatusText(syncReport, think);
+Dispatcher.InvokeAsync(() =>
+{
+StatusText.Text = "Синхронизация: " + syncStatus;
+ConnectionStatus.Text = "Синхронизация: " + syncStatus;
+});
+
+var script = BrowserBridge.SendScript
+.Replace("__TEXT__", JsonSerializer.Serialize(text))
+.Replace("__REQID__", reqid);
+
+// Одна отправка. Повтор максимум 1 раз и ТОЛЬКО если скрипт явно вернул NOT_SENT.
+var status = await WaitSendAsync(script);
+if (status == "NOT_SENT")
+{
+await Task.Delay(2500);
+status = await WaitSendAsync(script);
+}
+
+var ok = status == "OK";
+Dispatcher.InvokeAsync(() =>
+StatusText.Text = ok ? $"Отправлено · {syncStatus}" : $"⚠ Не отправилось ({status}) · {syncStatus}");
 }
 finally { _uiLock.Release(); }
 }
@@ -685,16 +649,19 @@ catch (Exception ex)
 Dispatcher.InvokeAsync(() => StatusText.Text = $"Ошибка: {ex.Message}");
 }
 }
+
 private void OnBackClick(object sender, System.Windows.RoutedEventArgs e)
 {
 if (WebView.CoreWebView2?.CanGoBack == true)
 WebView.CoreWebView2.GoBack();
 }
+
 private void OnForwardClick(object sender, System.Windows.RoutedEventArgs e)
 {
 if (WebView.CoreWebView2?.CanGoForward == true)
 WebView.CoreWebView2.GoForward();
 }
+
 private void OnReloadClick(object sender, System.Windows.RoutedEventArgs e)
 {
 WebView.CoreWebView2?.Reload();
