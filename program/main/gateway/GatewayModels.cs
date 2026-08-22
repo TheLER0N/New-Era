@@ -39,6 +39,9 @@ class ProjectSettings
 {
     public string? CheckCommand { get; set; }
     public int? MaxSteps { get; set; }
+    // Авторемонт: автоматическая проверка проекта после изменений.
+    // null = включено по умолчанию; ключ — нормализованный путь проекта.
+    public bool? AutoRepair { get; set; }
 }
 
 class SendRequest
@@ -55,6 +58,8 @@ class AgentRequest
     public string ProjectPath { get; set; } = "";
     public string Mode { get; set; } = "edit";
     public bool Think { get; set; }
+    // Тумблер из GUI: запускать ли автопроверку проекта после изменений.
+    public bool AutoRepair { get; set; } = true;
 }
 
 class ApproveRequest
@@ -91,6 +96,8 @@ class AgentSession
     public int TextRetries { get; set; }
     public bool RepairMode { get; set; }
     public int RepairAttempts { get; set; }
+    // автопроверка проекта после изменений (режим «ремонт» проверяет всегда)
+    public bool AutoRepair { get; set; } = true;
     public List<OutsideGrant> OutsideGrants { get; set; } = new();
     public HashSet<string> DangerApproved { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

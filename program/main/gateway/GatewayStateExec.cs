@@ -88,11 +88,9 @@ internal sealed partial class GatewayState
         AgentLog($"[TOOL] {exec.Log}");
         if (!string.IsNullOrEmpty(s.Role))
             LogRole(s.Role, $"[TOOL]: {exec.Log}");
-
         var result = exec.Output;
         if (exec.Mutated && exec.Path != null)
             s.ChangedFiles.Add(DisplayPath(s, exec.Path));
-
         if (exec.Mutated)
         {
             var checkNote = await RunProjectCheckAsync(s, c.Name);
@@ -105,9 +103,11 @@ internal sealed partial class GatewayState
     public async Task<string> RunProjectCheckAsync(AgentSession s, string trigger)
     {
         if (s.Root == null || s.Mode is "chat" or "plan") return "";
+        // Авторемонт выключен пользователем — изменения не проверяем.
+        // Режим «ремонт» игнорирует тумблер: ремонт = качество всегда.
+        if (s.Mode != "repair" && !s.AutoRepair) return "";
         var cmd = EnsureCheckCommand(s.Root);
         if (string.IsNullOrWhiteSpace(cmd) || IsDangerousCommand(cmd)) return "";
-
         var res = await RunProcessAsync(cmd, s.Root, 180000);
         s.Cards.Add(new ActionCard
         {
@@ -122,18 +122,15 @@ internal sealed partial class GatewayState
         });
         s.ToolLog.Add($"check \"{cmd}\" → exit {res.ExitCode}");
         AgentLog($"[CHECK] {cmd} → exit {res.ExitCode}");
-
         if (res.ExitCode == 0)
         {
             s.RepairMode = false;
             s.RepairAttempts = 0;
             return $"Автоматическая проверка проекта '{cmd}' прошла успешно.";
         }
-
         s.RepairMode = true;
         s.RepairAttempts++;
         var errorText = Tail(string.IsNullOrWhiteSpace(res.StdErr) ? res.StdOut : res.StdErr, 4000);
-
         if (s.RepairAttempts >= 3)
         {
             // Потолок ремонта (3 попытки): гарантированно останавливаемся и задаём
@@ -147,7 +144,7 @@ internal sealed partial class GatewayState
                 {
                     ["question"] =
                         $"Проверка проекта '{cmd}' упала {s.RepairAttempts} раза подряд — автоматический ремонт остановлен.\n" +
-                        $"Последняя ошибка:\n{Tail(errorText, 1500)}\n\n" +
+                        $"Последняя ошибка:\n{Tail(errorText, 1500)}\n" +
                         "Что делать дальше? Например: «откати последний патч», «продолжай без проверки», «остановись»."
                 }
             });
@@ -155,7 +152,6 @@ internal sealed partial class GatewayState
                 $"Автоматическая проверка '{cmd}' упала {s.RepairAttempts} раза. " +
                 "Ремонт остановлен, пользователю задан диагностический вопрос — жди его ответа.";
         }
-
         return
             $"Автоматическая проверка '{cmd}' упала (попытка {s.RepairAttempts} из 3).\n" +
             $"Ошибка:\n{errorText}\n" +

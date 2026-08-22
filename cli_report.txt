@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : cli
-  GENERATED      : 22.08.2026 18:22:57
+  GENERATED      : 22.08.2026 19:11:01
   PATH           : C:\Users\Пользователь\Desktop\cli
 ================================================================
 
@@ -1578,7 +1578,7 @@ ToolTip="Связь с gateway"/>
 
 ------------------------------------------------
 FILE: program\main\browser\QwenBrowserPane.xaml.cs
-SIZE: 18998 bytes
+SIZE: 24914 bytes
 ------------------------------------------------
 using System;
 using System.IO;
@@ -1598,230 +1598,213 @@ namespace MainApp;
 
 public partial class QwenBrowserPane : UserControl
 {
-public static QwenBrowserPane Shared { get; } = new();
+    public static QwenBrowserPane Shared { get; } = new();
+    private static Window? _host;
+    private ClientWebSocket? _ws;
+    private bool _wsConnected;
+    private readonly DispatcherTimer _wsReconnectTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private string _currentChatId = "";
+    private int _navRetries;
+    private bool _lastThink;
+    private bool _webInitialized;
+    private readonly SemaphoreSlim _uiLock = new(1, 1);
+    private readonly TaskCompletionSource<bool> _readyTcs = new();
+    private TaskCompletionSource<string>? _syncTcs;
+    private TaskCompletionSource<string>? _sendTcs;
+    public Task<bool> ReadyTask => _readyTcs.Task;
+    public event Action<string>? BootStatusChanged;
+    private readonly DispatcherTimer _bootBarTimer = new() { Interval = TimeSpan.FromMilliseconds(110) };
+    private int _bootTick;
 
-private static Window? _host;
-private ClientWebSocket? _ws;
-private bool _wsConnected;
-private readonly DispatcherTimer _wsReconnectTimer = new() { Interval = TimeSpan.FromSeconds(3) };
-private string _currentChatId = "";
-private int _navRetries;
-private bool _lastThink;
-private bool _webInitialized;
-private readonly SemaphoreSlim _uiLock = new(1, 1);
-private readonly TaskCompletionSource<bool> _readyTcs = new();
-private TaskCompletionSource<string>? _syncTcs;
-private TaskCompletionSource<string>? _sendTcs;
+    public QwenBrowserPane()
+    {
+        InitializeComponent();
+        _wsReconnectTimer.Tick += (_, _) => ConnectWebSocket();
+        _wsReconnectTimer.Start();
+        _bootBarTimer.Tick += (_, _) =>
+        {
+            _bootTick++;
+            const int cells = 22;
+            var head = _bootTick % (cells + 8);
+            var ch = new char[cells];
+            for (int i = 0; i < cells; i++) ch[i] = '░';
+            for (int i = 0; i < 8; i++)
+            {
+                int idx = head - 4 + i;
+                if (idx >= 0 && idx < cells) ch[idx] = (i == 3 || i == 4) ? '█' : '▒';
+            }
+            BootBar.Text = "[" + new string(ch) + "]";
+        };
+        _bootBarTimer.Start();
 
-public Task<bool> ReadyTask => _readyTcs.Task;
-public event Action<string>? BootStatusChanged;
+        Loaded += async (_, _) =>
+        {
+            await InitWebView();
+            ConnectWebSocket();
+        };
+        Unloaded += (_, _) =>
+        {
+            _wsReconnectTimer.Stop();
+            _ws?.Dispose();
+            _ws = null;
+            _wsConnected = false;
+        };
+    }
 
-private readonly DispatcherTimer _bootBarTimer = new() { Interval = TimeSpan.FromMilliseconds(110) };
-private int _bootTick;
+    public event Action? CaptchaDetected;
 
-public QwenBrowserPane()
-{
-InitializeComponent();
+    public static void EnsureOffscreen()
+    {
+        if (_host != null) return;
+        _host = new Window
+        {
+            WindowStyle = WindowStyle.None,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Left = -32000,
+            Top = 0,
+            Width = 1024,
+            Height = 768,
+            Background = Brushes.Black,
+            Content = Shared
+        };
+        _host.Show();
+    }
 
-_wsReconnectTimer.Tick += (_, _) => ConnectWebSocket();
-_wsReconnectTimer.Start();
+    public static void ParkOffscreen()
+    {
+        EnsureOffscreen();
+        var pane = Shared;
+        if (ReferenceEquals(pane.Parent, _host)) return;
+        if (pane.Parent is Panel pp) pp.Children.Remove(pane);
+        else if (pane.Parent is Decorator dd) dd.Child = null;
+        else if (pane.Parent is ContentControl cc) cc.Content = null;
+        _host!.Content = pane;
+    }
 
-_bootBarTimer.Tick += (_, _) =>
-{
-_bootTick++;
-const int cells = 22;
-var head = _bootTick % (cells + 8);
-var ch = new char[cells];
-for (int i = 0; i < cells; i++) ch[i] = '░';
-for (int i = 0; i < 8; i++)
-{
-int idx = head - 4 + i;
-if (idx >= 0 && idx < cells) ch[idx] = (i == 3 || i == 4) ? '█' : '▒';
-}
-BootBar.Text = "[" + new string(ch) + "]";
-};
-_bootBarTimer.Start();
+    public void MountIn(object host)
+    {
+        if (Parent is Panel p) p.Children.Remove(this);
+        else if (Parent is Decorator d) d.Child = null;
+        else if (Parent is ContentControl c) c.Content = null;
 
-Loaded += async (_, _) =>
-{
-await InitWebView();
-ConnectWebSocket();
-};
+        if (host is Panel hp)
+        {
+            hp.Children.Insert(0, this);
+            if (hp is Grid g && g.RowDefinitions.Count > 0) Grid.SetRowSpan(this, g.RowDefinitions.Count);
+        }
+        else if (host is Decorator hd) hd.Child = this;
+    }
 
-Unloaded += (_, _) =>
-{
-_wsReconnectTimer.Stop();
-_ws?.Dispose();
-_ws = null;
-_wsConnected = false;
-};
-}
+    private void Boot(string s)
+    {
+        Dispatcher.InvokeAsync(() => BootText.Text = s);
+        BootStatusChanged?.Invoke(s);
+    }
 
-public event Action? CaptchaDetected;
+    private void MarkReady(bool ok)
+    {
+        _readyTcs.TrySetResult(ok);
+        BootStatusChanged?.Invoke(ok ? "готово" : "ошибка");
+        Dispatcher.InvokeAsync(() =>
+        {
+            _bootBarTimer.Stop();
+            if (ok) BootOverlay.Visibility = Visibility.Collapsed;
+            else { BootText.Text = "⚠ не загрузилось · нажми ⟳"; BootBar.Text = ""; }
+        });
+    }
 
-public static void EnsureOffscreen()
-{
-if (_host != null) return;
-_host = new Window
-{
-WindowStyle = WindowStyle.None,
-ShowInTaskbar = false,
-ShowActivated = false,
-Left = -32000,
-Top = 0,
-Width = 1024,
-Height = 768,
-Background = Brushes.Black,
-Content = Shared
-};
-_host.Show();
-}
+    private async Task InitWebView()
+    {
+        if (_webInitialized) return;
+        _webInitialized = true;
+        try
+        {
+            ConnectionStatus.Text = "Инициализация WebView2...";
+            Boot("инициализация WebView2...");
+            var env = await CoreWebView2Environment.CreateAsync(
+                userDataFolder: Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "LERON_CLI", "WebView2Profile"));
+            await WebView.EnsureCoreWebView2Async(env);
+            WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            WebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            WebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+            WebView.CoreWebView2.NavigationCompleted += async (_, e) =>
+            {
+                if (e.IsSuccess)
+                {
+                    _navRetries = 0;
+                    StatusText.Text = $"Готово: {WebView.CoreWebView2.Source}";
+                    DetectChatId();
+                    Boot("синхронизация UI...");
+                    await SyncQwenUi();
+                    MarkReady(true);
+                }
+                else if (_navRetries < 2)
+                {
+                    _navRetries++;
+                    StatusText.Text = $"Ошибка {e.WebErrorStatus}, повтор {_navRetries}...";
+                    await Task.Delay(1500);
+                    try { WebView.CoreWebView2.Navigate(GetStartUrl()); } catch { }
+                }
+                else
+                {
+                    StatusText.Text = $"⚠ Не загрузилось: {e.WebErrorStatus}";
+                    MarkReady(false);
+                }
+            };
+            WebView.CoreWebView2.WebMessageReceived += OnWebMessage;
+            await InjectCrtCss();
+            await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BrowserBridge.BridgeScript);
+            var url = GetStartUrl();
+            StatusText.Text = $"Загружаю: {url}";
+            Boot("загрузка chat.qwen.ai...");
+            WebView.CoreWebView2.Navigate(url);
+            ConnectionStatus.Text = "WebView2 готов. Загрузка Qwen...";
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatus.Text = $"Ошибка WebView2: {ex.Message}";
+            MarkReady(false);
+        }
+    }
 
-public static void ParkOffscreen()
-{
-EnsureOffscreen();
-var pane = Shared;
-if (ReferenceEquals(pane.Parent, _host)) return;
+    private static string GetStartUrl()
+    {
+        try
+        {
+            var configPath = BrowserLauncher.GetConfigPath();
+            if (configPath != null)
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+                if (doc.RootElement.TryGetProperty("Roles", out var roles))
+                {
+                    foreach (var role in roles.EnumerateObject())
+                    {
+                        if (role.Value.TryGetProperty("Url", out var url) && !string.IsNullOrEmpty(url.GetString()))
+                            return url.GetString()!;
+                        if (role.Value.TryGetProperty("ChatId", out var cid) && !string.IsNullOrEmpty(cid.GetString()))
+                            return $"https://chat.qwen.ai/c/{cid.GetString()}";
+                    }
+                }
+            }
+        }
+        catch { }
+        return "https://chat.qwen.ai/";
+    }
 
-if (pane.Parent is Panel pp) pp.Children.Remove(pane);
-else if (pane.Parent is Decorator dd) dd.Child = null;
-else if (pane.Parent is ContentControl cc) cc.Content = null;
-
-_host!.Content = pane;
-}
-
-public void MountIn(object host)
-{
-if (Parent is Panel p) p.Children.Remove(this);
-else if (Parent is Decorator d) d.Child = null;
-else if (Parent is ContentControl c) c.Content = null;
-
-if (host is Panel hp)
-{
-hp.Children.Insert(0, this);
-if (hp is Grid g && g.RowDefinitions.Count > 0) Grid.SetRowSpan(this, g.RowDefinitions.Count);
-}
-else if (host is Decorator hd) hd.Child = this;
-}
-
-private void Boot(string s)
-{
-Dispatcher.InvokeAsync(() => BootText.Text = s);
-BootStatusChanged?.Invoke(s);
-}
-
-private void MarkReady(bool ok)
-{
-_readyTcs.TrySetResult(ok);
-BootStatusChanged?.Invoke(ok ? "готово" : "ошибка");
-Dispatcher.InvokeAsync(() =>
-{
-_bootBarTimer.Stop();
-if (ok) BootOverlay.Visibility = Visibility.Collapsed;
-else { BootText.Text = "⚠ не загрузилось · нажми ⟳"; BootBar.Text = ""; }
-});
-}
-
-private async Task InitWebView()
-{
-if (_webInitialized) return;
-_webInitialized = true;
-
-try
-{
-ConnectionStatus.Text = "Инициализация WebView2...";
-Boot("инициализация WebView2...");
-
-var env = await CoreWebView2Environment.CreateAsync(
-userDataFolder: Path.Combine(
-Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-"LERON_CLI", "WebView2Profile"));
-
-await WebView.EnsureCoreWebView2Async(env);
-
-WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-WebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
-WebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
-
-WebView.CoreWebView2.NavigationCompleted += async (_, e) =>
-{
-if (e.IsSuccess)
-{
-_navRetries = 0;
-StatusText.Text = $"Готово: {WebView.CoreWebView2.Source}";
-DetectChatId();
-Boot("синхронизация UI...");
-await SyncQwenUi();
-MarkReady(true);
-}
-else if (_navRetries < 2)
-{
-_navRetries++;
-StatusText.Text = $"Ошибка {e.WebErrorStatus}, повтор {_navRetries}...";
-await Task.Delay(1500);
-try { WebView.CoreWebView2.Navigate(GetStartUrl()); } catch { }
-}
-else
-{
-StatusText.Text = $"⚠ Не загрузилось: {e.WebErrorStatus}";
-MarkReady(false);
-}
-};
-
-WebView.CoreWebView2.WebMessageReceived += OnWebMessage;
-
-await InjectCrtCss();
-await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BrowserBridge.BridgeScript);
-
-var url = GetStartUrl();
-StatusText.Text = $"Загружаю: {url}";
-Boot("загрузка chat.qwen.ai...");
-WebView.CoreWebView2.Navigate(url);
-
-ConnectionStatus.Text = "WebView2 готов. Загрузка Qwen...";
-}
-catch (Exception ex)
-{
-ConnectionStatus.Text = $"Ошибка WebView2: {ex.Message}";
-MarkReady(false);
-}
-}
-
-private static string GetStartUrl()
-{
-try
-{
-var configPath = BrowserLauncher.GetConfigPath();
-if (configPath != null)
-{
-using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
-if (doc.RootElement.TryGetProperty("Roles", out var roles))
-{
-foreach (var role in roles.EnumerateObject())
-{
-if (role.Value.TryGetProperty("Url", out var url) && !string.IsNullOrEmpty(url.GetString()))
-return url.GetString()!;
-if (role.Value.TryGetProperty("ChatId", out var cid) && !string.IsNullOrEmpty(cid.GetString()))
-return $"https://chat.qwen.ai/c/{cid.GetString()}";
-}
-}
-}
-}
-catch { }
-return "https://chat.qwen.ai/";
-}
-
-private async Task InjectCrtCss()
-{
-const string css = @"
+    private async Task InjectCrtCss()
+    {
+        const string css = @"
 :root {
---bg-main: #04150c !important;
---bg-sidebar: #04150c !important;
---bg-panel: #04150c !important;
---text-primary: #c8ffd8 !important;
---text-secondary: #78b98f !important;
---accent: #00ff88 !important;
---border: #123626 !important;
+  --bg-main: #04150c !important;
+  --bg-sidebar: #04150c !important;
+  --bg-panel: #04150c !important;
+  --text-primary: #c8ffd8 !important;
+  --text-secondary: #78b98f !important;
+  --accent: #00ff88 !important;
+  --border: #123626 !important;
 }
 html, body, #root, .app, .desktop-layout, .desktop-layout-content, .desktop-layout-content-inner,
 .splitter-container, .splitter-container-left-panel, .home-page-layout-main, .main-content,
@@ -1829,431 +1812,393 @@ header, .header-desktop, .header-content, footer,
 [class*='sidebar'], [class*='nav'], [class*='layout'], [class*='wrapper'],
 [class*='panel'], [class*='chat'], [class*='session'], [class*='dialog'],
 [class*='placeholder'], [class*='folder'], [class*='project'], [class*='library'] {
-background-color: var(--bg-main) !important;
-color: var(--text-primary) !important;
+  background-color: var(--bg-main) !important;
+  color: var(--text-primary) !important;
 }
 .sidebar, .sidebar-wrapper, .sidebar-side, .mask {
-background-color: var(--bg-main) !important;
+  background-color: var(--bg-main) !important;
 }
 [class*='message'], [class*='input'], textarea, [class*='composer'], [class*='editor'],
 .message-input, .message-input-wrapper, .message-input-container,
 .search-container, .chat-search, [class*='dropdown'], [class*='trigger'], [class*='selector'] {
-background-color: var(--bg-panel) !important;
-color: var(--text-primary) !important;
-border-color: var(--border) !important;
+  background-color: var(--bg-panel) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
 }
 [class*='markdown'], [class*='prose'], [class*='message'] *,
 [class*='chat-item'] *, [class*='placeholder'] * {
-color: var(--text-primary) !important;
+  color: var(--text-primary) !important;
 }
 a, [class*='link'], .project-item-text, .folder-name,
 .chat-item-drag-link-content-tip, .user-menu-btn-text {
-color: var(--text-secondary) !important;
+  color: var(--text-secondary) !important;
 }
 button, [class*='btn'], [role='button'] { border-color: var(--border) !important; }
 [role='button']:hover, button:hover, .chat-item-drag:hover, .project-item:hover,
 .sidebar-entry-list-content:hover {
-background-color: #0f241a !important;
+  background-color: #0f241a !important;
 }
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: #04150c; }
 ::-webkit-scrollbar-thumb { background: #1d5c3d; border-radius: 4px; }
 ::selection { background: #123626; color: #c8ffd8; }
 ";
+        var js = "(function(){var css=" + JsonSerializer.Serialize(css) +
+                 ";function add(){var t=document.head||document.documentElement;" +
+                 "if(!t){setTimeout(add,100);return;}" +
+                 "var s=document.createElement('style');s.textContent=css;t.appendChild(s);}add();})();";
+        await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(js);
+    }
 
-var js = "(function(){var css=" + JsonSerializer.Serialize(css) +
-";function add(){var t=document.head||document.documentElement;" +
-"if(!t){setTimeout(add,100);return;}" +
-"var s=document.createElement('style');s.textContent=css;t.appendChild(s);}add();})();";
+    private void DetectChatId()
+    {
+        try
+        {
+            var uri = WebView.CoreWebView2.Source;
+            var match = System.Text.RegularExpressions.Regex.Match(uri, @"/c/([a-f0-9-]+)");
+            if (match.Success && match.Groups[1].Value != _currentChatId)
+            {
+                _currentChatId = match.Groups[1].Value;
+                ConnectionStatus.Text = $"Чат: {_currentChatId[..8]}...";
+                _ws?.SendAsync(
+                    Encoding.UTF8.GetBytes($"CHATID:{_currentChatId}"),
+                    WebSocketMessageType.Text, true, CancellationToken.None);
+            }
+        }
+        catch { }
+    }
 
-await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(js);
-}
+    private async void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            var msg = e.WebMessageAsJson;
+            if (string.IsNullOrEmpty(msg)) return;
+            var node = JsonDocument.Parse(msg).RootElement;
 
-private void DetectChatId()
-{
-try
-{
-var uri = WebView.CoreWebView2.Source;
-var match = System.Text.RegularExpressions.Regex.Match(uri, @"/c/([a-f0-9-]+)");
-if (match.Success && match.Groups[1].Value != _currentChatId)
-{
-_currentChatId = match.Groups[1].Value;
-ConnectionStatus.Text = $"Чат: {_currentChatId[..8]}...";
-_ws?.SendAsync(
-Encoding.UTF8.GetBytes($"CHATID:{_currentChatId}"),
-WebSocketMessageType.Text, true, CancellationToken.None);
-}
-}
-catch { }
-}
+            // Строковые сообщения — это результаты скриптов (SYNC:/SENDRES:),
+            // т.к. ExecuteScriptAsync не ждёт Promise.
+            if (node.ValueKind == JsonValueKind.String)
+            {
+                var s = node.GetString() ?? "";
+                if (s.StartsWith("SYNC:")) _syncTcs?.TrySetResult(s.Substring(5));
+                else if (s.StartsWith("SENDRES:")) _sendTcs?.TrySetResult(s.Substring(8));
+                return;
+            }
 
-private async void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
-{
-try
-{
-var msg = e.WebMessageAsJson;
-if (string.IsNullOrEmpty(msg)) return;
+            if (node.TryGetProperty("action", out var action))
+            {
+                var act = action.GetString();
+                if (act == "aiResponse" && node.TryGetProperty("text", out var textProp))
+                {
+                    var text = textProp.GetString() ?? "";
+                    var reqid = node.TryGetProperty("reqid", out var rp) ? (rp.GetString() ?? "") : "";
+                    if (_wsConnected && _ws != null)
+                    {
+                        await _ws.SendAsync(
+                            Encoding.UTF8.GetBytes($"AI:{_currentChatId}|{reqid}|{text}"),
+                            WebSocketMessageType.Text, true, CancellationToken.None);
+                        PlayNotificationSound();
+                    }
+                }
+                else if (act == "aiStream" && node.TryGetProperty("text", out var streamText))
+                {
+                    var text = streamText.GetString() ?? "";
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        StatusText.Text = $"Стриминг: {text.Length} симв...";
+                    });
+                }
+                // action == "sendfail" больше не обрабатываем: повторная отправка
+                // промпта плодила дубли в Qwen. Единственный повтор — при
+                // SENDRES:NOT_SENT внутри SendToQwen.
+                else if (act == "captcha")
+                {
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        CaptchaDetected?.Invoke();
+                        StatusText.Text = "⚠ Капча — открой браузер (🌐) и пройди проверку.";
+                    });
+                }
+            }
+        }
+        catch { }
+    }
 
-var node = JsonDocument.Parse(msg).RootElement;
+    private static void PlayNotificationSound()
+    {
+        try { SystemSounds.Asterisk.Play(); } catch { }
+    }
 
-// Строковые сообщения — это результаты скриптов (SYNC:/SENDRES:),
-// т.к. ExecuteScriptAsync не ждёт Promise.
-if (node.ValueKind == JsonValueKind.String)
-{
-var s = node.GetString() ?? "";
-if (s.StartsWith("SYNC:")) _syncTcs?.TrySetResult(s.Substring(5));
-else if (s.StartsWith("SENDRES:")) _sendTcs?.TrySetResult(s.Substring(8));
-return;
-}
+    private async void ConnectWebSocket()
+    {
+        if (_wsConnected) return;
+        try
+        {
+            _ws?.Dispose();
+            _ws = new ClientWebSocket();
+            await _ws.ConnectAsync(new Uri("ws://localhost:51234/ws"), CancellationToken.None);
+            _wsConnected = true;
+            ConnectionStatus.Text = "Gateway подключён";
+            Dispatcher.InvokeAsync(() => LinkDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#00ff88")));
+            _ = ListenWebSocket();
+        }
+        catch
+        {
+            ConnectionStatus.Text = "Gateway недоступен, переподключение...";
+            Dispatcher.InvokeAsync(() => LinkDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#5a2430")));
+        }
+    }
 
-if (node.TryGetProperty("action", out var action))
-{
-var act = action.GetString();
+    private async Task ListenWebSocket()
+    {
+        var buffer = new byte[4096];
+        try
+        {
+            while (_ws != null && _ws.State == WebSocketState.Open)
+            {
+                var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                if (result.MessageType == WebSocketMessageType.Close) break;
+                var msg = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                if (msg.StartsWith("TYPE:"))
+                {
+                    var parts = msg[5..].Split('|');
+                    if (parts.Length >= 5)
+                    {
+                        var chatId = parts[1];
+                        var think = parts[3] == "1";
+                        var reqid = parts[4];
+                        var text = string.Join('|', parts[5..]);
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            if (!string.IsNullOrEmpty(chatId)) _currentChatId = chatId;
+                            SendToQwen(text, think, reqid);
+                        });
+                    }
+                }
+            }
+        }
+        catch { }
+        finally
+        {
+            _wsConnected = false;
+        }
+    }
 
-if (act == "aiResponse" && node.TryGetProperty("text", out var textProp))
-{
-var text = textProp.GetString() ?? "";
-var reqid = node.TryGetProperty("reqid", out var rp) ? (rp.GetString() ?? "") : "";
-if (_wsConnected && _ws != null)
-{
-await _ws.SendAsync(
-Encoding.UTF8.GetBytes($"AI:{_currentChatId}|{reqid}|{text}"),
-WebSocketMessageType.Text, true, CancellationToken.None);
-PlayNotificationSound();
-}
-}
-else if (act == "aiStream" && node.TryGetProperty("text", out var streamText))
-{
-var text = streamText.GetString() ?? "";
-Dispatcher.InvokeAsync(() =>
-{
-StatusText.Text = $"Стриминг: {text.Length} симв...";
-});
-}
-else if (act == "sendfail")
-{
-if (_wsConnected && _ws != null)
-{
-await _ws.SendAsync(
-Encoding.UTF8.GetBytes("SENDFAIL"),
-WebSocketMessageType.Text, true, CancellationToken.None);
-}
-Dispatcher.InvokeAsync(() => StatusText.Text = "⚠ Qwen не отправил — gateway повторит");
-}
-else if (act == "captcha")
-{
-Dispatcher.InvokeAsync(() =>
-{
-CaptchaDetected?.Invoke();
-StatusText.Text = "⚠ Капча — открой браузер (🌐) и пройди проверку.";
-});
-}
-}
-}
-catch { }
-}
+    private async Task SyncQwenUi()
+    {
+        try
+        {
+            await Task.Delay(1200);
+            if (WebView?.CoreWebView2 == null) return;
+            await _uiLock.WaitAsync();
+            try
+            {
+                var report = await SyncUiNoLockAsync(_lastThink);
+                Dispatcher.InvokeAsync(() =>
+                {
+                    StatusText.Text = SyncStatusText(report, _lastThink);
+                    ConnectionStatus.Text = "Синхронизация: " + SyncStatusText(report, _lastThink);
+                });
+            }
+            finally { _uiLock.Release(); }
+        }
+        catch { }
+    }
 
-private static void PlayNotificationSound()
-{
-try { SystemSounds.Asterisk.Play(); } catch { }
-}
+    private async Task<string> SyncUiNoLockAsync(bool think)
+    {
+        if (WebView?.CoreWebView2 == null) return "sync:no-corewebview";
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _syncTcs = tcs;
+        await WebView.CoreWebView2.ExecuteScriptAsync(
+            BrowserBridge.SyncUiScript.Replace("__THINK__", think ? "true" : "false"));
+        // 15 секунд: открытие меню + переключение модели (перезагрузка чата ~1.5с) + повтор.
+        var finished = await Task.WhenAny(tcs.Task, Task.Delay(15000));
+        if (finished != tcs.Task) return "sync-timeout";
+        return await tcs.Task;
+    }
 
-private async void ConnectWebSocket()
-{
-if (_wsConnected) return;
-try
-{
-_ws?.Dispose();
-_ws = new ClientWebSocket();
-await _ws.ConnectAsync(new Uri("ws://localhost:51234/ws"), CancellationToken.None);
-_wsConnected = true;
-ConnectionStatus.Text = "Gateway подключён";
-Dispatcher.InvokeAsync(() => LinkDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#00ff88")));
-_ = ListenWebSocket();
-}
-catch
-{
-ConnectionStatus.Text = "Gateway недоступен, переподключение...";
-Dispatcher.InvokeAsync(() => LinkDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#5a2430")));
-}
-}
+    private async Task<string> WaitSendAsync(string script)
+    {
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _sendTcs = tcs;
+        await WebView.CoreWebView2.ExecuteScriptAsync(script);
+        var finished = await Task.WhenAny(tcs.Task, Task.Delay(25000));
+        return finished == tcs.Task ? await tcs.Task : "send-timeout";
+    }
 
-private async Task ListenWebSocket()
-{
-var buffer = new byte[4096];
-try
-{
-while (_ws != null && _ws.State == WebSocketState.Open)
-{
-var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-if (result.MessageType == WebSocketMessageType.Close) break;
+    private static (bool allowed, string reason) ModelGate(string report)
+    {
+        if (string.IsNullOrWhiteSpace(report)) return (true, "");
+        bool sawModel = false;
+        string model = "";
+        foreach (var raw in report.Split(' '))
+        {
+            var p = raw.Trim();
+            if (!p.StartsWith("model:", StringComparison.OrdinalIgnoreCase)) continue;
+            sawModel = true;
+            var v = p.Substring(6).Trim().ToLowerInvariant();
+            if (v == "ok" || v == "no-ui" || v == "?" || v == "")
+                return (true, "");
+            if (v == "menu-fail" || v.Contains("menu-fail"))
+                return (false, "не удалось открыть/выбрать модель 3.8-Max");
+            if (v.Contains("3.8") && v.Contains("max"))
+                return (true, "");
+            model = v;
+        }
+        if (!sawModel || string.IsNullOrWhiteSpace(model)) return (true, "");
+        return (false, $"модель не 3.8-Max ({model})");
+    }
 
-var msg = Encoding.UTF8.GetString(buffer, 0, result.Count);
+    private static string SyncStatusText(string report, bool think)
+    {
+        if (string.IsNullOrWhiteSpace(report)) return "⚠ синхронизация: нет ответа";
+        bool warn =
+            report.Contains("no-ui") ||
+            report.Contains("timeout") ||
+            report.Contains("sync-err") ||
+            report.Contains("menu-fail") ||
+            report.StartsWith("sync:");
+        string desired = think ? "🧠 мышление" : "⚡ быстро";
+        if (report.Contains("model:ok") && report.Contains("think:ok"))
+            return $"3.8 max · {(think ? "мышление" : "быстро")}";
+        if (warn) return $"⚠ {desired} · {report}";
+        return $"{desired} · {report}";
+    }
 
-if (msg.StartsWith("TYPE:"))
-{
-var parts = msg[5..].Split('|');
-if (parts.Length >= 5)
-{
-var chatId = parts[1];
-var think = parts[3] == "1";
-var reqid = parts[4];
-var text = string.Join('|', parts[5..]);
+    public async void SetThinkMode(bool think)
+    {
+        _lastThink = think;
+        try
+        {
+            if (WebView?.CoreWebView2 == null) return;
+            Dispatcher.InvokeAsync(() =>
+                StatusText.Text = think ? "🧠 переключаю на мышление..." : "⚡ переключаю на быстрый...");
+            await _uiLock.WaitAsync();
+            try
+            {
+                var r = await SyncUiNoLockAsync(think);
+                Dispatcher.InvokeAsync(() =>
+                {
+                    if (r.Contains("no-ui") || r.Contains("timeout") || r.Contains("menu-fail"))
+                    {
+                        StatusText.Text = "⚠ Не нашёл тумблер мышления/модели в Qwen";
+                        ConnectionStatus.Text = "Синхронизация: ⚠ " + r;
+                    }
+                    else
+                    {
+                        StatusText.Text = (think ? "🧠 Qwen: мышление" : "⚡ Qwen: быстро") + " · " + r;
+                        ConnectionStatus.Text = "Синхронизация: " + r;
+                    }
+                });
+            }
+            finally { _uiLock.Release(); }
+        }
+        catch { }
+    }
 
-await Dispatcher.InvokeAsync(() =>
-{
-if (!string.IsNullOrEmpty(chatId)) _currentChatId = chatId;
-SendToQwen(text, think, reqid);
-});
-}
-}
-}
-}
-catch { }
-finally
-{
-_wsConnected = false;
-}
-}
+    private async Task SendBlockedResponseAsync(string reqid, string reason)
+    {
+        try
+        {
+            if (_ws == null || !_wsConnected || _ws.State != WebSocketState.Open) return;
+            var safe = (reason ?? "").Replace('|', '/');
+            var text = $"⚠ {safe}";
+            var payload = $"AI:{_currentChatId}|{reqid}|{text}";
+            await _ws.SendAsync(
+                Encoding.UTF8.GetBytes(payload),
+                WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+        catch { }
+    }
 
-private async Task SyncQwenUi()
-{
-try
-{
-await Task.Delay(1200);
-if (WebView?.CoreWebView2 == null) return;
+    private async void SendToQwen(string text, bool think, string reqid)
+    {
+        try
+        {
+            _lastThink = think;
+            Dispatcher.InvokeAsync(() =>
+                StatusText.Text = think ? "🧠 проверяю 3.8 max и режим..." : "⚡ проверяю 3.8 max и режим...");
+            await _uiLock.WaitAsync();
+            try
+            {
+                if (WebView?.CoreWebView2 == null)
+                {
+                    Dispatcher.InvokeAsync(() => StatusText.Text = "⚠ WebView2 не готов");
+                    await SendBlockedResponseAsync(reqid, "WebView2 не готов");
+                    return;
+                }
 
-await _uiLock.WaitAsync();
-try
-{
-var report = await SyncUiNoLockAsync(_lastThink);
-Dispatcher.InvokeAsync(() =>
-{
-StatusText.Text = SyncStatusText(report, _lastThink);
-ConnectionStatus.Text = "Синхронизация: " + SyncStatusText(report, _lastThink);
-});
-}
-finally { _uiLock.Release(); }
-}
-catch { }
-}
+                string syncReport;
+                try { syncReport = await SyncUiNoLockAsync(think); }
+                catch (Exception ex) { syncReport = "sync-error:" + ex.Message; }
 
-private async Task<string> SyncUiNoLockAsync(bool think)
-{
-if (WebView?.CoreWebView2 == null) return "sync:no-corewebview";
+                var gate = ModelGate(syncReport);
+                if (!gate.allowed)
+                {
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        StatusText.Text = $"⚠ заблокировано: {gate.reason}";
+                        ConnectionStatus.Text = $"Синхронизация: ⚠ {gate.reason} · {syncReport}";
+                    });
+                    await SendBlockedResponseAsync(reqid, gate.reason);
+                    return;
+                }
 
-var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-_syncTcs = tcs;
+                var syncStatus = SyncStatusText(syncReport, think);
+                Dispatcher.InvokeAsync(() =>
+                {
+                    StatusText.Text = "Синхронизация: " + syncStatus;
+                    ConnectionStatus.Text = "Синхронизация: " + syncStatus;
+                });
 
-await WebView.CoreWebView2.ExecuteScriptAsync(
-BrowserBridge.SyncUiScript.Replace("__THINK__", think ? "true" : "false"));
+                var script = BrowserBridge.SendScript
+                    .Replace("__TEXT__", JsonSerializer.Serialize(text))
+                    .Replace("__REQID__", reqid);
 
-// 15 секунд: открытие меню + переключение модели (перезагрузка чата ~1.5с) + повтор.
-var finished = await Task.WhenAny(tcs.Task, Task.Delay(15000));
-if (finished != tcs.Task) return "sync-timeout";
-return await tcs.Task;
-}
+                // Одна отправка. Повтор максимум 1 раз и ТОЛЬКО если скрипт явно вернул NOT_SENT.
+                var status = await WaitSendAsync(script);
+                if (status == "NOT_SENT")
+                {
+                    await Task.Delay(2500);
+                    status = await WaitSendAsync(script);
+                }
 
-private async Task<string> WaitSendAsync(string script)
-{
-var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-_sendTcs = tcs;
+                var ok = status == "OK";
+                Dispatcher.InvokeAsync(() =>
+                    StatusText.Text = ok ? $"Отправлено · {syncStatus}" : $"⚠ Не отправилось ({status}) · {syncStatus}");
+            }
+            finally { _uiLock.Release(); }
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.InvokeAsync(() => StatusText.Text = $"Ошибка: {ex.Message}");
+        }
+    }
 
-await WebView.CoreWebView2.ExecuteScriptAsync(script);
+    private void OnBackClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (WebView.CoreWebView2?.CanGoBack == true)
+            WebView.CoreWebView2.GoBack();
+    }
 
-var finished = await Task.WhenAny(tcs.Task, Task.Delay(25000));
-return finished == tcs.Task ? await tcs.Task : "send-timeout";
-}
+    private void OnForwardClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (WebView.CoreWebView2?.CanGoForward == true)
+            WebView.CoreWebView2.GoForward();
+    }
 
-private static (bool allowed, string reason) ModelGate(string report)
-{
-if (string.IsNullOrWhiteSpace(report)) return (true, "");
-
-bool sawModel = false;
-string model = "";
-
-foreach (var raw in report.Split(' '))
-{
-var p = raw.Trim();
-if (!p.StartsWith("model:", StringComparison.OrdinalIgnoreCase)) continue;
-
-sawModel = true;
-var v = p.Substring(6).Trim().ToLowerInvariant();
-
-if (v == "ok" || v == "no-ui" || v == "?" || v == "")
-return (true, "");
-
-if (v == "menu-fail" || v.Contains("menu-fail"))
-return (false, "не удалось открыть/выбрать модель 3.8-Max");
-
-if (v.Contains("3.8") && v.Contains("max"))
-return (true, "");
-
-model = v;
-}
-
-if (!sawModel || string.IsNullOrWhiteSpace(model)) return (true, "");
-return (false, $"модель не 3.8-Max ({model})");
-}
-
-private static string SyncStatusText(string report, bool think)
-{
-if (string.IsNullOrWhiteSpace(report)) return "⚠ синхронизация: нет ответа";
-
-bool warn =
-report.Contains("no-ui") ||
-report.Contains("timeout") ||
-report.Contains("sync-err") ||
-report.Contains("menu-fail") ||
-report.StartsWith("sync:");
-
-string desired = think ? "🧠 мышление" : "⚡ быстро";
-
-if (report.Contains("model:ok") && report.Contains("think:ok"))
-return $"3.8 max · {(think ? "мышление" : "быстро")}";
-
-if (warn) return $"⚠ {desired} · {report}";
-return $"{desired} · {report}";
-}
-
-public async void SetThinkMode(bool think)
-{
-_lastThink = think;
-try
-{
-if (WebView?.CoreWebView2 == null) return;
-
-Dispatcher.InvokeAsync(() =>
-StatusText.Text = think ? "🧠 переключаю на мышление..." : "⚡ переключаю на быстрый...");
-
-await _uiLock.WaitAsync();
-try
-{
-var r = await SyncUiNoLockAsync(think);
-Dispatcher.InvokeAsync(() =>
-{
-if (r.Contains("no-ui") || r.Contains("timeout") || r.Contains("menu-fail"))
-{
-StatusText.Text = "⚠ Не нашёл тумблер мышления/модели в Qwen";
-ConnectionStatus.Text = "Синхронизация: ⚠ " + r;
-}
-else
-{
-StatusText.Text = (think ? "🧠 Qwen: мышление" : "⚡ Qwen: быстро") + " · " + r;
-ConnectionStatus.Text = "Синхронизация: " + r;
-}
-});
-}
-finally { _uiLock.Release(); }
-}
-catch { }
-}
-
-private async Task SendBlockedResponseAsync(string reqid, string reason)
-{
-try
-{
-if (_ws == null || !_wsConnected || _ws.State != WebSocketState.Open) return;
-
-var safe = (reason ?? "").Replace('|', '/');
-var text = $"⚠ {safe}";
-var payload = $"AI:{_currentChatId}|{reqid}|{text}";
-
-await _ws.SendAsync(
-Encoding.UTF8.GetBytes(payload),
-WebSocketMessageType.Text, true, CancellationToken.None);
-}
-catch { }
-}
-
-private async void SendToQwen(string text, bool think, string reqid)
-{
-try
-{
-_lastThink = think;
-
-Dispatcher.InvokeAsync(() =>
-StatusText.Text = think ? "🧠 проверяю 3.8 max и режим..." : "⚡ проверяю 3.8 max и режим...");
-
-await _uiLock.WaitAsync();
-try
-{
-if (WebView?.CoreWebView2 == null)
-{
-Dispatcher.InvokeAsync(() => StatusText.Text = "⚠ WebView2 не готов");
-await SendBlockedResponseAsync(reqid, "WebView2 не готов");
-return;
-}
-
-string syncReport;
-try { syncReport = await SyncUiNoLockAsync(think); }
-catch (Exception ex) { syncReport = "sync-error:" + ex.Message; }
-
-var gate = ModelGate(syncReport);
-if (!gate.allowed)
-{
-Dispatcher.InvokeAsync(() =>
-{
-StatusText.Text = $"⚠ заблокировано: {gate.reason}";
-ConnectionStatus.Text = $"Синхронизация: ⚠ {gate.reason} · {syncReport}";
-});
-await SendBlockedResponseAsync(reqid, gate.reason);
-return;
-}
-
-var syncStatus = SyncStatusText(syncReport, think);
-Dispatcher.InvokeAsync(() =>
-{
-StatusText.Text = "Синхронизация: " + syncStatus;
-ConnectionStatus.Text = "Синхронизация: " + syncStatus;
-});
-
-var script = BrowserBridge.SendScript
-.Replace("__TEXT__", JsonSerializer.Serialize(text))
-.Replace("__REQID__", reqid);
-
-// Одна отправка. Повтор максимум 1 раз и ТОЛЬКО если скрипт явно вернул NOT_SENT.
-var status = await WaitSendAsync(script);
-if (status == "NOT_SENT")
-{
-await Task.Delay(2500);
-status = await WaitSendAsync(script);
-}
-
-var ok = status == "OK";
-Dispatcher.InvokeAsync(() =>
-StatusText.Text = ok ? $"Отправлено · {syncStatus}" : $"⚠ Не отправилось ({status}) · {syncStatus}");
-}
-finally { _uiLock.Release(); }
-}
-catch (Exception ex)
-{
-Dispatcher.InvokeAsync(() => StatusText.Text = $"Ошибка: {ex.Message}");
-}
-}
-
-private void OnBackClick(object sender, System.Windows.RoutedEventArgs e)
-{
-if (WebView.CoreWebView2?.CanGoBack == true)
-WebView.CoreWebView2.GoBack();
-}
-
-private void OnForwardClick(object sender, System.Windows.RoutedEventArgs e)
-{
-if (WebView.CoreWebView2?.CanGoForward == true)
-WebView.CoreWebView2.GoForward();
-}
-
-private void OnReloadClick(object sender, System.Windows.RoutedEventArgs e)
-{
-WebView.CoreWebView2?.Reload();
-}
+    private void OnReloadClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        WebView.CoreWebView2?.Reload();
+    }
 }
 
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindow.xaml
-SIZE: 16563 bytes
+SIZE: 16873 bytes
 ------------------------------------------------
 <local:ChromeWindow x:Class="MainApp.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -2261,14 +2206,12 @@ SIZE: 16563 bytes
                     xmlns:local="clr-namespace:MainApp"
                     Title="LERON GUI — чат"
                     Width="1600" Height="800">
-
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
     </WindowChrome.WindowChrome>
 
     <local:ChromeWindow.Resources>
         <Style TargetType="ScrollBar" BasedOn="{StaticResource LeronScrollBar}"/>
-
         <Style TargetType="Button">
             <Setter Property="Foreground" Value="#c8ffd8"/>
             <Setter Property="Background" Value="#0b1d14"/>
@@ -2317,10 +2260,8 @@ SIZE: 16563 bytes
                         <Border Width="40" Height="40" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
                             <TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-
                         <TextBlock Text="LERON GUI" FontSize="20" FontWeight="Bold" Foreground="#00ff88" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0"/>
                         <TextBlock Text="· чат агента" Margin="10,0,0,0" Foreground="#447a5a" FontSize="14" VerticalAlignment="Center"/>
-
                         <Border Background="#0d2418" BorderBrush="#1d5c3d" BorderThickness="1" CornerRadius="10" Padding="12,5" Margin="18,0,0,0" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
                                 <Ellipse x:Name="OnlineDot" Width="9" Height="9" Fill="#00ff88" VerticalAlignment="Center"/>
@@ -2365,16 +2306,13 @@ SIZE: 16563 bytes
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-
                                 <Border Width="46" Height="46" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
                                     <TextBlock Text="💻" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
-
                                 <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="Кодер" FontSize="17" FontWeight="Bold" Foreground="#d9ffe7"/>
                                     <TextBlock x:Name="AgentStatusText" Text="онлайн · готов к работе" FontSize="12" Foreground="#7dffa8" FontFamily="Consolas" Margin="0,3,0,0"/>
                                 </StackPanel>
-
                                 <Border Grid.Column="2" Width="22" Height="22" CornerRadius="11" Background="#00ff88" VerticalAlignment="Top">
                                     <TextBlock Text="✓" FontSize="13" FontWeight="Bold" Foreground="#04150c" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
@@ -2391,23 +2329,18 @@ SIZE: 16563 bytes
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-
                                 <TextBlock Text="Роль:" Foreground="#447a5a" Margin="0,0,0,8"/>
                                 <TextBlock Grid.Column="1" x:Name="SessionRoleText" Text="coder" Foreground="#d9ffe7" FontWeight="Bold" Margin="10,0,0,8"/>
-
                                 <TextBlock Grid.Row="1" Text="Стиль:" Foreground="#447a5a" Margin="0,0,0,8"/>
                                 <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SessionStyleText" Text="аккуратный" Foreground="#d9ffe7" Margin="10,0,0,8"/>
-
                                 <TextBlock Grid.Row="2" Text="Скорость:" Foreground="#447a5a" Margin="0,0,0,8"/>
                                 <TextBlock Grid.Row="2" Grid.Column="1" x:Name="SessionSpeedText" Text="быстро" Foreground="#d9ffe7" Margin="10,0,0,8"/>
-
                                 <TextBlock Grid.Row="3" Text="Проект:" Foreground="#447a5a"/>
                                 <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SessionProjectText" Text="—" Foreground="#00ff88" Margin="10,0,0,0"/>
                             </Grid>
@@ -2446,9 +2379,8 @@ SIZE: 16563 bytes
                                 <Button x:Name="ModeAutoBtn" Content="🔄 авто" Click="OnModeAutoClick" Margin="0,0,6,0" ToolTip="Подтвердил действие один раз — похожие дальше идут сами"/>
                                 <Button x:Name="ModeYoloBtn" Content="⚡ агрессивный" Click="OnModeYoloClick" Margin="0,0,6,0" ToolTip="YOLO: обычные действия без подтверждений"/>
                                 <Button x:Name="ModeRepairBtn" Content="🔧 ремонт" Click="OnModeRepairClick" Margin="0,0,6,0" ToolTip="Минимальный ремонт одной ошибки"/>
-
+                                <Button x:Name="AutoRepairBtn" Content="🔧 авторемонт: вкл" Click="OnAutoRepairClick" Margin="0,0,6,0" ToolTip="Автоматическая проверка проекта после изменений. Независим от режима; в режиме «ремонт» проверка идёт всегда."/>
                                 <TextBlock Text="│" Foreground="#1d5c3d" Margin="4,0,6,0" VerticalAlignment="Center"/>
-
                                 <Button x:Name="ThinkBtn" Content="⚡ быстро" Click="OnThinkClick" Margin="0,0,6,0" ToolTip="Режим ответа ИИ: быстро или с мышлением (Ctrl+6)"/>
                             </StackPanel>
 
@@ -2457,7 +2389,6 @@ SIZE: 16563 bytes
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-
                                 <Grid Grid.Column="0">
                                     <TextBox x:Name="InputBox"
                                              Background="#04110c"
@@ -2473,16 +2404,14 @@ SIZE: 16563 bytes
                                              SelectionBrush="#123626"
                                              IsEnabled="False"
                                              KeyDown="OnInputKeyDown"/>
-
                                     <TextBlock x:Name="InputPlaceholder"
-                                               Text="Введите сообщение или команду..."
+                                               Text="Введите сообщение..."
                                                Foreground="#3d6a4d"
                                                FontSize="15"
                                                FontFamily="Consolas"
                                                Margin="14,12,0,0"
                                                IsHitTestVisible="False"/>
                                 </Grid>
-
                                 <Button x:Name="SendBtn"
                                         Grid.Column="1"
                                         Content="Отправить ➤"
@@ -2508,7 +2437,7 @@ SIZE: 16563 bytes
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindow.xaml.cs
-SIZE: 21108 bytes
+SIZE: 24626 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -2517,6 +2446,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -2543,12 +2473,18 @@ public partial class MainWindow : ChromeWindow
     private readonly string _projectStatus;
     private string _mode;
     private bool _think;
+    // Авторемонт: независимый от режима флаг «проверять проект после изменений».
+    // Хранится в config в ProjectSettings[ключ проекта].AutoRepair (null = вкл).
+    private bool _autoRepair = true;
     internal readonly List<Border> _interactiveCards = new();
     private readonly QwenBrowserPane _browserPane = QwenBrowserPane.Shared;
 
     private string HistoryKey => _projectPath != null
         ? HistoryStore.ProjectKey(_projectPath)
         : (_selectedRole ?? "unknown");
+
+    // Ключ проекта в config — как у gateway: путь без хвостовых слэшей, в нижнем регистре.
+    private string AutoRepairKey => _projectPath!.TrimEnd('\\', '/').ToLowerInvariant();
 
     public MainWindow(string? projectPath = null, string? projectName = null)
     {
@@ -2566,11 +2502,13 @@ public partial class MainWindow : ChromeWindow
         _mode = projectPath != null ? "edit" : "chat";
         UserProfile.Exists();
         _projectStatus = GetProjectStatus();
+        _autoRepair = LoadAutoRepair();
         LoadHistoryFromDisk();
 
         InputBox.TextChanged += (_, _) =>
             InputPlaceholder.Visibility = string.IsNullOrEmpty(InputBox.Text)
                 ? Visibility.Visible : Visibility.Collapsed;
+
         KeyDown += OnMainWindowKeyDown;
 
         _waitTimer.Tick += (_, _) =>
@@ -2592,6 +2530,46 @@ public partial class MainWindow : ChromeWindow
 
     internal static SolidColorBrush B(string hex) =>
         new((Color)ColorConverter.ConvertFromString(hex));
+
+    private bool LoadAutoRepair()
+    {
+        if (_projectPath == null) return true;
+        try
+        {
+            var configPath = BrowserLauncher.GetConfigPath();
+            if (configPath == null) return true;
+            var node = JsonNode.Parse(File.ReadAllText(configPath));
+            var v = node?["ProjectSettings"]?[AutoRepairKey]?["AutoRepair"];
+            // null (не задано) = включено по умолчанию
+            return v == null || v.GetValue<bool>();
+        }
+        catch { return true; }
+    }
+
+    private void SaveAutoRepair()
+    {
+        if (_projectPath == null) return;
+        try
+        {
+            var configPath = BrowserLauncher.GetConfigPath();
+            if (configPath == null) return;
+            var node = JsonNode.Parse(File.ReadAllText(configPath))?.AsObject();
+            if (node == null) return;
+            if (node["ProjectSettings"] is not JsonObject settings)
+            {
+                settings = new JsonObject();
+                node["ProjectSettings"] = settings;
+            }
+            if (settings[AutoRepairKey] is not JsonObject proj)
+            {
+                proj = new JsonObject();
+                settings[AutoRepairKey] = proj;
+            }
+            proj["AutoRepair"] = _autoRepair;
+            File.WriteAllText(configPath, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { }
+    }
 
     private string GetProjectStatus()
     {
@@ -2633,6 +2611,16 @@ public partial class MainWindow : ChromeWindow
     private void OnModeRepairClick(object sender, RoutedEventArgs e) => SetMode("repair");
     private void OnThinkClick(object sender, RoutedEventArgs e) => ToggleThink();
 
+    private void OnAutoRepairClick(object sender, RoutedEventArgs e)
+    {
+        _autoRepair = !_autoRepair;
+        SaveAutoRepair();
+        UpdateModeButtons();
+        RoleStatus.Text = _autoRepair
+            ? "Авторемонт включён: проект проверяется после изменений."
+            : "Авторемонт выключен: проверка проекта после изменений не запускается.";
+    }
+
     private void ToggleThink()
     {
         _think = !_think;
@@ -2650,18 +2638,15 @@ public partial class MainWindow : ChromeWindow
             var status = JsonSerializer.Deserialize<GatewayStatus>(
                 resp, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (status == null) return;
-
             _boundRoles.Clear();
             if (status.Roles != null)
                 foreach (var r in status.Roles) _boundRoles.Add(r);
-
             Dispatcher.InvokeAsync(() =>
             {
                 OnlineDot.Fill = B("#00ff88");
                 OnlineText.Text = "онлайн";
                 AgentStatusText.Text = "онлайн · готов к работе";
             });
-
             if (_selectedRole != null && !_waiting)
                 ApplyRoleSelection();
         }
@@ -2683,19 +2668,16 @@ public partial class MainWindow : ChromeWindow
         var bound = _boundRoles.Contains(_selectedRole);
         InputBox.IsEnabled = bound;
         SendBtn.IsEnabled = bound;
-
         var user = string.IsNullOrWhiteSpace(UserProfile.Nick) ? "гость" : UserProfile.Nick;
         if (!bound)
         {
             RoleStatus.Text = $"👤 {user} · роль \"{_selectedRole}\" не закреплена за чатом. Открой чат Qwen и закрепи роль.";
             return;
         }
-
         var speed = _think ? "🧠 мышление" : "⚡ быстро";
         var proj = _projectPath != null ? $" · 📁 {_projectStatus}" : "";
         RoleStatus.Text = $"👤 {user} · роль: {_selectedRole} · {ModeLabel()} · {speed}{proj}";
         SessionRoleText.Text = _selectedRole;
-
         var label = ModeLabel();
         var sp = label.IndexOf(' ');
         SessionStyleText.Text = sp >= 0 ? label.Substring(sp + 1) : label;
@@ -2755,6 +2737,9 @@ public partial class MainWindow : ChromeWindow
         StyleModeButton(ModeYoloBtn, _mode == "yolo");
         StyleModeButton(ModeRepairBtn, _mode == "repair");
         StyleModeButton(ThinkBtn, _think);
+        // Тумблер авторемонта: не режим, а независимый флаг (зелёный = вкл).
+        StyleModeButton(AutoRepairBtn, _autoRepair);
+        AutoRepairBtn.Content = _autoRepair ? "🔧 авторемонт: вкл" : "🔧 авторемонт: выкл";
     }
 
     private static void StyleModeButton(Button btn, bool active)
@@ -2933,12 +2918,6 @@ public partial class MainWindow : ChromeWindow
         InputBox.Clear();
         ClearInteractiveCards();
 
-        if (text.StartsWith("/"))
-        {
-            RunLocalTool(text);
-            return;
-        }
-
         SendBtn.IsEnabled = true;
         SendBtn.Content = "⏹ стоп";
         _waiting = true;
@@ -2952,12 +2931,12 @@ public partial class MainWindow : ChromeWindow
                 role, text,
                 projectPath = _projectPath,
                 mode = _mode,
-                think = _think
+                think = _think,
+                autoRepair = _autoRepair
             });
             var agentResp = await _http.PostAsync("http://localhost:51234/agent-run",
                 new StringContent(agentPayload, Encoding.UTF8, "application/json"));
             var agentBody = await agentResp.Content.ReadAsStringAsync();
-
             if (agentResp.IsSuccessStatusCode)
                 await HandleAgentBody(role, agentBody);
             else
@@ -3010,7 +2989,16 @@ public partial class MainWindow : ChromeWindow
                 RenderCards(r.Cards?.Where(c => c.Type != "summary").ToList());
                 if (!string.IsNullOrWhiteSpace(r.Response))
                     AddMessage(role, role, r.Response, "#16213e");
-                RenderCards(r.Cards?.Where(c => c.Type == "summary").ToList());
+                var summary = r.Cards?.Where(c => c.Type == "summary").ToList();
+                // Если авторемонт выключен, файлы менялись, а режим не «ремонт» —
+                // проверка проекта не запускалась: помечаем итог.
+                if (summary != null && !_autoRepair && _mode != "repair" && (r.ChangedFiles?.Count ?? 0) > 0)
+                {
+                    foreach (var c in summary)
+                        c.Details += (string.IsNullOrEmpty(c.Details) ? "" : "\n") +
+                                     "⚠ авторемонт выключен — проверка проекта не запускалась";
+                }
+                RenderCards(summary);
                 break;
             }
             case "approval": AddApprovalCard(r); break;
@@ -3038,7 +3026,6 @@ public partial class MainWindow : ChromeWindow
             var resp = await _http.PostAsync("http://localhost:51234/agent-approve",
                 new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"));
             var body = await resp.Content.ReadAsStringAsync();
-
             if (resp.IsSuccessStatusCode)
                 await HandleAgentBody(_selectedRole ?? "coder", body);
             else
@@ -3541,121 +3528,12 @@ public partial class MainWindow
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindowTools.cs
-SIZE: 7836 bytes
+SIZE: 3509 bytes
 ------------------------------------------------
-using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace MainApp;
-
-public partial class MainWindow
-{
-    private void RunLocalTool(string text)
-    {
-        var role = _selectedRole!;
-        if (_projectPath == null)
-        {
-            AddMessage(role, "система", "Инструменты доступны только при открытом проекте. Выбери проект в хабе.", "#e94560");
-            return;
-        }
-
-        var parts = text.Split(new[] { ' ' }, 2);
-        var cmd = parts[0].ToLowerInvariant();
-        var rest = parts.Length > 1 ? parts[1].Trim() : "";
-
-        string result;
-        try
-        {
-            result = cmd switch
-            {
-                "/list" => ToolList(rest),
-                "/read" => ToolRead(rest),
-                "/write" => ToolWrite(rest),
-                "/delete" => ToolDelete(rest),
-                _ => $"Неизвестная команда: {cmd}. Доступны: /list /read /write /delete"
-            };
-        }
-        catch (Exception ex)
-        {
-            result = "Ошибка: " + ex.Message;
-        }
-
-        AddMessage(role, "инструмент", result, "#123020");
-    }
-
-    private string? ResolveInProject(string raw)
-    {
-        var trimmed = raw.Trim().Trim('"');
-        if (string.IsNullOrWhiteSpace(trimmed) || _projectPath == null) return null;
-        trimmed = trimmed.Replace('/', Path.DirectorySeparatorChar);
-
-        var rootFull = Path.GetFullPath(_projectPath);
-        string full = Path.IsPathRooted(trimmed)
-            ? Path.GetFullPath(trimmed)
-            : Path.GetFullPath(Path.Combine(rootFull, trimmed));
-
-        if (!full.Equals(rootFull, StringComparison.OrdinalIgnoreCase) &&
-            !full.StartsWith(rootFull + Path.DirectorySeparatorChar))
-            return null;
-        return full;
-    }
-
-    private string ToolList(string rawPath)
-    {
-        var p = ResolveInProject(string.IsNullOrWhiteSpace(rawPath) ? "." : rawPath);
-        if (p == null) return "Доступ отклонён: путь вне проекта.";
-        if (!Directory.Exists(p)) return $"Папка не найдена: {rawPath}";
-
-        var sb = new StringBuilder();
-        foreach (var d in Directory.GetDirectories(p).OrderBy(x => x))
-            sb.AppendLine("📁 " + Path.GetFileName(d));
-        foreach (var f in Directory.GetFiles(p).OrderBy(x => x))
-            sb.AppendLine("📄 " + Path.GetFileName(f));
-
-        var list = sb.ToString();
-        return string.IsNullOrWhiteSpace(list) ? "(пусто)" : list;
-    }
-
-    private string ToolRead(string rawPath)
-    {
-        if (string.IsNullOrWhiteSpace(rawPath))
-            return "Укажи путь. Пример: /read ./Program.cs";
-        var p = ResolveInProject(rawPath);
-        if (p == null) return "Доступ отклонён: путь вне проекта.";
-        if (!File.Exists(p)) return $"Файл не найден: {rawPath}";
-
-        var text = File.ReadAllText(p);
-        if (text.Length > 20000)
-            text = text.Substring(0, 20000) + "\n…[обрезано]";
-        return $"--- {rawPath} ---\n{text}";
-    }
-
-    private string ToolWrite(string rest)
-    {
-        var wp = rest.Split(new[] { ' ' }, 2);
-        if (string.IsNullOrWhiteSpace(wp[0]))
-            return "Укажи путь и текст. Пример: /write ./test.txt hello";
-        var p = ResolveInProject(wp[0]);
-        if (p == null) return "Доступ отклонён: путь вне проекта.";
-
-        var dir = Path.GetDirectoryName(p);
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(p, wp.Length > 1 ? wp[1] : "");
-        return $"Файл создан: {wp[0]}";
-    }
-
-    private string ToolDelete(string rawPath)
-    {
-        var p = ResolveInProject(rawPath);
-        if (p == null) return "Доступ отклонён: путь вне проекта.";
-        if (File.Exists(p)) { File.Delete(p); return $"Файл удалён: {rawPath}"; }
-        if (Directory.Exists(p)) { Directory.Delete(p, true); return $"Папка удалена: {rawPath}"; }
-        return $"Не найдено: {rawPath}";
-    }
-}
 
 public class ChatMessage
 {
@@ -3766,7 +3644,7 @@ public static class HistoryStore
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayModels.cs
-SIZE: 13843 bytes
+SIZE: 16289 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -3809,6 +3687,9 @@ class ProjectSettings
 {
     public string? CheckCommand { get; set; }
     public int? MaxSteps { get; set; }
+    // Авторемонт: автоматическая проверка проекта после изменений.
+    // null = включено по умолчанию; ключ — нормализованный путь проекта.
+    public bool? AutoRepair { get; set; }
 }
 
 class SendRequest
@@ -3825,6 +3706,8 @@ class AgentRequest
     public string ProjectPath { get; set; } = "";
     public string Mode { get; set; } = "edit";
     public bool Think { get; set; }
+    // Тумблер из GUI: запускать ли автопроверку проекта после изменений.
+    public bool AutoRepair { get; set; } = true;
 }
 
 class ApproveRequest
@@ -3857,8 +3740,12 @@ class AgentSession
     public HashSet<string> ChangedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public int StepLimit { get; set; } = 8;
     public int StepUsed { get; set; }
+    // напоминания «ответь JSON-блоком» при тексте/неизвестном инструменте (максимум 2)
+    public int TextRetries { get; set; }
     public bool RepairMode { get; set; }
     public int RepairAttempts { get; set; }
+    // автопроверка проекта после изменений (режим «ремонт» проверяет всегда)
+    public bool AutoRepair { get; set; } = true;
     public List<OutsideGrant> OutsideGrants { get; set; } = new();
     public HashSet<string> DangerApproved { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -3917,21 +3804,15 @@ class CommandResult
 internal sealed partial class GatewayState
 {
     public static string NormPath(string path) => path.TrimEnd('\\', '/');
-
     public static string Truncate(string s, int n) =>
         string.IsNullOrEmpty(s) || s.Length <= n ? s : s.Substring(0, n) + "…";
-
     public static string Tail(string s, int n) =>
         string.IsNullOrEmpty(s) || s.Length <= n ? s : s.Substring(s.Length - n);
-
     public static string NormCommand(string command) =>
         Regex.Replace(command.Trim().ToLowerInvariant(), @"\s+", " ");
-
     public static string CommandKey(string command) => $"run_command:{NormCommand(command)}";
-
     public static bool SkipDir(string name) =>
         name is "bin" or "obj" or ".git" or ".vs" or ".vscode" or ".idea" or ".leron" or "node_modules";
-
     public static bool IsBinaryExt(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
@@ -3939,23 +3820,18 @@ internal sealed partial class GatewayState
             or ".zip" or ".rar" or ".7z" or ".exe" or ".dll" or ".pdb" or ".bin"
             or ".mp3" or ".mp4" or ".avi" or ".mov" or ".woff" or ".woff2" or ".ttf";
     }
-
     public static bool ModeAllowsEdit(string mode) =>
         mode is "edit" or "auto" or "yolo" or "repair";
-
     public static bool IsMutating(string name) =>
         name is "write_file" or "patch_file" or "edit_file" or "rename_file"
-            or "delete_file" or "create_directory";
-
+        or "delete_file" or "create_directory";
     public static bool IsSpecial(string name) =>
         name is "request_user_input" or "request_more_steps" or "request_outside_access";
-
     public static bool IsKnownTool(string name) =>
         name is "read_file" or "list_files" or "grep" or "write_file" or "patch_file"
-            or "edit_file" or "rename_file" or "delete_file" or "create_directory"
-            or "run_command" or "request_user_input" or "request_more_steps"
-            or "request_outside_access" or "finish";
-
+        or "edit_file" or "rename_file" or "delete_file" or "create_directory"
+        or "run_command" or "request_user_input" or "request_more_steps"
+        or "request_outside_access" or "finish";
     public static bool IsDangerousCommand(string command)
     {
         var cmd = NormCommand(command);
@@ -3969,13 +3845,11 @@ internal sealed partial class GatewayState
             if (cmd.Contains(d)) return true;
         return false;
     }
-
     public static bool IsDangerousTool(AgentSession s, PendingTool c)
     {
         if (c.Name != "run_command") return false;
         return IsDangerousCommand(GetStr(c.Args, "command"));
     }
-
     public static string PathRule(string tool, string fullPath, string? root)
     {
         try
@@ -3998,7 +3872,6 @@ internal sealed partial class GatewayState
         catch { }
         return $"{tool}:{fullPath.Replace('\\', '/').Trim('/')}";
     }
-
     public static string StripProviderMetadata(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
@@ -4028,16 +3901,47 @@ internal sealed partial class GatewayState
         return null;
     }
 
+    // Расширенный парсер: находит первый объект с полем "name", даже если
+    // инструмент НЕизвестный (Qwen любит вызывать свой встроенный web_search).
+    // Известные инструменты имеют приоритет над первым неизвестным.
+    public static (string name, JsonObject args, bool known)? TryParseAnyToolCall(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        (string, JsonObject, bool)? firstUnknown = null;
+        foreach (var candidate in ExtractJsonObjects(text))
+        {
+            try
+            {
+                var node = JsonNode.Parse(candidate) as JsonObject;
+                if (node == null) continue;
+                var name = GetStr(node, "name");
+                if (string.IsNullOrEmpty(name)) continue;
+                var args = node["arguments"] as JsonObject;
+                if (args == null)
+                {
+                    string? argsStr = null;
+                    try { argsStr = node["arguments"]?.GetValue<string>(); } catch { }
+                    if (!string.IsNullOrWhiteSpace(argsStr))
+                    {
+                        try { args = JsonNode.Parse(argsStr) as JsonObject; } catch { }
+                    }
+                }
+                if (IsKnownTool(name)) return (name, args ?? new JsonObject(), true);
+                firstUnknown ??= (name, args ?? new JsonObject(), false);
+            }
+            catch { }
+        }
+        return firstUnknown;
+    }
+
     private static (string name, JsonObject args)? TryParseToolObject(string candidate)
     {
         try
         {
             var node = JsonNode.Parse(candidate) as JsonObject;
             if (node == null) return null;
-
             var name = GetStr(node, "name");
             if (string.IsNullOrEmpty(name) || !IsKnownTool(name)) return null;
-
             var args = node["arguments"] as JsonObject;
             if (args == null)
             {
@@ -4164,7 +4068,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayState.cs
-SIZE: 18171 bytes
+SIZE: 17783 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Concurrent;
@@ -4199,9 +4103,11 @@ internal sealed partial class GatewayState
     public ConcurrentDictionary<string, string> LastAiText = new();
     public ConcurrentDictionary<string, string> LastExtDiag = new();
     public ConcurrentDictionary<string, AgentSession> AgentSessions = new();
-    // Привязка ответа к запросу: ожидаемый id на роль + флаг «инструкция уже послана».
+    // Привязка ответа к запросу: ожидаемый id на роль.
     public ConcurrentDictionary<string, string> ExpectedReqId = new();
-    public ConcurrentDictionary<string, bool> InstructionSent = new();
+    // Буфер осиротевших ответов: ответ пришёл, когда никто не ждал.
+    // Храним последний такой ответ на роль, чтобы подхватить его в ожидании.
+    public ConcurrentDictionary<string, (string reqId, string text)> OrphanResponses = new();
     private int _reqCounter;
     public string NextReqId() => Interlocked.Increment(ref _reqCounter).ToString();
     public object AutoLock = new();
@@ -4319,6 +4225,8 @@ internal sealed partial class GatewayState
             AgentSessions.TryRemove(key, out _);
             AgentLog($"[LOOP] роль={role} старая сессия подтверждения сброшена");
         }
+        // хвост прошлой задачи не должен попасть в новый цикл
+        OrphanResponses.TryRemove(role, out _);
         var cts = CancellationTokenSource.CreateLinkedTokenSource(httpAbort);
         RoleLoopCts[role] = cts;
         return cts;
@@ -4374,28 +4282,9 @@ internal sealed partial class GatewayState
             var text = parts.Length > 2 ? parts[2] : (parts.Length > 1 ? parts[1] : "");
             HandleAiMessage(chatId, reqId, text);
         }
-        else if (msg == "SENDFAIL")
-        {
-            // Повтор только для роли, которая реально ждёт ответ (есть в PendingResponses),
-            // и только ОДНОМУ первому живому клиенту — иначе каждый лишний сокет
-            // продублировал бы сообщение в Qwen.
-            foreach (var kv in LastTypePayload)
-            {
-                if (!PendingResponses.ContainsKey(kv.Key)) continue;
-                foreach (var client in Clients)
-                {
-                    if (client.State != WebSocketState.Open) continue;
-                    try
-                    {
-                        await client.SendAsync(new ArraySegment<byte>(kv.Value),
-                            WebSocketMessageType.Text, true, CancellationToken.None);
-                        AgentLog($"[RESEND] роль={kv.Key} промпт отправлен повторно после SENDFAIL");
-                        break;
-                    }
-                    catch { }
-                }
-            }
-        }
+        // SENDFAIL больше не обрабатываем: повторная отправка промпта плодила
+        // дубли сообщений в Qwen и несколько ответов на один запрос.
+        // Единственный повтор — внутри браузерной панели при SENDRES:NOT_SENT.
         else if (msg.StartsWith("DIAG:"))
         {
             var parts = msg.Substring(5).Split('|', 2);
@@ -4407,8 +4296,6 @@ internal sealed partial class GatewayState
         }
         else if (msg.StartsWith("CHATID:"))
         {
-            // новая навигация = новый контекст: инструкцию придётся слать заново
-            InstructionSent.Clear();
             AgentLog($"[CHAT ID]: {msg.Substring(7)}");
         }
         else if (msg.StartsWith("ROLE:"))
@@ -4462,6 +4349,7 @@ internal sealed partial class GatewayState
         }
 
         LogRole(role, $"[AI]: {text}");
+
         if (PendingResponses.TryGetValue(role, out var tcs))
         {
             tcs.TrySetResult(text);
@@ -4470,7 +4358,9 @@ internal sealed partial class GatewayState
         }
         else
         {
-            AgentLog($"[AI ORPHAN] роль={role} ответ пришёл, но никто не ждал");
+            // никто не ждал — сохраняем в буфер, ожидание подхватит его по reqId
+            OrphanResponses[role] = (reqId, text);
+            AgentLog($"[AI ORPHAN] роль={role} ответ сохранён в буфер (никто не ждал)");
         }
     }
 
@@ -4636,7 +4526,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayStateAgent.cs
-SIZE: 22436 bytes
+SIZE: 27162 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -4663,7 +4553,6 @@ internal sealed partial class GatewayState
         AgentLog($"[FINAL] {Truncate(text, 500)}");
         if (!string.IsNullOrEmpty(s.Role))
             LogRole(s.Role, $"[AGENT]: {Truncate(text, 300)}");
-
         var changed = s.ChangedFiles.Take(50).ToList();
         var details = new StringBuilder();
         details.AppendLine(text);
@@ -4685,7 +4574,6 @@ internal sealed partial class GatewayState
             Icon = resultStatus == "failed" ? "❌" : resultStatus == "needs_user" ? "⚠️" : "✅",
             Title = "Итог", Status = resultStatus, Details = details.ToString()
         });
-
         return new
         {
             status = "final", role = s.Role, resultStatus, response = text,
@@ -4789,9 +4677,10 @@ internal sealed partial class GatewayState
         if (s.RepairMode)
             sb.AppendLine("ВНИМАНИЕ: последняя проверка проекта упала. Сейчас ремонт: прочитай ошибку, исправь причину минимально и повтори проверку.");
         sb.AppendLine();
-        sb.AppendLine("Если нужно действие, ответь строго одним JSON-блоком:");
-        sb.AppendLine("{\"name\":\"...\",\"arguments\":{...}}");
-        sb.AppendLine("Если действие не нужно, ответь текстом на русском.");
+        sb.AppendLine("ОТВЕТ-ПРОТОКОЛ: если нужно действие — ответь СТРОГО одним JSON-блоком");
+        sb.AppendLine("{\"name\":\"имя_инструмента\",\"arguments\":{...}} без любого другого текста.");
+        sb.AppendLine("Действие не нужно — ответь обычным текстом на русском.");
+        sb.AppendLine("Используй ТОЛЬКО инструменты из списка выше. Не выдумывай web_search, list_directory и т.п.");
         sb.AppendLine();
         return sb.ToString();
     }
@@ -4815,7 +4704,6 @@ internal sealed partial class GatewayState
                 // запрос (например, вопрос после проваленной проверки) — сначала он.
                 if (s.Pending.Count > 0 && IsSpecial(s.Pending.Peek().Name))
                     return PauseSpecial(s, s.Pending.Peek());
-
                 var limit = new PendingTool
                 {
                     Id = Guid.NewGuid().ToString(),
@@ -4839,31 +4727,25 @@ internal sealed partial class GatewayState
                 s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, head);
             }
 
-            string prompt;
+            string body;
             if (!string.IsNullOrEmpty(s.BrowserNextPrompt))
             {
-                prompt = s.BrowserNextPrompt;
+                body = s.BrowserNextPrompt;
                 s.BrowserNextPrompt = "";
             }
             else
             {
-                var userText = s.Messages.Count > 0
+                body = s.Messages.Count > 0
                     ? s.Messages[s.Messages.Count - 1]?["content"]?.GetValue<string>() ?? "" : "";
-                // полная инструкция — один раз на сессию чата, дальше только текст задачи
-                if (!InstructionSent.TryGetValue(s.Role, out var sent) || !sent)
-                {
-                    prompt = BrowserInstruction(s) + userText;
-                    InstructionSent[s.Role] = true;
-                }
-                else
-                {
-                    prompt = userText;
-                }
             }
+
+            // ПОЛНАЯ инструкция каждый шаг: без неё Qwen забывает протокол
+            // инструментов и начинает отвечать текстом или своими инструментами.
+            string prompt = BrowserInstruction(s) + "\n" + body;
 
             var reqId = NextReqId();
             AgentLog($"[BROWSER] шаг {s.StepUsed + 1} reqid={reqId}: {Truncate(prompt, 220)}");
-            var (ok, text) = await SendToBrowserAndWait(s.Role, prompt, s.Think, 300000, loopToken, reqId);
+            var (ok, text) = await SendToBrowserAndWait(s.Role, prompt, s.Think, Timeout.Infinite, loopToken, reqId);
             if (!ok)
             {
                 AgentLog($"[BROWSER ERROR] {text}");
@@ -4875,10 +4757,41 @@ internal sealed partial class GatewayState
             }
             s.StepUsed++;
 
-            var parsed = TryParseTextToolCall(text);
+            var parsed = TryParseAnyToolCall(text);
             if (parsed == null)
+            {
+                // ИИ ответил текстом вместо JSON: до 2 напоминаний, потом финал.
+                if (s.AllowTools && s.TextRetries < 2)
+                {
+                    s.TextRetries++;
+                    AgentLog($"[RETRY] роль={s.Role} текст вместо JSON (попытка {s.TextRetries}/2)");
+                    s.BrowserNextPrompt =
+                        "Ты ответил текстом, но задача не завершена. Если нужно действие — ответь одним " +
+                        "JSON-блоком {\"name\":\"...\",\"arguments\":{...}}. Если действий больше нет — вызови " +
+                        "{\"name\":\"finish\",\"arguments\":{\"summary\":\"...\",\"status\":\"success\"}}.";
+                    continue;
+                }
                 return Finish(s, StripProviderMetadata(text), "success");
+            }
 
+            if (!parsed.Value.known)
+            {
+                // Qwen вызвал свой встроенный инструмент (web_search и т.п.) — поправляем.
+                if (s.AllowTools && s.TextRetries < 2)
+                {
+                    s.TextRetries++;
+                    AgentLog($"[RETRY] роль={s.Role} неизвестный инструмент '{parsed.Value.name}' (попытка {s.TextRetries}/2)");
+                    s.BrowserNextPrompt =
+                        $"Неизвестный инструмент '{parsed.Value.name}'. Его нет в системе. Разрешены только: " +
+                        "read_file, list_files, grep, write_file, patch_file, rename_file, delete_file, " +
+                        "create_directory, run_command, request_user_input, request_more_steps, " +
+                        "request_outside_access, finish. Повтори ответ одним корректным JSON-блоком.";
+                    continue;
+                }
+                return Finish(s, StripProviderMetadata(text), "success");
+            }
+
+            s.TextRetries = 0;
             var c = new PendingTool
             {
                 Id = Guid.NewGuid().ToString(),
@@ -4929,11 +4842,31 @@ internal sealed partial class GatewayState
             AgentLog($"[SEND] роль={role} reqid={reqId} текст={Truncate(text, 120)}");
             LogRole(role, $"[USER]: {Truncate(text, 300)}");
 
+            // осиротевший ответ мог прийти ещё до этого запроса — подхватываем сразу
+            if (OrphanResponses.TryRemove(role, out var early) &&
+                (string.IsNullOrEmpty(early.reqId) || early.reqId == reqId))
+            {
+                AgentLog($"[ORPHAN] роль={role} ответ подхвачен из буфера до отправки");
+                LastSentText.TryRemove(role, out _);
+                return (true, early.text);
+            }
+
             var tcs = new TaskCompletionSource<string>();
             PendingResponses[role] = tcs;
             var cts = new CancellationTokenSource();
             PendingCancels[role] = cts;
             using var abortReg = abort.Register(() => tcs.TrySetCanceled());
+
+            // ответ мог влететь между установкой ожидания и отправкой
+            if (OrphanResponses.TryRemove(role, out var between) &&
+                (string.IsNullOrEmpty(between.reqId) || between.reqId == reqId))
+            {
+                PendingResponses.TryRemove(role, out _);
+                PendingCancels.TryRemove(role, out _);
+                LastSentText.TryRemove(role, out _);
+                AgentLog($"[ORPHAN] роль={role} ответ подхвачен из буфера до ожидания");
+                return (true, between.text);
+            }
 
             var chatId = RoleChatMap[role];
             var url = Config.Roles.TryGetValue(role, out var roleCfg) && !string.IsNullOrEmpty(roleCfg.Url)
@@ -4959,20 +4892,47 @@ internal sealed partial class GatewayState
                 return (false, "Браузерная панель не подключена. Открой LERON GUI и дождись подключения.");
             }
 
-            var delayTask = Task.Delay(timeoutMs);
             var cancelTask = Task.Run(async () => { try { await Task.Delay(Timeout.Infinite, cts.Token); } catch { } });
-            var done = await Task.WhenAny(tcs.Task, delayTask, cancelTask);
+            Task? delayTask = timeoutMs > 0 ? Task.Delay(timeoutMs) : null;
+
+            while (true)
+            {
+                var racers = new List<Task> { tcs.Task, cancelTask };
+                // есть таймаут — ждём его; нет — короткие срезы для проверки буфера
+                racers.Add(delayTask ?? Task.Delay(2000));
+                var done = await Task.WhenAny(racers);
+
+                if (done == tcs.Task || done == cancelTask) break;
+                if (delayTask != null) break; // сработал таймаут
+
+                // срез бесконечного ожидания: отмена или осиротевший ответ из буфера
+                if (abort.IsCancellationRequested)
+                {
+                    tcs.TrySetCanceled();
+                    break;
+                }
+                if (OrphanResponses.TryGetValue(role, out var orph) &&
+                    (string.IsNullOrEmpty(orph.reqId) || orph.reqId == reqId))
+                {
+                    OrphanResponses.TryRemove(role, out _);
+                    AgentLog($"[ORPHAN] роль={role} ответ подхвачен из буфера во время ожидания");
+                    tcs.TrySetResult(orph.text);
+                    break;
+                }
+            }
+
             PendingResponses.TryRemove(role, out _);
             PendingCancels.TryRemove(role, out _);
             LastSentText.TryRemove(role, out _);
 
-            if (done == tcs.Task)
+            if (tcs.Task.IsCompleted)
             {
                 if (tcs.Task.IsCanceled || abort.IsCancellationRequested) return (false, "cancelled");
                 return (true, await tcs.Task);
             }
-            if (done == cancelTask) return (false, "cancelled");
-            return (false, "Браузер не ответил за 300 секунд.");
+            if (delayTask != null)
+                return (false, $"Браузер не ответил за {timeoutMs / 1000} секунд.");
+            return (false, "cancelled");
         }
         catch (OperationCanceledException)
         {
@@ -5083,7 +5043,6 @@ internal sealed partial class GatewayState
     public bool NeedsAsk(AgentSession s, PendingTool c)
     {
         if (!s.AllowTools) return false;
-
         if (c.Name == "run_command")
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -5101,7 +5060,6 @@ internal sealed partial class GatewayState
             }
             return true;
         }
-
         if (IsMutating(c.Name))
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -5113,7 +5071,6 @@ internal sealed partial class GatewayState
             if (s.Mode == "auto") return !IsAutoApproved(rule);
             return true;
         }
-
         return false;
     }
 }
@@ -5121,7 +5078,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayStateExec.cs
-SIZE: 7250 bytes
+SIZE: 7543 bytes
 ------------------------------------------------
 using System;
 using System.Diagnostics;
@@ -5213,11 +5170,9 @@ internal sealed partial class GatewayState
         AgentLog($"[TOOL] {exec.Log}");
         if (!string.IsNullOrEmpty(s.Role))
             LogRole(s.Role, $"[TOOL]: {exec.Log}");
-
         var result = exec.Output;
         if (exec.Mutated && exec.Path != null)
             s.ChangedFiles.Add(DisplayPath(s, exec.Path));
-
         if (exec.Mutated)
         {
             var checkNote = await RunProjectCheckAsync(s, c.Name);
@@ -5230,9 +5185,11 @@ internal sealed partial class GatewayState
     public async Task<string> RunProjectCheckAsync(AgentSession s, string trigger)
     {
         if (s.Root == null || s.Mode is "chat" or "plan") return "";
+        // Авторемонт выключен пользователем — изменения не проверяем.
+        // Режим «ремонт» игнорирует тумблер: ремонт = качество всегда.
+        if (s.Mode != "repair" && !s.AutoRepair) return "";
         var cmd = EnsureCheckCommand(s.Root);
         if (string.IsNullOrWhiteSpace(cmd) || IsDangerousCommand(cmd)) return "";
-
         var res = await RunProcessAsync(cmd, s.Root, 180000);
         s.Cards.Add(new ActionCard
         {
@@ -5247,18 +5204,15 @@ internal sealed partial class GatewayState
         });
         s.ToolLog.Add($"check \"{cmd}\" → exit {res.ExitCode}");
         AgentLog($"[CHECK] {cmd} → exit {res.ExitCode}");
-
         if (res.ExitCode == 0)
         {
             s.RepairMode = false;
             s.RepairAttempts = 0;
             return $"Автоматическая проверка проекта '{cmd}' прошла успешно.";
         }
-
         s.RepairMode = true;
         s.RepairAttempts++;
         var errorText = Tail(string.IsNullOrWhiteSpace(res.StdErr) ? res.StdOut : res.StdErr, 4000);
-
         if (s.RepairAttempts >= 3)
         {
             // Потолок ремонта (3 попытки): гарантированно останавливаемся и задаём
@@ -5272,7 +5226,7 @@ internal sealed partial class GatewayState
                 {
                     ["question"] =
                         $"Проверка проекта '{cmd}' упала {s.RepairAttempts} раза подряд — автоматический ремонт остановлен.\n" +
-                        $"Последняя ошибка:\n{Tail(errorText, 1500)}\n\n" +
+                        $"Последняя ошибка:\n{Tail(errorText, 1500)}\n" +
                         "Что делать дальше? Например: «откати последний патч», «продолжай без проверки», «остановись»."
                 }
             });
@@ -5280,7 +5234,6 @@ internal sealed partial class GatewayState
                 $"Автоматическая проверка '{cmd}' упала {s.RepairAttempts} раза. " +
                 "Ремонт остановлен, пользователю задан диагностический вопрос — жди его ответа.";
         }
-
         return
             $"Автоматическая проверка '{cmd}' упала (попытка {s.RepairAttempts} из 3).\n" +
             $"Ошибка:\n{errorText}\n" +
@@ -6985,7 +6938,7 @@ public static class UserProfile
 
 ------------------------------------------------
 FILE: program\sending and receiving\config.json
-SIZE: 679 bytes
+SIZE: 1162 bytes
 ------------------------------------------------
 {
   "Roles": {
@@ -7000,21 +6953,32 @@ SIZE: 679 bytes
       "Name": "test_qwen",
       "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen",
       "Role": "team",
-      "LastOpened": "2026-08-22T18:20:39.2384181\u002B03:00"
+      "LastOpened": "2026-08-22T19:10:04.6149702\u002B03:00"
     }
   ],
-  "AutoApprove": [],
-  "ProjectSettings": {},
-  "UserProfile": {
-    "Nick": "\u041C\u0430\u0440\u043A",
-    "About": "\u042F \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0438\u0441\u0442"
+  "AutoApprove": [
+    "create_directory:.",
+    "run_command:cd calculator \u0026\u0026 csc /target:winexe /out:calculator.exe program.cs",
+    "run_command:where dotnet",
+    "run_command:cd calculator \u0026\u0026 dotnet new console --force",
+    "write_file:Calculator",
+    "run_command:cd calculator \u0026\u0026 dotnet build",
+    "patch_file:Calculator",
+    "run_command:cd calculator \u0026\u0026 dotnet build -c release"
+  ],
+  "ProjectSettings": {
+    "c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\test_qwen": {
+      "CheckCommand": "dotnet build",
+      "MaxSteps": null,
+      "AutoRepair": true
+    }
   }
 }
 
 
 ------------------------------------------------
 FILE: program\sending and receiving\GatewayHost.cs
-SIZE: 6618 bytes
+SIZE: 7091 bytes
 ------------------------------------------------
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -7078,13 +7042,18 @@ public static class GatewayHost
                 Root = root,
                 Mode = mode,
                 Think = req.Think,
+                AutoRepair = req.AutoRepair,
                 AllowTools = root != null && mode != "chat"
             };
             if (root != null)
             {
                 var settings = st.GetProjectSettings(root);
                 session.StepLimit = settings.MaxSteps ?? 8;
+                // Синхронизируем тумблер из GUI с конфигом в памяти:
+                // иначе SaveConfig (автоправила/команда проверки) затрёт значение.
+                settings.AutoRepair = req.AutoRepair;
             }
+
             session.Messages.Add(new JsonObject
             {
                 ["role"] = "user",
@@ -7170,7 +7139,8 @@ public static class GatewayHost
             var req = JsonSerializer.Deserialize<SendRequest>(body, JsonOpts.Ci);
             if (req == null || string.IsNullOrEmpty(req.Role))
                 return Results.BadRequest(new { error = "role is required" });
-            var result = await st.SendToBrowserAndWait(req.Role, req.Text, req.Think, 300000, ctx.RequestAborted, st.NextReqId());
+            // без таймаута: ждём ответ, отмену или закрытие приложения
+            var result = await st.SendToBrowserAndWait(req.Role, req.Text, req.Think, Timeout.Infinite, ctx.RequestAborted, st.NextReqId());
             if (!result.ok)
                 return Results.BadRequest(new { error = result.text });
             return Results.Ok(new { role = req.Role, response = result.text });
@@ -7184,7 +7154,7 @@ public static class GatewayHost
 
 ------------------------------------------------
 FILE: program\sending and receiving\history.json
-SIZE: 43885 bytes
+SIZE: 17943 bytes
 ------------------------------------------------
 {
   "coder": [
@@ -7392,12 +7362,22 @@ SIZE: 43885 bytes
   "proj|c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\test_qwen": [
     {
       "Author": "\u0422\u044B",
+      "Text": "\u0441\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 txt \u0430\u0439\u043B \u0441 \u043D\u0430\u0434\u043F\u0438\u0441\u044C\u044E \u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u0424\u0430\u0439\u043B \u043F\u0440\u0438\u0432\u0435\u0442.txt \u0441 \u043D\u0430\u0434\u043F\u0438\u0441\u044C\u044E \u00AB\u043F\u0440\u0438\u0432\u0435\u0442\u00BB \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0441\u043E\u0437\u0434\u0430\u043D \u0432 \u043A\u043E\u0440\u043D\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u0430.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
       "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
       "Bg": "#0f3460"
     },
     {
       "Author": "coder",
-      "Text": "\u041A\u043E\u043D\u0435\u0447\u043D\u043E. \u0414\u043B\u044F \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u00AB\u043A\u0440\u0430\u0441\u0438\u0432\u043E\u0433\u043E\u00BB UI \u043D\u0430 C# \u0431\u0435\u0437 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u044F \u0442\u044F\u0436\u0435\u043B\u044B\u0445 \u0441\u0442\u043E\u0440\u043E\u043D\u043D\u0438\u0445 \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A (\u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0441\u043B\u043E\u0436\u043D\u043E \u043D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u043D\u043E\u0432\u0438\u0447\u043A\u0443) \u043B\u0443\u0447\u0448\u0435 \u0432\u0441\u0435\u0433\u043E \u043F\u043E\u0434\u043E\u0439\u0434\u0435\u0442 **WPF**. \u041E\u043D \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C \u0430\u043F\u043F\u0430\u0440\u0430\u0442\u043D\u043E\u0435 \u0443\u0441\u043A\u043E\u0440\u0435\u043D\u0438\u0435, \u043F\u0440\u043E\u0437\u0440\u0430\u0447\u043D\u043E\u0441\u0442\u044C, \u0442\u0435\u043D\u0438 \u0438 \u0441\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0435 \u0448\u0440\u0438\u0444\u0442\u044B, \u0432 \u043E\u0442\u043B\u0438\u0447\u0438\u0435 \u043E\u0442 \u0441\u0442\u0430\u0440\u043E\u0433\u043E WinForms.\n\n\u041D\u0438\u0436\u0435 \u043F\u0440\u0435\u0434\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u043F\u043E\u043B\u043D\u044B\u0439 \u043A\u043E\u0434 \u0441\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E\u0433\u043E \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430 \u0432 \u0441\u0442\u0438\u043B\u0435 \u00ABGlassmorphism\u00BB (\u0442\u0435\u043C\u043D\u0430\u044F \u0442\u0435\u043C\u0430, \u0430\u043A\u0446\u0435\u043D\u0442\u043D\u044B\u0435 \u0446\u0432\u0435\u0442\u0430), \u0430 \u0442\u0430\u043A\u0436\u0435 \u0431\u0430\u0442\u043D\u0438\u043A \u0434\u043B\u044F \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0430.\n\n### 1. \u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0430 \u043F\u0440\u043E\u0435\u043A\u0442\u0430\n\n\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0430\u043F\u043A\u0443, \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 \u0060BeautifulCalculator\u0060, \u0438 \u043F\u043E\u043C\u0435\u0441\u0442\u0438\u0442\u0435 \u0432 \u043D\u0435\u0435 \u0444\u0430\u0439\u043B \u0060App.xaml.cs\u0060 (\u0438\u043B\u0438 \u043F\u0440\u043E\u0441\u0442\u043E \u0060Program.cs\u0060, \u043D\u043E \u0434\u043B\u044F WPF \u0443\u0434\u043E\u0431\u043D\u0435\u0435 single-file \u043F\u043E\u0434\u0445\u043E\u0434 \u0447\u0435\u0440\u0435\u0437 SDK-style \u043F\u0440\u043E\u0435\u043A\u0442).\n\n\u041E\u0434\u043D\u0430\u043A\u043E, \u0447\u0442\u043E\u0431\u044B \u0432\u0430\u043C \u0431\u044B\u043B\u043E \u043C\u0430\u043A\u0441\u0438\u043C\u0430\u043B\u044C\u043D\u043E \u043F\u0440\u043E\u0441\u0442\u043E \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u044D\u0442\u043E **\u043E\u0434\u043D\u0438\u043C \u0444\u0430\u0439\u043B\u043E\u043C** \u0431\u0435\u0437 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0438 Visual Studio (\u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u043E .NET SDK), \u043C\u044B \u0441\u0434\u0435\u043B\u0430\u0435\u043C \u044D\u0442\u043E \u0447\u0435\u0440\u0435\u0437 \u0060.csproj\u0060 \u0438 \u0060MainWindow.xaml\u0060.\n\n#### \u0428\u0430\u0433 1: \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0060BeautifulCalculator.csproj\u0060\n\u0060\u0060\u0060xml\n\u003CProject Sdk=\u0022Microsoft.NET.Sdk\u0022\u003E\n  \u003CPropertyGroup\u003E\n    \u003COutputType\u003EWinExe\u003C/OutputType\u003E\n    \u003CTargetFramework\u003Enet8.0-windows\u003C/TargetFramework\u003E\n    \u003CUseWPF\u003Etrue\u003C/UseWPF\u003E\n    \u003CImplicitUsings\u003Eenable\u003C/ImplicitUsings\u003E\n    \u003CNullable\u003Eenable\u003C/Nullable\u003E\n    \u003C!-- \u0423\u0431\u0438\u0440\u0430\u0435\u043C \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0443\u044E \u0440\u0430\u043C\u043A\u0443 \u043E\u043A\u043D\u0430 \u0434\u043B\u044F \u043A\u0430\u0441\u0442\u043E\u043C\u043D\u043E\u0433\u043E \u0434\u0438\u0437\u0430\u0439\u043D\u0430 --\u003E\n    \u003CApplicationIcon /\u003E\n  \u003C/PropertyGroup\u003E\n\u003C/Project\u003E\n\u0060\u0060\u0060\n\n#### \u0428\u0430\u0433 2: \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0060MainWindow.xaml\u0060\n\u042D\u0442\u043E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043D\u0430\u0448\u0435\u0433\u043E \u043A\u0440\u0430\u0441\u0438\u0432\u043E\u0433\u043E \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430.\n\n\u0060\u0060\u0060xml\n\u003CWindow x:Class=\u0022BeautifulCalculator.MainWindow\u0022\n        xmlns=\u0022http://schemas.microsoft.com/winfx/2006/xaml/presentation\u0022\n        xmlns:x=\u0022http://schemas.microsoft.com/winfx/2006/xaml\u0022\n        Title=\u0022Calculator\u0022 Height=\u0022600\u0022 Width=\u0022400\u0022\n        WindowStartupLocation=\u0022CenterScreen\u0022\n        ResizeMode=\u0022NoResize\u0022\n        Background=\u0022Transparent\u0022\n        AllowsTransparency=\u0022True\u0022\n        WindowStyle=\u0022None\u0022\n        MouseLeftButtonDown=\u0022Window_MouseLeftButtonDown\u0022\u003E\n\n    \u003CBorder CornerRadius=\u002220\u0022 Background=\u0022#FF1E1E1E\u0022 BorderBrush=\u0022#33FFFFFF\u0022 BorderThickness=\u00221\u0022\u003E\n        \u003CGrid Margin=\u002220\u0022\u003E\n            \u003CGrid.RowDefinitions\u003E\n                \u003CRowDefinition Height=\u0022Auto\u0022/\u003E \u003C!-- Drag Area / Close --\u003E\n                \u003CRowDefinition Height=\u0022*\u0022/\u003E    \u003C!-- Display --\u003E\n                \u003CRowDefinition Height=\u00224*\u0022/\u003E   \u003C!-- Buttons --\u003E\n            \u003C/Grid.RowDefinitions\u003E\n\n            \u003C!-- \u041A\u043D\u043E\u043F\u043A\u0430 \u0437\u0430\u043A\u0440\u044B\u0442\u0438\u044F (\u043A\u0430\u0441\u0442\u043E\u043C\u043D\u0430\u044F) --\u003E\n            \u003CButton Content=\u0022\u2715\u0022 HorizontalAlignment=\u0022Right\u0022 VerticalAlignment=\u0022Top\u0022 \n                    FontSize=\u002216\u0022 Foreground=\u0022#AAAAAA\u0022 Background=\u0022Transparent\u0022 \n                    BorderThickness=\u00220\u0022 Cursor=\u0022Hand\u0022 Click=\u0022CloseButton_Click\u0022/\u003E\n\n            \u003C!-- \u0414\u0438\u0441\u043F\u043B\u0435\u0439 --\u003E\n            \u003CStackPanel Grid.Row=\u00221\u0022 VerticalAlignment=\u0022Bottom\u0022 HorizontalAlignment=\u0022Right\u0022 Margin=\u00220,0,10,20\u0022\u003E\n                \u003CTextBlock x:Name=\u0022HistoryText\u0022 Text=\u0022\u0022 FontSize=\u002224\u0022 Foreground=\u0022#88FFFFFF\u0022 \n                           HorizontalAlignment=\u0022Right\u0022 FontWeight=\u0022Light\u0022/\u003E\n                \u003CTextBlock x:Name=\u0022DisplayText\u0022 Text=\u00220\u0022 FontSize=\u002264\u0022 Foreground=\u0022White\u0022 \n                           HorizontalAlignment=\u0022Right\u0022 FontWeight=\u0022SemiBold\u0022/\u003E\n            \u003C/StackPanel\u003E\n\n            \u003C!-- \u0421\u0435\u0442\u043A\u0430 \u043A\u043D\u043E\u043F\u043E\u043A --\u003E\n            \u003CUniformGrid Grid.Row=\u00222\u0022 Columns=\u00224\u0022 Rows=\u00225\u0022\u003E\n                \u003C!-- \u0420\u044F\u0434 1 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u0022C\u0022 Click=\u0022Clear_Click\u0022 Foreground=\u0022#FF6B6B\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u0022\u002B/-\u0022 Click=\u0022Negate_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u0022%\u0022 Click=\u0022Percent_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource OperatorButton}\u0022 Content=\u0022\u00F7\u0022 Click=\u0022Operator_Click\u0022 Tag=\u0022/\u0022/\u003E\n\n                \u003C!-- \u0420\u044F\u0434 2 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00227\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00228\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00229\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource OperatorButton}\u0022 Content=\u0022\u00D7\u0022 Click=\u0022Operator_Click\u0022 Tag=\u0022*\u0022/\u003E\n\n                \u003C!-- \u0420\u044F\u0434 3 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00224\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00225\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00226\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource OperatorButton}\u0022 Content=\u0022-\u0022 Click=\u0022Operator_Click\u0022 Tag=\u0022-\u0022/\u003E\n\n                \u003C!-- \u0420\u044F\u0434 4 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00221\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00222\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00223\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource OperatorButton}\u0022 Content=\u0022\u002B\u0022 Click=\u0022Operator_Click\u0022 Tag=\u0022\u002B\u0022/\u003E\n\n                \u003C!-- \u0420\u044F\u0434 5 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00220\u0022 Click=\u0022Number_Click\u0022 Grid.ColumnSpan=\u00222\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u0022.\u0022 Click=\u0022Decimal_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource EqualsButton}\u0022 Content=\u0022=\u0022 Click=\u0022Equals_Click\u0022/\u003E\n            \u003C/UniformGrid\u003E\n        \u003C/Grid\u003E\n    \u003C/Border\u003E\n\n    \u003CWindow.Resources\u003E\n        \u003C!-- \u0411\u0430\u0437\u043E\u0432\u044B\u0439 \u0441\u0442\u0438\u043B\u044C \u043A\u043D\u043E\u043F\u043A\u0438 --\u003E\n        \u003CStyle x:Key=\u0022CalcButton\u0022 TargetType=\u0022Button\u0022\u003E\n            \u003CSetter Property=\u0022FontSize\u0022 Value=\u002224\u0022/\u003E\n            \u003CSetter Property=\u0022FontWeight\u0022 Value=\u0022Medium\u0022/\u003E\n            \u003CSetter Property=\u0022Foreground\u0022 Value=\u0022White\u0022/\u003E\n            \u003CSetter Property=\u0022Background\u0022 Value=\u0022#33FFFFFF\u0022/\u003E\n            \u003CSetter Property=\u0022BorderThickness\u0022 Value=\u00220\u0022/\u003E\n            \u003CSetter Property=\u0022Margin\u0022 Value=\u00224\u0022/\u003E\n            \u003CSetter Property=\u0022Cursor\u0022 Value=\u0022Hand\u0022/\u003E\n            \u003CSetter Property=\u0022Template\u0022\u003E\n                \u003CSetter.Value\u003E\n                    \u003CControlTemplate TargetType=\u0022Button\u0022\u003E\n                        \u003CBorder x:Name=\u0022border\u0022 CornerRadius=\u002212\u0022 Background=\u0022{TemplateBinding Background}\u0022\u003E\n                            \u003CContentPresenter HorizontalAlignment=\u0022Center\u0022 VerticalAlignment=\u0022Center\u0022/\u003E\n                        \u003C/Border\u003E\n                        \u003CControlTemplate.Triggers\u003E\n                            \u003CTrigger Property=\u0022IsMouseOver\u0022 Value=\u0022True\u0022\u003E\n                                \u003CSetter TargetName=\u0022border\u0022 Property=\u0022Background\u0022 Value=\u0022#4DFFFFFF\u0022/\u003E\n                            \u003C/Trigger\u003E\n                            \u003CTrigger Property=\u0022IsPressed\u0022 Value=\u0022True\u0022\u003E\n                                \u003CSetter TargetName=\u0022border\u0022 Property=\u0022Background\u0022 Value=\u0022#66FFFFFF\u0022/\u003E\n                            \u003C/Trigger\u003E\n                        \u003C/ControlTemplate.Triggers\u003E\n                    \u003C/ControlTemplate\u003E\n                \u003C/Setter.Value\u003E\n            \u003C/Setter\u003E\n        \u003C/Style\u003E\n\n        \u003C!-- \u0421\u0442\u0438\u043B\u044C \u043E\u043F\u0435\u0440\u0430\u0442\u043E\u0440\u043E\u0432 (\u043E\u0440\u0430\u043D\u0436\u0435\u0432\u044B\u0439 \u0430\u043A\u0446\u0435\u043D\u0442) --\u003E\n        \u003CStyle x:Key=\u0022OperatorButton\u0022 TargetType=\u0022Button\u0022 BasedOn=\u0022{StaticResource CalcButton}\u0022\u003E\n            \u003CSetter Property=\u0022Background\u0022 Value=\u0022#FFFF9F0A\u0022/\u003E\n            \u003CSetter Property=\u0022Foreground\u0022 Value=\u0022Black\u0022/\u003E\n            \u003CSetter Property=\u0022FontWeight\u0022 Value=\u0022Bold\u0022/\u003E\n            \u003CSetter Property=\u0022Template\u0022\u003E\n                \u003CSetter.Value\u003E\n                    \u003CControlTemplate TargetType=\u0022Button\u0022\u003E\n                        \u003CBorder x:Name=\u0022border\u0022 CornerRadius=\u002212\u0022 Background=\u0022{TemplateBinding Background}\u0022\u003E\n                            \u003CContentPresenter HorizontalAlignment=\u0022Center\u0022 VerticalAlignment=\u0022Center\u0022/\u003E\n                        \u003C/Border\u003E\n                        \u003CControlTemplate.Triggers\u003E\n                            \u003CTrigger Property=\u0022IsMouseOver\u0022 Value=\u0022True\u0022\u003E\n                                \u003CSetter TargetName=\u0022border\u0022 Property=\u0022Background\u0022 Value=\u0022#FFCC7A00\u0022/\u003E\n                            \u003C/Trigger\u003E\n                        \u003C/ControlTemplate.Triggers\u003E\n                    \u003C/ControlTemplate\u003E\n                \u003C/Setter.Value\u003E\n            \u003C/Setter\u003E\n        \u003C/Style\u003E\n\n        \u003C!-- \u0421\u0442\u0438\u043B\u044C \u043A\u043D\u043E\u043F\u043A\u0438 \u0440\u0430\u0432\u0435\u043D\u0441\u0442\u0432\u0430 --\u003E\n        \u003CStyle x:Key=\u0022EqualsButton\u0022 TargetType=\u0022Button\u0022 BasedOn=\u0022{StaticResource OperatorButton}\u0022\u003E\n            \u003CSetter Property=\u0022Background\u0022 Value=\u0022#FF32D74B\u0022/\u003E\n            \u003CSetter Property=\u0022Template\u0022\u003E\n                \u003CSetter.Value\u003E\n                    \u003CControlTemplate TargetType=\u0022Button\u0022\u003E\n                        \u003CBorder x:Name=\u0022border\u0022 CornerRadius=\u002212\u0022 Background=\u0022{TemplateBinding Background}\u0022\u003E\n                            \u003CContentPresenter HorizontalAlignment=\u0022Center\u0022 VerticalAlignment=\u0022Center\u0022/\u003E\n                        \u003C/Border\u003E\n                        \u003CControlTemplate.Triggers\u003E\n                            \u003CTrigger Property=\u0022IsMouseOver\u0022 Value=\u0022True\u0022\u003E\n                                \u003CSetter TargetName=\u0022border\u0022 Property=\u0022Background\u0022 Value=\u0022#FF28B83E\u0022/\u003E\n                            \u003C/Trigger\u003E\n                        \u003C/ControlTemplate.Triggers\u003E\n                    \u003C/ControlTemplate\u003E\n                \u003C/Setter.Value\u003E\n            \u003C/Setter\u003E\n        \u003C/Style\u003E\n    \u003C/Window.Resources\u003E\n\u003C/Window\u003E\n\u0060\u0060\u0060\n\n#### \u0428\u0430\u0433 3: \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0060MainWindow.xaml.cs\u0060\n\u041B\u043E\u0433\u0438\u043A\u0430 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430.\n\n\u0060\u0060\u0060csharp\nusing System.Windows;\nusing System.Windows.Controls;\nusing System.Windows.Input;\n\nnamespace BeautifulCalculator;\n\npublic partial class MainWindow : Window\n{\n    private double _currentValue = 0;\n    private double _previousValue = 0;\n    private string _currentOperator = \u0022\u0022;\n    private bool _isNewEntry = true;\n    private bool _hasDecimal = false;\n\n    public MainWindow()\n    {\n        InitializeComponent();\n    }\n\n    // \u041F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u043E\u043A\u043D\u0430 \u0437\u0430 \u043B\u044E\u0431\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C\n    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) =\u003E DragMove();\n    \n    private void CloseButton_Click(object sender, RoutedEventArgs e) =\u003E Close();\n\n    private void Number_Click(object sender, RoutedEventArgs e)\n    {\n        if (sender is not Button btn) return;\n        \n        if (_isNewEntry)\n        {\n            DisplayText.Text = btn.Content.ToString();\n            _isNewEntry = false;\n            _hasDecimal = false;\n        }\n        else\n        {\n            if (DisplayText.Text == \u00220\u0022) DisplayText.Text = \u0022\u0022;\n            DisplayText.Text \u002B= btn.Content;\n        }\n    }\n\n    private void Decimal_Click(object sender, RoutedEventArgs e)\n    {\n        if (!_hasDecimal \u0026\u0026 !_isNewEntry)\n        {\n            DisplayText.Text \u002B= \u0022.\u0022;\n            _hasDecimal = true;\n        }\n        else if (_isNewEntry)\n        {\n            DisplayText.Text = \u00220.\u0022;\n            _isNewEntry = false;\n            _hasDecimal = true;\n        }\n    }\n\n    private void Operator_Click(object sender, RoutedEventArgs e)\n    {\n        if (sender is not Button btn) return;\n\n        if (!_isNewEntry \u0026\u0026 !string.IsNullOrEmpty(_currentOperator))\n        {\n            Calculate();\n        }\n        else\n        {\n            _previousValue = double.Parse(DisplayText.Text);\n        }\n\n        _currentOperator = btn.Tag?.ToString() ?? \u0022\u0022;\n        HistoryText.Text = $\u0022{_previousValue} {btn.Content}\u0022;\n        _isNewEntry = true;\n    }\n\n    private void Equals_Click(object sender, RoutedEventArgs e)\n    {\n        if (!string.IsNullOrEmpty(_currentOperator))\n        {\n            Calculate();\n            _currentOperator = \u0022\u0022;\n            HistoryText.Text = \u0022\u0022;\n        }\n    }\n\n    private void Clear_Click(object sender, RoutedEventArgs e)\n    {\n        DisplayText.Text = \u00220\u0022;\n        HistoryText.Text = \u0022\u0022;\n        _currentValue = 0;\n        _previousValue = 0;\n        _currentOperator = \u0022\u0022;\n        _isNewEntry = true;\n        _hasDecimal = false;\n    }\n\n    private void Negate_Click(object sender, RoutedEventArgs e)\n    {\n        if (double.TryParse(DisplayText.Text, out double val))\n        {\n            DisplayText.Text = (-val).ToString();\n        }\n    }\n\n    private void Percent_Click(object sender, RoutedEventArgs e)\n    {\n        if (double.TryParse(DisplayText.Text, out double val))\n        {\n            DisplayText.Text = (val / 100).ToString();\n            _isNewEntry = true;\n        }\n    }\n\n    private void Calculate()\n    {\n        if (!double.TryParse(DisplayText.Text, out _currentValue)) return;\n\n        double result = _currentOperator switch\n        {\n            \u0022\u002B\u0022 =\u003E _previousValue \u002B _currentValue,\n            \u0022-\u0022 =\u003E _previousValue - _currentValue,\n            \u0022*\u0022 =\u003E _previousValue * _currentValue,\n            \u0022/\u0022 =\u003E _currentValue != 0 ? _previousValue / _currentValue : 0,\n            _ =\u003E _currentValue\n        };\n\n        // \u0424\u043E\u0440\u043C\u0430\u0442\u0438\u0440\u0443\u0435\u043C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442, \u0443\u0431\u0438\u0440\u0430\u044F \u043B\u0438\u0448\u043D\u0438\u0435 \u043D\u0443\u043B\u0438\n        DisplayText.Text = result.ToString(\u0022G15\u0022); \n        _previousValue = result;\n        _isNewEntry = true;\n        _hasDecimal = result != Math.Floor(result);\n    }\n}\n\u0060\u0060\u0060\n\n---\n\n### 2. \u0411\u0430\u0442\u043D\u0438\u043A \u0434\u043B\u044F \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0430 (\u0060build_and_run.bat\u0060)\n\n\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u044D\u0442\u043E\u0442 \u0444\u0430\u0439\u043B \u0432 \u0442\u043E\u0439 \u0436\u0435 \u043F\u0430\u043F\u043A\u0435. \u041E\u043D \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442 \u043D\u0430\u043B\u0438\u0447\u0438\u0435 .NET SDK, \u0441\u043E\u0431\u0435\u0440\u0435\u0442 \u043F\u0440\u043E\u0435\u043A\u0442 \u0432 Release-\u0440\u0435\u0436\u0438\u043C\u0435 (\u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0439) \u0438 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442 \u0435\u0433\u043E.\n\n\u0060\u0060\u0060batch\n@echo off\nchcp 65001 \u003Enul\ntitle Beautiful Calculator Builder\n\necho ==========================================\necho   \u0421\u0431\u043E\u0440\u043A\u0430 Beautiful Calculator (WPF)\necho ==========================================\necho.\n\n:: \u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u043D\u0430\u043B\u0438\u0447\u0438\u044F dotnet\nwhere dotnet \u003Enul 2\u003Enul\nif %ERRORLEVEL% NEQ 0 (\n    echo [\u041E\u0428\u0418\u0411\u041A\u0410] .NET SDK \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D!\n    echo \u041F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 .NET 8 SDK: https://dotnet.microsoft.com/download/dotnet/8.0\n    pause\n    exit /b 1\n)\n\necho [1/3] \u041E\u0447\u0438\u0441\u0442\u043A\u0430 \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0445 \u0430\u0440\u0442\u0435\u0444\u0430\u043A\u0442\u043E\u0432...\ndotnet clean -v q \u003Enul 2\u003E\u00261\n\necho [2/3] \u0421\u0431\u043E\u0440\u043A\u0430 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 (Release)...\ndotnet build -c Release --nologo -v q\nif %ERRORLEVEL% NEQ 0 (\n    echo.\n    echo [\u041E\u0428\u0418\u0411\u041A\u0410] \u0421\u0431\u043E\u0440\u043A\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u0430\u0441\u044C. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043A\u043E\u0434 \u0432\u044B\u0448\u0435.\n    pause\n    exit /b 1\n)\n\necho [3/3] \u0417\u0430\u043F\u0443\u0441\u043A \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u044F...\necho ==========================================\necho.\n\n:: \u0417\u0430\u043F\u0443\u0441\u043A \u0441\u043E\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E exe\nstart \u0022\u0022 \u0022bin\\Release\\net8.0-windows\\BeautifulCalculator.exe\u0022\n\nexit /b 0\n\u0060\u0060\u0060\n\n### \u041A\u0430\u043A \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C:\n1.  \u0423\u0431\u0435\u0434\u0438\u0442\u0435\u0441\u044C, \u0447\u0442\u043E \u0443 \u0432\u0430\u0441 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D **.NET 8 SDK** (\u0438\u043B\u0438 \u043D\u043E\u0432\u0435\u0435).\n2.  \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0430\u043F\u043A\u0443, \u043F\u043E\u043B\u043E\u0436\u0438\u0442\u0435 \u0432 \u043D\u0435\u0451 3 \u0444\u0430\u0439\u043B\u0430: \u0060BeautifulCalculator.csproj\u0060, \u0060MainWindow.xaml\u0060, \u0060MainWindow.xaml.cs\u0060.\n3.  \u041F\u043E\u043B\u043E\u0436\u0438\u0442\u0435 \u0442\u0443\u0434\u0430 \u0436\u0435 \u0060build_and_run.bat\u0060.\n4.  \u0414\u0432\u0430\u0436\u0434\u044B \u043A\u043B\u0438\u043A\u043D\u0438\u0442\u0435 \u043F\u043E \u0431\u0430\u0442\u043D\u0438\u043A\u0443.\n\n### \u041E\u0441\u043E\u0431\u0435\u043D\u043D\u043E\u0441\u0442\u0438 \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438:\n*   **Custom Window Chrome:** \u0423\u0431\u0440\u0430\u043D\u044B \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0435 \u0440\u0430\u043C\u043A\u0438 Windows (\u0060WindowStyle=\u0022None\u0022\u0060, \u0060AllowsTransparency=\u0022True\u0022\u0060), \u0447\u0442\u043E \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0441\u0434\u0435\u043B\u0430\u0442\u044C \u0441\u043A\u0440\u0443\u0433\u043B\u0435\u043D\u043D\u044B\u0435 \u0443\u0433\u043B\u044B \u0438 \u0442\u0435\u043C\u043D\u044B\u0439 \u0444\u043E\u043D \u0434\u043E \u0441\u0430\u043C\u044B\u0445 \u043A\u0440\u0430\u0435\u0432.\n*   **MVVM-Lite:** \u041B\u043E\u0433\u0438\u043A\u0430 \u043E\u0442\u0434\u0435\u043B\u0435\u043D\u0430 \u043E\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438, \u043D\u043E \u0434\u043B\u044F \u043F\u0440\u043E\u0441\u0442\u043E\u0442\u044B \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u044B code-behind \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u0438 \u0432\u043C\u0435\u0441\u0442\u043E \u043F\u043E\u043B\u043D\u043E\u0446\u0435\u043D\u043D\u043E\u0433\u043E \u0431\u0438\u043D\u0434\u0438\u043D\u0433\u0430, \u0447\u0442\u043E\u0431\u044B \u043D\u0435 \u0443\u0441\u043B\u043E\u0436\u043D\u044F\u0442\u044C \u043A\u043E\u0434 \u0434\u043B\u044F \u043E\u0434\u043D\u043E\u0433\u043E \u0444\u0430\u0439\u043B\u0430.\n*   **\u0421\u0442\u0438\u043B\u0438:** \u0412\u0441\u0435 \u043A\u043D\u043E\u043F\u043A\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0442 \u0060ControlTemplate\u0060 \u0441 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u0430\u043C\u0438 \u0434\u043B\u044F \u0430\u043D\u0438\u043C\u0430\u0446\u0438\u0438 \u043D\u0430\u0432\u0435\u0434\u0435\u043D\u0438\u044F \u0438 \u043D\u0430\u0436\u0430\u0442\u0438\u044F. \u0426\u0432\u0435\u0442\u0430 \u043F\u043E\u0434\u043E\u0431\u0440\u0430\u043D\u044B \u0432 \u043F\u0430\u043B\u0438\u0442\u0440\u0435 Dark Mode (Dark Gray \u002B Orange/Green accents).\n*   **\u0411\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u044C \u0434\u0435\u043B\u0435\u043D\u0438\u044F:** \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u0434\u0435\u043B\u0435\u043D\u0438\u044F \u043D\u0430 \u043D\u043E\u043B\u044C.\n*   **\u0424\u043E\u0440\u043C\u0430\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435:** \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435 \u0060\u0022G15\u0022\u0060 \u043F\u0440\u0435\u0434\u043E\u0442\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u043F\u043E\u044F\u0432\u043B\u0435\u043D\u0438\u0435 \u0430\u0440\u0442\u0435\u0444\u0430\u043A\u0442\u043E\u0432 \u043F\u043B\u0430\u0432\u0430\u044E\u0449\u0435\u0439 \u0442\u043E\u0447\u043A\u0438 \u0432\u0440\u043E\u0434\u0435 \u00600.30000000000000004\u0060.",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u043D \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u0442\u0435\u043C\u043D\u044B\u043C UI \u0432 \u043F\u0430\u043F\u043A\u0435 Calculator. \u041F\u0440\u043E\u0435\u043A\u0442 \u0441\u043E\u0431\u0438\u0440\u0430\u0435\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 dotnet build (net8.0-windows). \u0411\u0430\u0442\u043D\u0438\u043A build_and_run.bat \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D \u0434\u043B\u044F \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u043E\u0439 \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0430.",
       "Bg": "#16213e"
     }
   ]

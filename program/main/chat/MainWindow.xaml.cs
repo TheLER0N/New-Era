@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -31,12 +32,18 @@ public partial class MainWindow : ChromeWindow
     private readonly string _projectStatus;
     private string _mode;
     private bool _think;
+    // Авторемонт: независимый от режима флаг «проверять проект после изменений».
+    // Хранится в config в ProjectSettings[ключ проекта].AutoRepair (null = вкл).
+    private bool _autoRepair = true;
     internal readonly List<Border> _interactiveCards = new();
     private readonly QwenBrowserPane _browserPane = QwenBrowserPane.Shared;
 
     private string HistoryKey => _projectPath != null
         ? HistoryStore.ProjectKey(_projectPath)
         : (_selectedRole ?? "unknown");
+
+    // Ключ проекта в config — как у gateway: путь без хвостовых слэшей, в нижнем регистре.
+    private string AutoRepairKey => _projectPath!.TrimEnd('\\', '/').ToLowerInvariant();
 
     public MainWindow(string? projectPath = null, string? projectName = null)
     {
@@ -54,11 +61,13 @@ public partial class MainWindow : ChromeWindow
         _mode = projectPath != null ? "edit" : "chat";
         UserProfile.Exists();
         _projectStatus = GetProjectStatus();
+        _autoRepair = LoadAutoRepair();
         LoadHistoryFromDisk();
 
         InputBox.TextChanged += (_, _) =>
             InputPlaceholder.Visibility = string.IsNullOrEmpty(InputBox.Text)
                 ? Visibility.Visible : Visibility.Collapsed;
+
         KeyDown += OnMainWindowKeyDown;
 
         _waitTimer.Tick += (_, _) =>
@@ -80,6 +89,46 @@ public partial class MainWindow : ChromeWindow
 
     internal static SolidColorBrush B(string hex) =>
         new((Color)ColorConverter.ConvertFromString(hex));
+
+    private bool LoadAutoRepair()
+    {
+        if (_projectPath == null) return true;
+        try
+        {
+            var configPath = BrowserLauncher.GetConfigPath();
+            if (configPath == null) return true;
+            var node = JsonNode.Parse(File.ReadAllText(configPath));
+            var v = node?["ProjectSettings"]?[AutoRepairKey]?["AutoRepair"];
+            // null (не задано) = включено по умолчанию
+            return v == null || v.GetValue<bool>();
+        }
+        catch { return true; }
+    }
+
+    private void SaveAutoRepair()
+    {
+        if (_projectPath == null) return;
+        try
+        {
+            var configPath = BrowserLauncher.GetConfigPath();
+            if (configPath == null) return;
+            var node = JsonNode.Parse(File.ReadAllText(configPath))?.AsObject();
+            if (node == null) return;
+            if (node["ProjectSettings"] is not JsonObject settings)
+            {
+                settings = new JsonObject();
+                node["ProjectSettings"] = settings;
+            }
+            if (settings[AutoRepairKey] is not JsonObject proj)
+            {
+                proj = new JsonObject();
+                settings[AutoRepairKey] = proj;
+            }
+            proj["AutoRepair"] = _autoRepair;
+            File.WriteAllText(configPath, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { }
+    }
 
     private string GetProjectStatus()
     {
@@ -121,6 +170,16 @@ public partial class MainWindow : ChromeWindow
     private void OnModeRepairClick(object sender, RoutedEventArgs e) => SetMode("repair");
     private void OnThinkClick(object sender, RoutedEventArgs e) => ToggleThink();
 
+    private void OnAutoRepairClick(object sender, RoutedEventArgs e)
+    {
+        _autoRepair = !_autoRepair;
+        SaveAutoRepair();
+        UpdateModeButtons();
+        RoleStatus.Text = _autoRepair
+            ? "Авторемонт включён: проект проверяется после изменений."
+            : "Авторемонт выключен: проверка проекта после изменений не запускается.";
+    }
+
     private void ToggleThink()
     {
         _think = !_think;
@@ -138,18 +197,15 @@ public partial class MainWindow : ChromeWindow
             var status = JsonSerializer.Deserialize<GatewayStatus>(
                 resp, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (status == null) return;
-
             _boundRoles.Clear();
             if (status.Roles != null)
                 foreach (var r in status.Roles) _boundRoles.Add(r);
-
             Dispatcher.InvokeAsync(() =>
             {
                 OnlineDot.Fill = B("#00ff88");
                 OnlineText.Text = "онлайн";
                 AgentStatusText.Text = "онлайн · готов к работе";
             });
-
             if (_selectedRole != null && !_waiting)
                 ApplyRoleSelection();
         }
@@ -171,19 +227,16 @@ public partial class MainWindow : ChromeWindow
         var bound = _boundRoles.Contains(_selectedRole);
         InputBox.IsEnabled = bound;
         SendBtn.IsEnabled = bound;
-
         var user = string.IsNullOrWhiteSpace(UserProfile.Nick) ? "гость" : UserProfile.Nick;
         if (!bound)
         {
             RoleStatus.Text = $"👤 {user} · роль \"{_selectedRole}\" не закреплена за чатом. Открой чат Qwen и закрепи роль.";
             return;
         }
-
         var speed = _think ? "🧠 мышление" : "⚡ быстро";
         var proj = _projectPath != null ? $" · 📁 {_projectStatus}" : "";
         RoleStatus.Text = $"👤 {user} · роль: {_selectedRole} · {ModeLabel()} · {speed}{proj}";
         SessionRoleText.Text = _selectedRole;
-
         var label = ModeLabel();
         var sp = label.IndexOf(' ');
         SessionStyleText.Text = sp >= 0 ? label.Substring(sp + 1) : label;
@@ -243,6 +296,9 @@ public partial class MainWindow : ChromeWindow
         StyleModeButton(ModeYoloBtn, _mode == "yolo");
         StyleModeButton(ModeRepairBtn, _mode == "repair");
         StyleModeButton(ThinkBtn, _think);
+        // Тумблер авторемонта: не режим, а независимый флаг (зелёный = вкл).
+        StyleModeButton(AutoRepairBtn, _autoRepair);
+        AutoRepairBtn.Content = _autoRepair ? "🔧 авторемонт: вкл" : "🔧 авторемонт: выкл";
     }
 
     private static void StyleModeButton(Button btn, bool active)
@@ -421,12 +477,6 @@ public partial class MainWindow : ChromeWindow
         InputBox.Clear();
         ClearInteractiveCards();
 
-        if (text.StartsWith("/"))
-        {
-            RunLocalTool(text);
-            return;
-        }
-
         SendBtn.IsEnabled = true;
         SendBtn.Content = "⏹ стоп";
         _waiting = true;
@@ -440,12 +490,12 @@ public partial class MainWindow : ChromeWindow
                 role, text,
                 projectPath = _projectPath,
                 mode = _mode,
-                think = _think
+                think = _think,
+                autoRepair = _autoRepair
             });
             var agentResp = await _http.PostAsync("http://localhost:51234/agent-run",
                 new StringContent(agentPayload, Encoding.UTF8, "application/json"));
             var agentBody = await agentResp.Content.ReadAsStringAsync();
-
             if (agentResp.IsSuccessStatusCode)
                 await HandleAgentBody(role, agentBody);
             else
@@ -498,7 +548,16 @@ public partial class MainWindow : ChromeWindow
                 RenderCards(r.Cards?.Where(c => c.Type != "summary").ToList());
                 if (!string.IsNullOrWhiteSpace(r.Response))
                     AddMessage(role, role, r.Response, "#16213e");
-                RenderCards(r.Cards?.Where(c => c.Type == "summary").ToList());
+                var summary = r.Cards?.Where(c => c.Type == "summary").ToList();
+                // Если авторемонт выключен, файлы менялись, а режим не «ремонт» —
+                // проверка проекта не запускалась: помечаем итог.
+                if (summary != null && !_autoRepair && _mode != "repair" && (r.ChangedFiles?.Count ?? 0) > 0)
+                {
+                    foreach (var c in summary)
+                        c.Details += (string.IsNullOrEmpty(c.Details) ? "" : "\n") +
+                                     "⚠ авторемонт выключен — проверка проекта не запускалась";
+                }
+                RenderCards(summary);
                 break;
             }
             case "approval": AddApprovalCard(r); break;
@@ -526,7 +585,6 @@ public partial class MainWindow : ChromeWindow
             var resp = await _http.PostAsync("http://localhost:51234/agent-approve",
                 new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"));
             var body = await resp.Content.ReadAsStringAsync();
-
             if (resp.IsSuccessStatusCode)
                 await HandleAgentBody(_selectedRole ?? "coder", body);
             else

@@ -143,9 +143,13 @@ internal sealed partial class GatewayState
                 sb.AppendLine($"Команда проверки проекта: {check}. После изменений проверка запускается автоматически.");
         }
         if (s.Mode == "repair")
-            sb.AppendLine("Режим ремонта: исправь одну ошибку минимально, затем повтори проверку.");
+        {
+            sb.AppendLine("Режим ремонта: чини ровно ОДНУ ошибку минимально — один маленький patch_file, без лишних правок и без перезаписи файлов целиком. После правки повтори проверку.");
+        }
         if (s.RepairMode)
-            sb.AppendLine("ВНИМАНИЕ: последняя проверка проекта упала. Сейчас ремонт: прочитай ошибку, исправь причину минимально и повтори проверку.");
+        {
+            sb.AppendLine("ВНИМАНИЕ: последняя проверка проекта упала. Сейчас ремонт: прочитай ошибку, найди причину (read_file), сделай один минимальный patch_file и повтори проверку.");
+        }
         sb.AppendLine();
         sb.AppendLine("ОТВЕТ-ПРОТОКОЛ: если нужно действие — ответь СТРОГО одним JSON-блоком");
         sb.AppendLine("{\"name\":\"имя_инструмента\",\"arguments\":{...}} без любого другого текста.");
@@ -401,7 +405,7 @@ internal sealed partial class GatewayState
                 return (true, await tcs.Task);
             }
             if (delayTask != null)
-                return (false, $"Браузер не ответил за {timeoutMs / 1000} секунд.");
+                return (false, "Браузер не ответил в отведённое время.");
             return (false, "cancelled");
         }
         catch (OperationCanceledException)
@@ -513,6 +517,7 @@ internal sealed partial class GatewayState
     public bool NeedsAsk(AgentSession s, PendingTool c)
     {
         if (!s.AllowTools) return false;
+
         if (c.Name == "run_command")
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -530,6 +535,7 @@ internal sealed partial class GatewayState
             }
             return true;
         }
+
         if (IsMutating(c.Name))
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -541,6 +547,7 @@ internal sealed partial class GatewayState
             if (s.Mode == "auto") return !IsAutoApproved(rule);
             return true;
         }
+
         return false;
     }
 }

@@ -60,12 +60,16 @@ public static class GatewayHost
                 Root = root,
                 Mode = mode,
                 Think = req.Think,
+                AutoRepair = req.AutoRepair,
                 AllowTools = root != null && mode != "chat"
             };
             if (root != null)
             {
                 var settings = st.GetProjectSettings(root);
                 session.StepLimit = settings.MaxSteps ?? 8;
+                // Синхронизируем тумблер из GUI с конфигом в памяти:
+                // иначе SaveConfig (автоправила/команда проверки) затрёт значение.
+                settings.AutoRepair = req.AutoRepair;
             }
 
             session.Messages.Add(new JsonObject

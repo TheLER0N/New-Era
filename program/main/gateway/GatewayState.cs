@@ -288,7 +288,7 @@ internal sealed partial class GatewayState
         {
             // никто не ждал — сохраняем в буфер, ожидание подхватит его по reqId
             OrphanResponses[role] = (reqId, text);
-            AgentLog($"[AI ORPHAN] роль={role} ответ сохранён в буфер (никто не ждал)");
+            AgentLog($"[ORPHAN] роль={role} ответ сохранён в буфер (подхватится ожиданием)");
         }
     }
 
@@ -355,6 +355,7 @@ internal sealed partial class GatewayState
     public string? EnsureCheckCommand(string root)
     {
         var settings = GetProjectSettings(root);
+        // уже найденная команда никогда не перезаписывается (в т.ч. пустотой)
         if (!string.IsNullOrWhiteSpace(settings.CheckCommand)) return settings.CheckCommand;
         var detected = DetectCheckCommand(root);
         if (!string.IsNullOrWhiteSpace(detected))
@@ -362,6 +363,7 @@ internal sealed partial class GatewayState
             settings.CheckCommand = detected;
             SaveConfig();
         }
+        // не определена — не выдумываем, проверки просто не будет
         return detected;
     }
 
