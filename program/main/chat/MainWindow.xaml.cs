@@ -32,9 +32,8 @@ public partial class MainWindow : ChromeWindow
     private readonly string _projectStatus;
     private string _mode;
     private bool _think;
-    // Авторемонт: независимый от режима флаг «проверять проект после изменений».
-    // Хранится в config в ProjectSettings[ключ проекта].AutoRepair (null = вкл).
     private bool _autoRepair = true;
+
     internal readonly List<Border> _interactiveCards = new();
     private readonly QwenBrowserPane _browserPane = QwenBrowserPane.Shared;
 
@@ -42,7 +41,6 @@ public partial class MainWindow : ChromeWindow
         ? HistoryStore.ProjectKey(_projectPath)
         : (_selectedRole ?? "unknown");
 
-    // Ключ проекта в config — как у gateway: путь без хвостовых слэшей, в нижнем регистре.
     private string AutoRepairKey => _projectPath!.TrimEnd('\\', '/').ToLowerInvariant();
 
     public MainWindow(string? projectPath = null, string? projectName = null)
@@ -59,10 +57,15 @@ public partial class MainWindow : ChromeWindow
         _projectPath = projectPath;
         _projectName = projectName;
         _mode = projectPath != null ? "edit" : "chat";
+
         UserProfile.Exists();
         _projectStatus = GetProjectStatus();
         _autoRepair = LoadAutoRepair();
         LoadHistoryFromDisk();
+
+        // Отображаем путь проекта явно
+        SessionPathText.Text = _projectPath ?? "—";
+        SessionProjectText.Text = _projectStatus;
 
         InputBox.TextChanged += (_, _) =>
             InputPlaceholder.Visibility = string.IsNullOrEmpty(InputBox.Text)
@@ -84,7 +87,6 @@ public partial class MainWindow : ChromeWindow
 
         RenderHistory();
         UpdateModeButtons();
-        SessionProjectText.Text = _projectStatus;
     }
 
     internal static SolidColorBrush B(string hex) =>
@@ -99,7 +101,6 @@ public partial class MainWindow : ChromeWindow
             if (configPath == null) return true;
             var node = JsonNode.Parse(File.ReadAllText(configPath));
             var v = node?["ProjectSettings"]?[AutoRepairKey]?["AutoRepair"];
-            // null (не задано) = включено по умолчанию
             return v == null || v.GetValue<bool>();
         }
         catch { return true; }
@@ -135,13 +136,17 @@ public partial class MainWindow : ChromeWindow
         if (_projectPath == null) return "—";
         try
         {
+            var dirName = new DirectoryInfo(_projectPath.TrimEnd('\\', '/')).Name;
+            var name = _projectName ?? dirName;
+
             var projects = ProjectStore.Load();
             var project = projects.FirstOrDefault(p =>
                 string.Equals(p.Path.TrimEnd('\\', '/'), _projectPath.TrimEnd('\\', '/'),
-                    StringComparison.OrdinalIgnoreCase));
-            var name = _projectName ?? project?.Name
-                ?? new DirectoryInfo(_projectPath.TrimEnd('\\', '/')).Name;
-            return $"{name} · {FormatRelative(project?.LastOpened ?? DateTime.Now)}";
+                StringComparison.OrdinalIgnoreCase));
+
+            var lastOpened = project?.LastOpened;
+            var timeStr = FormatRelative(lastOpened);
+            return $"{name} · {timeStr}";
         }
         catch { return _projectName ?? "—"; }
     }
@@ -161,7 +166,16 @@ public partial class MainWindow : ChromeWindow
     private void OnToggleBrowserClick(object sender, RoutedEventArgs e)
     {
         bool show = BrowserColumn.Width.Value < 1;
-        BrowserColumn.Width = show ? new GridLength(500) : new GridLength(0);
+        if (show)
+        {
+            BrowserColumn.Width = new GridLength(520);
+            BrowserSplitter.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            BrowserColumn.Width = new GridLength(0);
+            BrowserSplitter.Visibility = Visibility.Collapsed;
+        }
         ToggleBrowserBtn.Content = show ? "🌐 браузер: показан" : "🌐 браузер: скрыт";
     }
 
@@ -197,15 +211,18 @@ public partial class MainWindow : ChromeWindow
             var status = JsonSerializer.Deserialize<GatewayStatus>(
                 resp, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (status == null) return;
+
             _boundRoles.Clear();
             if (status.Roles != null)
                 foreach (var r in status.Roles) _boundRoles.Add(r);
+
             Dispatcher.InvokeAsync(() =>
             {
                 OnlineDot.Fill = B("#00ff88");
                 OnlineText.Text = "онлайн";
                 AgentStatusText.Text = "онлайн · готов к работе";
             });
+
             if (_selectedRole != null && !_waiting)
                 ApplyRoleSelection();
         }
@@ -227,21 +244,25 @@ public partial class MainWindow : ChromeWindow
         var bound = _boundRoles.Contains(_selectedRole);
         InputBox.IsEnabled = bound;
         SendBtn.IsEnabled = bound;
+
         var user = string.IsNullOrWhiteSpace(UserProfile.Nick) ? "гость" : UserProfile.Nick;
         if (!bound)
         {
             RoleStatus.Text = $"👤 {user} · роль \"{_selectedRole}\" не закреплена за чатом. Открой чат Qwen и закрепи роль.";
             return;
         }
+
         var speed = _think ? "🧠 мышление" : "⚡ быстро";
         var proj = _projectPath != null ? $" · 📁 {_projectStatus}" : "";
         RoleStatus.Text = $"👤 {user} · роль: {_selectedRole} · {ModeLabel()} · {speed}{proj}";
+
         SessionRoleText.Text = _selectedRole;
         var label = ModeLabel();
         var sp = label.IndexOf(' ');
         SessionStyleText.Text = sp >= 0 ? label.Substring(sp + 1) : label;
         SessionSpeedText.Text = _think ? "мышление" : "быстро";
         SessionProjectText.Text = _projectStatus;
+        SessionPathText.Text = _projectPath ?? "—";
     }
 
     private string ModeLabel() => _mode switch
@@ -296,7 +317,6 @@ public partial class MainWindow : ChromeWindow
         StyleModeButton(ModeYoloBtn, _mode == "yolo");
         StyleModeButton(ModeRepairBtn, _mode == "repair");
         StyleModeButton(ThinkBtn, _think);
-        // Тумблер авторемонта: не режим, а независимый флаг (зелёный = вкл).
         StyleModeButton(AutoRepairBtn, _autoRepair);
         AutoRepairBtn.Content = _autoRepair ? "🔧 авторемонт: вкл" : "🔧 авторемонт: выкл";
     }
@@ -308,7 +328,6 @@ public partial class MainWindow : ChromeWindow
         btn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(active ? "#00ff88" : "#c8ffd8"));
     }
 
-    // Прерванные вопросы не удаляем — помечаем «отменено» и гасим кнопки.
     internal void ClearInteractiveCards()
     {
         foreach (var c in _interactiveCards)
@@ -323,7 +342,6 @@ public partial class MainWindow : ChromeWindow
         _interactiveCards.Clear();
     }
 
-    // UIElementCollection — не-generic, поэтому явный тип UIElement в foreach.
     private static void DisableButtons(DependencyObject root)
     {
         if (root is Button b) { b.IsEnabled = false; return; }
@@ -341,40 +359,60 @@ public partial class MainWindow : ChromeWindow
         _interactiveCards.Clear();
         if (_history.TryGetValue(HistoryKey, out var list))
             foreach (var m in list)
-                AddMessageBlock(m.Author, m.Text, m.Bg);
+            {
+                AddMessageBlock(m.Author, m.Text, m.Bg, m.Time);
+                // Рендерим сохранённые карточки
+                if (!string.IsNullOrEmpty(m.CardsJson))
+                {
+                    try
+                    {
+                        var cards = JsonSerializer.Deserialize<List<ActionCardDto>>(m.CardsJson,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        if (cards != null) RenderCards(cards);
+                    }
+                    catch { }
+                }
+            }
     }
 
-    internal void AddMessage(string role, string author, string text, string bgColor)
+    internal void AddMessage(string role, string author, string text, string bgColor, string? cardsJson = null)
     {
         var key = HistoryKey;
         if (!_history.ContainsKey(key)) _history[key] = new();
-        _history[key].Add(new ChatMessage { Author = author, Text = text, Bg = bgColor });
+        var time = DateTime.Now.ToString("HH:mm");
+        _history[key].Add(new ChatMessage
+        {
+            Author = author,
+            Text = text,
+            Bg = bgColor,
+            Time = time,
+            CardsJson = cardsJson
+        });
         SaveHistoryToDisk();
-        AddMessageBlock(author, text, bgColor);
+        AddMessageBlock(author, text, bgColor, time);
     }
 
-    private void AddMessageBlock(string author, string text, string bg)
+    private void AddMessageBlock(string author, string text, string bg, string time)
     {
         bool isUser = author.Trim().Equals("ТЫ", StringComparison.OrdinalIgnoreCase);
-
-        var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) });
+        var row = new Grid { Margin = new Thickness(0, 7, 0, 7) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var time = new TextBlock
+        var timeBlock = new TextBlock
         {
-            Text = DateTime.Now.ToString("HH:mm"),
-            FontFamily = Theme.Font(), FontSize = 12,
+            Text = string.IsNullOrEmpty(time) ? DateTime.Now.ToString("HH:mm") : time,
+            FontFamily = Theme.Font(), FontSize = 13,
             Foreground = B("#447a5a"), Margin = new Thickness(4, 0, 0, 4)
         };
-        Grid.SetRow(time, 0); Grid.SetColumn(time, 1);
-        row.Children.Add(time);
+        Grid.SetRow(timeBlock, 0); Grid.SetColumn(timeBlock, 1);
+        row.Children.Add(timeBlock);
 
         var avatar = new Border
         {
-            Width = 40, Height = 40, CornerRadius = new CornerRadius(20),
+            Width = 44, Height = 44, CornerRadius = new CornerRadius(22),
             Background = B("#0d2418"),
             BorderBrush = isUser ? B("#00ff88") : B("#1d5c3d"),
             BorderThickness = new Thickness(1),
@@ -385,7 +423,7 @@ public partial class MainWindow : ChromeWindow
         {
             avatar.Child = new System.Windows.Shapes.Path
             {
-                Fill = B("#00ff88"), Width = 16, Height = 16,
+                Fill = B("#00ff88"), Width = 18, Height = 18,
                 Stretch = Stretch.Uniform,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -397,7 +435,7 @@ public partial class MainWindow : ChromeWindow
         {
             avatar.Child = new TextBlock
             {
-                Text = ">_", FontFamily = Theme.Font(), FontSize = 15,
+                Text = ">_", FontFamily = Theme.Font(), FontSize = 16,
                 FontWeight = FontWeights.Bold, Foreground = B("#7dffa8"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
@@ -412,25 +450,26 @@ public partial class MainWindow : ChromeWindow
             BorderBrush = isUser ? B("#00ff88") : B(bg),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(12, 8, 12, 10),
+            Padding = new Thickness(14, 10, 14, 12),
             Margin = new Thickness(4, 0, 0, 0)
         };
+
         var inner = new StackPanel();
         inner.Children.Add(new TextBlock
         {
-            Text = author, FontFamily = Theme.Font(), FontSize = 11,
+            Text = author, FontFamily = Theme.Font(), FontSize = 12,
             Foreground = isUser ? B("#00ff88") : B("#447a5a"),
-            Margin = new Thickness(0, 0, 0, 4)
+            Margin = new Thickness(0, 0, 0, 5)
         });
         inner.Children.Add(new TextBlock
         {
-            Text = text, FontFamily = Theme.Font(), FontSize = 14,
+            Text = text, FontFamily = Theme.Font(), FontSize = 15,
             Foreground = B("#d9ffe7"), TextWrapping = TextWrapping.Wrap
         });
+
         bubble.Child = inner;
         Grid.SetRow(bubble, 1); Grid.SetColumn(bubble, 1);
         row.Children.Add(bubble);
-
         ChatMessages.Children.Add(row);
         ChatScroll.ScrollToEnd();
     }
@@ -471,8 +510,8 @@ public partial class MainWindow : ChromeWindow
         if (_waiting) return;
         var text = InputBox.Text.Trim();
         if (string.IsNullOrEmpty(text) || _selectedRole == null) return;
-        var role = _selectedRole;
 
+        var role = _selectedRole;
         AddMessage(role, "Ты", text, "#0f3460");
         InputBox.Clear();
         ClearInteractiveCards();
@@ -496,6 +535,7 @@ public partial class MainWindow : ChromeWindow
             var agentResp = await _http.PostAsync("http://localhost:51234/agent-run",
                 new StringContent(agentPayload, Encoding.UTF8, "application/json"));
             var agentBody = await agentResp.Content.ReadAsStringAsync();
+
             if (agentResp.IsSuccessStatusCode)
                 await HandleAgentBody(role, agentBody);
             else
@@ -544,18 +584,19 @@ public partial class MainWindow : ChromeWindow
         {
             case "final":
             {
-                // действия — до текста ответа, итог-карточка — после
                 RenderCards(r.Cards?.Where(c => c.Type != "summary").ToList());
                 if (!string.IsNullOrWhiteSpace(r.Response))
-                    AddMessage(role, role, r.Response, "#16213e");
+                {
+                    var cardsJson = r.Cards != null && r.Cards.Count > 0
+                        ? JsonSerializer.Serialize(r.Cards) : null;
+                    AddMessage(role, role, r.Response, "#16213e", cardsJson);
+                }
                 var summary = r.Cards?.Where(c => c.Type == "summary").ToList();
-                // Если авторемонт выключен, файлы менялись, а режим не «ремонт» —
-                // проверка проекта не запускалась: помечаем итог.
                 if (summary != null && !_autoRepair && _mode != "repair" && (r.ChangedFiles?.Count ?? 0) > 0)
                 {
                     foreach (var c in summary)
                         c.Details += (string.IsNullOrEmpty(c.Details) ? "" : "\n") +
-                                     "⚠ авторемонт выключен — проверка проекта не запускалась";
+                            "⚠ авторемонт выключен — проверка проекта не запускалась";
                 }
                 RenderCards(summary);
                 break;

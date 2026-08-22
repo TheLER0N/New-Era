@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 
 namespace MainApp;
 
@@ -8,6 +10,8 @@ public class ChatMessage
     public string Author { get; set; } = "";
     public string Text { get; set; } = "";
     public string Bg { get; set; } = "";
+    public string Time { get; set; } = "";
+    public string? CardsJson { get; set; }
 }
 
 class GatewayStatus
@@ -80,9 +84,9 @@ public static class HistoryStore
         {
             var path = GetPath();
             if (path == null || !File.Exists(path)) return new();
-            var loaded = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<ChatMessage>>>(
+            var loaded = JsonSerializer.Deserialize<Dictionary<string, List<ChatMessage>>>(
                 File.ReadAllText(path),
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             return loaded ?? new();
         }
         catch { return new(); }
@@ -95,8 +99,8 @@ public static class HistoryStore
             var path = GetPath();
             if (path == null) return;
             File.WriteAllText(path,
-                System.Text.Json.JsonSerializer.Serialize(map,
-                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                JsonSerializer.Serialize(map,
+                    new JsonSerializerOptions { WriteIndented = true }));
         }
         catch { }
     }

@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : cli
-  GENERATED      : 22.08.2026 19:11:01
+  GENERATED      : 22.08.2026 19:56:45
   PATH           : C:\Users\Пользователь\Desktop\cli
 ================================================================
 
@@ -2198,14 +2198,15 @@ button, [class*='btn'], [role='button'] { border-color: var(--border) !important
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindow.xaml
-SIZE: 16873 bytes
+SIZE: 18363 bytes
 ------------------------------------------------
 <local:ChromeWindow x:Class="MainApp.MainWindow"
-                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:local="clr-namespace:MainApp"
-                    Title="LERON GUI — чат"
-                    Width="1600" Height="800">
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:MainApp"
+    Title="LERON GUI — чат"
+    Width="1600" Height="800">
+
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
     </WindowChrome.WindowChrome>
@@ -2218,8 +2219,8 @@ SIZE: 16873 bytes
             <Setter Property="BorderBrush" Value="#1d5c3d"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontFamily" Value="Consolas"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Padding" Value="14,8"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -2250,41 +2251,44 @@ SIZE: 16873 bytes
     <Border BorderBrush="#123626" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="56"/>
+                <RowDefinition Height="60"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
+            <!-- ═══ ВЕРХНЯЯ ПАНЕЛЬ ═══ -->
             <Border Grid.Row="0" Background="#081711" MouseLeftButtonDown="DragWindow" BorderBrush="#123626" BorderThickness="0,0,0,1">
                 <Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-                        <Border Width="40" Height="40" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
-                            <TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border Width="44" Height="44" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
+                            <TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="LERON GUI" FontSize="20" FontWeight="Bold" Foreground="#00ff88" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                        <TextBlock Text="· чат агента" Margin="10,0,0,0" Foreground="#447a5a" FontSize="14" VerticalAlignment="Center"/>
-                        <Border Background="#0d2418" BorderBrush="#1d5c3d" BorderThickness="1" CornerRadius="10" Padding="12,5" Margin="18,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="LERON GUI" FontSize="22" FontWeight="Bold" Foreground="#00ff88" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        <TextBlock Text="· чат агента" Margin="10,0,0,0" Foreground="#447a5a" FontSize="15" VerticalAlignment="Center"/>
+                        <Border Background="#0d2418" BorderBrush="#1d5c3d" BorderThickness="1" CornerRadius="10" Padding="14,6" Margin="18,0,0,0" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
-                                <Ellipse x:Name="OnlineDot" Width="9" Height="9" Fill="#00ff88" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="OnlineText" Text="онлайн" Foreground="#7dffa8" FontSize="13" FontFamily="Consolas" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                <Ellipse x:Name="OnlineDot" Width="10" Height="10" Fill="#00ff88" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="OnlineText" Text="онлайн" Foreground="#7dffa8" FontSize="14" FontFamily="Consolas" Margin="6,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
-
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
-                        <Button Content="← хаб" Padding="14,7" Margin="0,0,6,0" Click="OnBackClick"/>
-                        <Button Content="⧉" Width="46" Height="34" Margin="0,0,6,0" Click="ToggleSize" ToolTip="Развернуть / окно"/>
-                        <Button Content="✕" Width="46" Height="34" Click="CloseClick" Foreground="#e94560" ToolTip="Закрыть"/>
+                        <Button Content="← хаб" Padding="16,8" Margin="0,0,6,0" Click="OnBackClick" FontSize="15"/>
+                        <Button Content="⧉" Width="50" Height="38" Margin="0,0,6,0" Click="ToggleSize" ToolTip="Развернуть / окно" FontSize="16"/>
+                        <Button Content="✕" Width="50" Height="38" Click="CloseClick" Foreground="#e94560" ToolTip="Закрыть" FontSize="16"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
+            <!-- ═══ ОСНОВНАЯ ОБЛАСТЬ ═══ -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="300"/>
+                    <ColumnDefinition Width="320"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition x:Name="BrowserColumn" Width="0"/>
                 </Grid.ColumnDefinitions>
 
+                <!-- ЛЕВАЯ ПАНЕЛЬ -->
                 <Border Grid.Column="0" Background="#08140f" BorderBrush="#123626" BorderThickness="0,0,1,0" Padding="14">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -2297,39 +2301,40 @@ SIZE: 16873 bytes
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Text="AGENT" FontSize="13" Foreground="#00ff88" FontWeight="Bold" FontFamily="Consolas" Margin="2,0,0,10"/>
+                        <TextBlock Grid.Row="0" Text="AGENT" FontSize="14" Foreground="#00ff88" FontWeight="Bold" FontFamily="Consolas" Margin="2,0,0,10"/>
 
-                        <Border Grid.Row="1" Background="#0d2418" BorderBrush="#00ff88" BorderThickness="1" CornerRadius="10" Padding="12">
+                        <Border Grid.Row="1" Background="#0d2418" BorderBrush="#00ff88" BorderThickness="1" CornerRadius="10" Padding="14">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <Border Width="46" Height="46" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
-                                    <TextBlock Text="💻" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Border Width="50" Height="50" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
+                                    <TextBlock Text="💻" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
-                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="Кодер" FontSize="17" FontWeight="Bold" Foreground="#d9ffe7"/>
-                                    <TextBlock x:Name="AgentStatusText" Text="онлайн · готов к работе" FontSize="12" Foreground="#7dffa8" FontFamily="Consolas" Margin="0,3,0,0"/>
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Кодер" FontSize="18" FontWeight="Bold" Foreground="#d9ffe7"/>
+                                    <TextBlock x:Name="AgentStatusText" Text="онлайн · готов к работе" FontSize="13" Foreground="#7dffa8" FontFamily="Consolas" Margin="0,3,0,0"/>
                                 </StackPanel>
-                                <Border Grid.Column="2" Width="22" Height="22" CornerRadius="11" Background="#00ff88" VerticalAlignment="Top">
-                                    <TextBlock Text="✓" FontSize="13" FontWeight="Bold" Foreground="#04150c" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Border Grid.Column="2" Width="24" Height="24" CornerRadius="12" Background="#00ff88" VerticalAlignment="Top">
+                                    <TextBlock Text="✓" FontSize="14" FontWeight="Bold" Foreground="#04150c" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                             </Grid>
                         </Border>
 
-                        <Button Grid.Row="2" x:Name="ToggleBrowserBtn" Content="🌐 браузер: скрыт" Click="OnToggleBrowserClick" Padding="12,9" Margin="0,10,0,0" HorizontalContentAlignment="Left"/>
+                        <Button Grid.Row="2" x:Name="ToggleBrowserBtn" Content="🌐 браузер: скрыт" Click="OnToggleBrowserClick" Padding="14,10" Margin="0,12,0,0" HorizontalContentAlignment="Left" FontSize="15"/>
 
-                        <TextBlock Grid.Row="3" Text="СЕССИЯ" FontSize="13" Foreground="#00ff88" FontWeight="Bold" FontFamily="Consolas" Margin="2,18,0,8"/>
+                        <TextBlock Grid.Row="3" Text="СЕССИЯ" FontSize="14" Foreground="#00ff88" FontWeight="Bold" FontFamily="Consolas" Margin="2,20,0,8"/>
 
-                        <Border Grid.Row="4" Background="#0d2418" BorderBrush="#123626" BorderThickness="1" CornerRadius="10" Padding="12">
-                            <Grid TextElement.FontFamily="Consolas" TextElement.FontSize="13">
+                        <Border Grid.Row="4" Background="#0d2418" BorderBrush="#123626" BorderThickness="1" CornerRadius="10" Padding="14">
+                            <Grid TextElement.FontFamily="Consolas" TextElement.FontSize="14">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
@@ -2341,15 +2346,18 @@ SIZE: 16873 bytes
                                 <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SessionStyleText" Text="аккуратный" Foreground="#d9ffe7" Margin="10,0,0,8"/>
                                 <TextBlock Grid.Row="2" Text="Скорость:" Foreground="#447a5a" Margin="0,0,0,8"/>
                                 <TextBlock Grid.Row="2" Grid.Column="1" x:Name="SessionSpeedText" Text="быстро" Foreground="#d9ffe7" Margin="10,0,0,8"/>
-                                <TextBlock Grid.Row="3" Text="Проект:" Foreground="#447a5a"/>
-                                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SessionProjectText" Text="—" Foreground="#00ff88" Margin="10,0,0,0"/>
+                                <TextBlock Grid.Row="3" Text="Проект:" Foreground="#447a5a" Margin="0,0,0,8"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SessionProjectText" Text="—" Foreground="#00ff88" Margin="10,0,0,8" TextWrapping="Wrap"/>
+                                <TextBlock Grid.Row="4" Text="Путь:" Foreground="#447a5a"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="SessionPathText" Text="—" Foreground="#7dffa8" Margin="10,0,0,0" TextWrapping="Wrap" FontSize="12"/>
                             </Grid>
                         </Border>
 
-                        <TextBlock Grid.Row="6" x:Name="RoleStatus" Text="" Foreground="#8fe3ae" FontSize="12" FontFamily="Consolas" TextWrapping="Wrap" Margin="2,8,0,0"/>
+                        <TextBlock Grid.Row="6" x:Name="RoleStatus" Text="" Foreground="#8fe3ae" FontSize="13" FontFamily="Consolas" TextWrapping="Wrap" Margin="2,8,0,0"/>
                     </Grid>
                 </Border>
 
+                <!-- ЦЕНТР: ЧАТ -->
                 <Grid Grid.Column="1">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -2357,31 +2365,32 @@ SIZE: 16873 bytes
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0" HorizontalAlignment="Center" Background="#0d2418" BorderBrush="#123626" BorderThickness="1" CornerRadius="10" Padding="16,5" Margin="0,12,0,0">
-                        <TextBlock Text="Сегодня" Foreground="#7dffa8" FontSize="13" FontFamily="Consolas"/>
+                    <Border Grid.Row="0" HorizontalAlignment="Center" Background="#0d2418" BorderBrush="#123626" BorderThickness="1" CornerRadius="10" Padding="18,6" Margin="0,12,0,0">
+                        <TextBlock Text="Сегодня" Foreground="#7dffa8" FontSize="14" FontFamily="Consolas"/>
                     </Border>
 
-                    <ScrollViewer x:Name="ChatScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16,8">
+                    <ScrollViewer x:Name="ChatScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="18,10">
                         <StackPanel x:Name="ChatMessages"/>
                     </ScrollViewer>
 
-                    <Border Grid.Row="2" Background="#081711" Padding="14,12" BorderBrush="#123626" BorderThickness="0,1,0,0">
+                    <!-- НИЖНЯЯ ПАНЕЛЬ ВВОДА (увеличена) -->
+                    <Border Grid.Row="2" Background="#081711" Padding="16,14" BorderBrush="#123626" BorderThickness="0,1,0,0">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-                                <Button x:Name="ModeChatBtn" Content="💬 чат" Click="OnModeChatClick" Margin="0,0,6,0" ToolTip="Обычный разговор без проекта"/>
-                                <Button x:Name="ModeProjectBtn" Content="📋 планирование" Click="OnModeProjectClick" Margin="0,0,6,0" ToolTip="ИИ читает и обсуждает проект, но не меняет файлы"/>
-                                <Button x:Name="ModeEditBtn" Content="✏️ аккуратный" Click="OnModeEditClick" Margin="0,0,6,0" ToolTip="ИИ правит файлы, каждое действие с подтверждением"/>
-                                <Button x:Name="ModeAutoBtn" Content="🔄 авто" Click="OnModeAutoClick" Margin="0,0,6,0" ToolTip="Подтвердил действие один раз — похожие дальше идут сами"/>
-                                <Button x:Name="ModeYoloBtn" Content="⚡ агрессивный" Click="OnModeYoloClick" Margin="0,0,6,0" ToolTip="YOLO: обычные действия без подтверждений"/>
-                                <Button x:Name="ModeRepairBtn" Content="🔧 ремонт" Click="OnModeRepairClick" Margin="0,0,6,0" ToolTip="Минимальный ремонт одной ошибки"/>
-                                <Button x:Name="AutoRepairBtn" Content="🔧 авторемонт: вкл" Click="OnAutoRepairClick" Margin="0,0,6,0" ToolTip="Автоматическая проверка проекта после изменений. Независим от режима; в режиме «ремонт» проверка идёт всегда."/>
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+                                <Button x:Name="ModeChatBtn" Content="💬 чат" Click="OnModeChatClick" Margin="0,0,6,0" ToolTip="Обычный разговор без проекта" FontSize="14"/>
+                                <Button x:Name="ModeProjectBtn" Content="📋 планирование" Click="OnModeProjectClick" Margin="0,0,6,0" ToolTip="ИИ читает и обсуждает проект, но не меняет файлы" FontSize="14"/>
+                                <Button x:Name="ModeEditBtn" Content="✏️ аккуратный" Click="OnModeEditClick" Margin="0,0,6,0" ToolTip="ИИ правит файлы, каждое действие с подтверждением" FontSize="14"/>
+                                <Button x:Name="ModeAutoBtn" Content="🔄 авто" Click="OnModeAutoClick" Margin="0,0,6,0" ToolTip="Подтвердил действие один раз — похожие дальше идут сами" FontSize="14"/>
+                                <Button x:Name="ModeYoloBtn" Content="⚡ агрессивный" Click="OnModeYoloClick" Margin="0,0,6,0" ToolTip="YOLO: обычные действия без подтверждений" FontSize="14"/>
+                                <Button x:Name="ModeRepairBtn" Content="🔧 ремонт" Click="OnModeRepairClick" Margin="0,0,6,0" ToolTip="Минимальный ремонт одной ошибки" FontSize="14"/>
+                                <Button x:Name="AutoRepairBtn" Content="🔧 авторемонт: вкл" Click="OnAutoRepairClick" Margin="0,0,6,0" ToolTip="Автоматическая проверка проекта после изменений" FontSize="14"/>
                                 <TextBlock Text="│" Foreground="#1d5c3d" Margin="4,0,6,0" VerticalAlignment="Center"/>
-                                <Button x:Name="ThinkBtn" Content="⚡ быстро" Click="OnThinkClick" Margin="0,0,6,0" ToolTip="Режим ответа ИИ: быстро или с мышлением (Ctrl+6)"/>
+                                <Button x:Name="ThinkBtn" Content="⚡ быстро" Click="OnThinkClick" Margin="0,0,6,0" ToolTip="Режим ответа ИИ: быстро или с мышление (Ctrl+6)" FontSize="14"/>
                             </StackPanel>
 
                             <Grid Grid.Row="1">
@@ -2389,46 +2398,61 @@ SIZE: 16873 bytes
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
+
                                 <Grid Grid.Column="0">
                                     <TextBox x:Name="InputBox"
                                              Background="#04110c"
                                              Foreground="#d9ffe7"
                                              BorderBrush="#1d5c3d"
                                              BorderThickness="1"
-                                             Padding="12,10"
-                                             FontSize="15"
+                                             Padding="14,12"
+                                             FontSize="16"
                                              FontFamily="Consolas"
                                              TextWrapping="Wrap"
                                              AcceptsReturn="False"
                                              CaretBrush="#00ff88"
                                              SelectionBrush="#123626"
                                              IsEnabled="False"
-                                             KeyDown="OnInputKeyDown"/>
+                                             KeyDown="OnInputKeyDown"
+                                             MinHeight="52"/>
                                     <TextBlock x:Name="InputPlaceholder"
                                                Text="Введите сообщение..."
                                                Foreground="#3d6a4d"
-                                               FontSize="15"
+                                               FontSize="16"
                                                FontFamily="Consolas"
-                                               Margin="14,12,0,0"
+                                               Margin="16,14,0,0"
                                                IsHitTestVisible="False"/>
                                 </Grid>
+
                                 <Button x:Name="SendBtn"
                                         Grid.Column="1"
                                         Content="Отправить ➤"
-                                        Width="170"
-                                        Margin="10,0,0,0"
+                                        Width="180"
+                                        Margin="12,0,0,0"
                                         IsEnabled="False"
                                         Click="OnSendClick"
                                         Background="#00ff88"
                                         Foreground="#04150c"
                                         FontWeight="Bold"
-                                        FontSize="15"/>
+                                        FontSize="16"/>
                             </Grid>
                         </Grid>
                     </Border>
                 </Grid>
 
-                <Border Grid.Column="2" x:Name="BrowserPaneHost" BorderBrush="#123626" BorderThickness="1,0,0,0"/>
+                <!-- РАЗДЕЛИТЕЛЬ (перетаскиваемый) -->
+                <GridSplitter x:Name="BrowserSplitter"
+                              Grid.Column="2"
+                              Width="7"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Stretch"
+                              Background="#1d5c3d"
+                              Cursor="SizeWE"
+                              Visibility="Collapsed"
+                              ToolTip="Потяни для изменения ширины браузера"/>
+
+                <!-- ПРАВАЯ ПАНЕЛЬ: БРАУЗЕР -->
+                <Border Grid.Column="3" x:Name="BrowserPaneHost" BorderBrush="#123626" BorderThickness="1,0,0,0"/>
             </Grid>
         </Grid>
     </Border>
@@ -2437,7 +2461,7 @@ SIZE: 16873 bytes
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindow.xaml.cs
-SIZE: 24626 bytes
+SIZE: 24936 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -2473,9 +2497,8 @@ public partial class MainWindow : ChromeWindow
     private readonly string _projectStatus;
     private string _mode;
     private bool _think;
-    // Авторемонт: независимый от режима флаг «проверять проект после изменений».
-    // Хранится в config в ProjectSettings[ключ проекта].AutoRepair (null = вкл).
     private bool _autoRepair = true;
+
     internal readonly List<Border> _interactiveCards = new();
     private readonly QwenBrowserPane _browserPane = QwenBrowserPane.Shared;
 
@@ -2483,7 +2506,6 @@ public partial class MainWindow : ChromeWindow
         ? HistoryStore.ProjectKey(_projectPath)
         : (_selectedRole ?? "unknown");
 
-    // Ключ проекта в config — как у gateway: путь без хвостовых слэшей, в нижнем регистре.
     private string AutoRepairKey => _projectPath!.TrimEnd('\\', '/').ToLowerInvariant();
 
     public MainWindow(string? projectPath = null, string? projectName = null)
@@ -2500,10 +2522,15 @@ public partial class MainWindow : ChromeWindow
         _projectPath = projectPath;
         _projectName = projectName;
         _mode = projectPath != null ? "edit" : "chat";
+
         UserProfile.Exists();
         _projectStatus = GetProjectStatus();
         _autoRepair = LoadAutoRepair();
         LoadHistoryFromDisk();
+
+        // Отображаем путь проекта явно
+        SessionPathText.Text = _projectPath ?? "—";
+        SessionProjectText.Text = _projectStatus;
 
         InputBox.TextChanged += (_, _) =>
             InputPlaceholder.Visibility = string.IsNullOrEmpty(InputBox.Text)
@@ -2525,7 +2552,6 @@ public partial class MainWindow : ChromeWindow
 
         RenderHistory();
         UpdateModeButtons();
-        SessionProjectText.Text = _projectStatus;
     }
 
     internal static SolidColorBrush B(string hex) =>
@@ -2540,7 +2566,6 @@ public partial class MainWindow : ChromeWindow
             if (configPath == null) return true;
             var node = JsonNode.Parse(File.ReadAllText(configPath));
             var v = node?["ProjectSettings"]?[AutoRepairKey]?["AutoRepair"];
-            // null (не задано) = включено по умолчанию
             return v == null || v.GetValue<bool>();
         }
         catch { return true; }
@@ -2576,13 +2601,17 @@ public partial class MainWindow : ChromeWindow
         if (_projectPath == null) return "—";
         try
         {
+            var dirName = new DirectoryInfo(_projectPath.TrimEnd('\\', '/')).Name;
+            var name = _projectName ?? dirName;
+
             var projects = ProjectStore.Load();
             var project = projects.FirstOrDefault(p =>
                 string.Equals(p.Path.TrimEnd('\\', '/'), _projectPath.TrimEnd('\\', '/'),
-                    StringComparison.OrdinalIgnoreCase));
-            var name = _projectName ?? project?.Name
-                ?? new DirectoryInfo(_projectPath.TrimEnd('\\', '/')).Name;
-            return $"{name} · {FormatRelative(project?.LastOpened ?? DateTime.Now)}";
+                StringComparison.OrdinalIgnoreCase));
+
+            var lastOpened = project?.LastOpened;
+            var timeStr = FormatRelative(lastOpened);
+            return $"{name} · {timeStr}";
         }
         catch { return _projectName ?? "—"; }
     }
@@ -2602,7 +2631,16 @@ public partial class MainWindow : ChromeWindow
     private void OnToggleBrowserClick(object sender, RoutedEventArgs e)
     {
         bool show = BrowserColumn.Width.Value < 1;
-        BrowserColumn.Width = show ? new GridLength(500) : new GridLength(0);
+        if (show)
+        {
+            BrowserColumn.Width = new GridLength(520);
+            BrowserSplitter.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            BrowserColumn.Width = new GridLength(0);
+            BrowserSplitter.Visibility = Visibility.Collapsed;
+        }
         ToggleBrowserBtn.Content = show ? "🌐 браузер: показан" : "🌐 браузер: скрыт";
     }
 
@@ -2638,15 +2676,18 @@ public partial class MainWindow : ChromeWindow
             var status = JsonSerializer.Deserialize<GatewayStatus>(
                 resp, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (status == null) return;
+
             _boundRoles.Clear();
             if (status.Roles != null)
                 foreach (var r in status.Roles) _boundRoles.Add(r);
+
             Dispatcher.InvokeAsync(() =>
             {
                 OnlineDot.Fill = B("#00ff88");
                 OnlineText.Text = "онлайн";
                 AgentStatusText.Text = "онлайн · готов к работе";
             });
+
             if (_selectedRole != null && !_waiting)
                 ApplyRoleSelection();
         }
@@ -2668,21 +2709,25 @@ public partial class MainWindow : ChromeWindow
         var bound = _boundRoles.Contains(_selectedRole);
         InputBox.IsEnabled = bound;
         SendBtn.IsEnabled = bound;
+
         var user = string.IsNullOrWhiteSpace(UserProfile.Nick) ? "гость" : UserProfile.Nick;
         if (!bound)
         {
             RoleStatus.Text = $"👤 {user} · роль \"{_selectedRole}\" не закреплена за чатом. Открой чат Qwen и закрепи роль.";
             return;
         }
+
         var speed = _think ? "🧠 мышление" : "⚡ быстро";
         var proj = _projectPath != null ? $" · 📁 {_projectStatus}" : "";
         RoleStatus.Text = $"👤 {user} · роль: {_selectedRole} · {ModeLabel()} · {speed}{proj}";
+
         SessionRoleText.Text = _selectedRole;
         var label = ModeLabel();
         var sp = label.IndexOf(' ');
         SessionStyleText.Text = sp >= 0 ? label.Substring(sp + 1) : label;
         SessionSpeedText.Text = _think ? "мышление" : "быстро";
         SessionProjectText.Text = _projectStatus;
+        SessionPathText.Text = _projectPath ?? "—";
     }
 
     private string ModeLabel() => _mode switch
@@ -2737,7 +2782,6 @@ public partial class MainWindow : ChromeWindow
         StyleModeButton(ModeYoloBtn, _mode == "yolo");
         StyleModeButton(ModeRepairBtn, _mode == "repair");
         StyleModeButton(ThinkBtn, _think);
-        // Тумблер авторемонта: не режим, а независимый флаг (зелёный = вкл).
         StyleModeButton(AutoRepairBtn, _autoRepair);
         AutoRepairBtn.Content = _autoRepair ? "🔧 авторемонт: вкл" : "🔧 авторемонт: выкл";
     }
@@ -2749,7 +2793,6 @@ public partial class MainWindow : ChromeWindow
         btn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(active ? "#00ff88" : "#c8ffd8"));
     }
 
-    // Прерванные вопросы не удаляем — помечаем «отменено» и гасим кнопки.
     internal void ClearInteractiveCards()
     {
         foreach (var c in _interactiveCards)
@@ -2764,7 +2807,6 @@ public partial class MainWindow : ChromeWindow
         _interactiveCards.Clear();
     }
 
-    // UIElementCollection — не-generic, поэтому явный тип UIElement в foreach.
     private static void DisableButtons(DependencyObject root)
     {
         if (root is Button b) { b.IsEnabled = false; return; }
@@ -2782,40 +2824,60 @@ public partial class MainWindow : ChromeWindow
         _interactiveCards.Clear();
         if (_history.TryGetValue(HistoryKey, out var list))
             foreach (var m in list)
-                AddMessageBlock(m.Author, m.Text, m.Bg);
+            {
+                AddMessageBlock(m.Author, m.Text, m.Bg, m.Time);
+                // Рендерим сохранённые карточки
+                if (!string.IsNullOrEmpty(m.CardsJson))
+                {
+                    try
+                    {
+                        var cards = JsonSerializer.Deserialize<List<ActionCardDto>>(m.CardsJson,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        if (cards != null) RenderCards(cards);
+                    }
+                    catch { }
+                }
+            }
     }
 
-    internal void AddMessage(string role, string author, string text, string bgColor)
+    internal void AddMessage(string role, string author, string text, string bgColor, string? cardsJson = null)
     {
         var key = HistoryKey;
         if (!_history.ContainsKey(key)) _history[key] = new();
-        _history[key].Add(new ChatMessage { Author = author, Text = text, Bg = bgColor });
+        var time = DateTime.Now.ToString("HH:mm");
+        _history[key].Add(new ChatMessage
+        {
+            Author = author,
+            Text = text,
+            Bg = bgColor,
+            Time = time,
+            CardsJson = cardsJson
+        });
         SaveHistoryToDisk();
-        AddMessageBlock(author, text, bgColor);
+        AddMessageBlock(author, text, bgColor, time);
     }
 
-    private void AddMessageBlock(string author, string text, string bg)
+    private void AddMessageBlock(string author, string text, string bg, string time)
     {
         bool isUser = author.Trim().Equals("ТЫ", StringComparison.OrdinalIgnoreCase);
-
-        var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) });
+        var row = new Grid { Margin = new Thickness(0, 7, 0, 7) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var time = new TextBlock
+        var timeBlock = new TextBlock
         {
-            Text = DateTime.Now.ToString("HH:mm"),
-            FontFamily = Theme.Font(), FontSize = 12,
+            Text = string.IsNullOrEmpty(time) ? DateTime.Now.ToString("HH:mm") : time,
+            FontFamily = Theme.Font(), FontSize = 13,
             Foreground = B("#447a5a"), Margin = new Thickness(4, 0, 0, 4)
         };
-        Grid.SetRow(time, 0); Grid.SetColumn(time, 1);
-        row.Children.Add(time);
+        Grid.SetRow(timeBlock, 0); Grid.SetColumn(timeBlock, 1);
+        row.Children.Add(timeBlock);
 
         var avatar = new Border
         {
-            Width = 40, Height = 40, CornerRadius = new CornerRadius(20),
+            Width = 44, Height = 44, CornerRadius = new CornerRadius(22),
             Background = B("#0d2418"),
             BorderBrush = isUser ? B("#00ff88") : B("#1d5c3d"),
             BorderThickness = new Thickness(1),
@@ -2826,7 +2888,7 @@ public partial class MainWindow : ChromeWindow
         {
             avatar.Child = new System.Windows.Shapes.Path
             {
-                Fill = B("#00ff88"), Width = 16, Height = 16,
+                Fill = B("#00ff88"), Width = 18, Height = 18,
                 Stretch = Stretch.Uniform,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -2838,7 +2900,7 @@ public partial class MainWindow : ChromeWindow
         {
             avatar.Child = new TextBlock
             {
-                Text = ">_", FontFamily = Theme.Font(), FontSize = 15,
+                Text = ">_", FontFamily = Theme.Font(), FontSize = 16,
                 FontWeight = FontWeights.Bold, Foreground = B("#7dffa8"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
@@ -2853,25 +2915,26 @@ public partial class MainWindow : ChromeWindow
             BorderBrush = isUser ? B("#00ff88") : B(bg),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(12, 8, 12, 10),
+            Padding = new Thickness(14, 10, 14, 12),
             Margin = new Thickness(4, 0, 0, 0)
         };
+
         var inner = new StackPanel();
         inner.Children.Add(new TextBlock
         {
-            Text = author, FontFamily = Theme.Font(), FontSize = 11,
+            Text = author, FontFamily = Theme.Font(), FontSize = 12,
             Foreground = isUser ? B("#00ff88") : B("#447a5a"),
-            Margin = new Thickness(0, 0, 0, 4)
+            Margin = new Thickness(0, 0, 0, 5)
         });
         inner.Children.Add(new TextBlock
         {
-            Text = text, FontFamily = Theme.Font(), FontSize = 14,
+            Text = text, FontFamily = Theme.Font(), FontSize = 15,
             Foreground = B("#d9ffe7"), TextWrapping = TextWrapping.Wrap
         });
+
         bubble.Child = inner;
         Grid.SetRow(bubble, 1); Grid.SetColumn(bubble, 1);
         row.Children.Add(bubble);
-
         ChatMessages.Children.Add(row);
         ChatScroll.ScrollToEnd();
     }
@@ -2912,8 +2975,8 @@ public partial class MainWindow : ChromeWindow
         if (_waiting) return;
         var text = InputBox.Text.Trim();
         if (string.IsNullOrEmpty(text) || _selectedRole == null) return;
-        var role = _selectedRole;
 
+        var role = _selectedRole;
         AddMessage(role, "Ты", text, "#0f3460");
         InputBox.Clear();
         ClearInteractiveCards();
@@ -2937,6 +3000,7 @@ public partial class MainWindow : ChromeWindow
             var agentResp = await _http.PostAsync("http://localhost:51234/agent-run",
                 new StringContent(agentPayload, Encoding.UTF8, "application/json"));
             var agentBody = await agentResp.Content.ReadAsStringAsync();
+
             if (agentResp.IsSuccessStatusCode)
                 await HandleAgentBody(role, agentBody);
             else
@@ -2985,18 +3049,19 @@ public partial class MainWindow : ChromeWindow
         {
             case "final":
             {
-                // действия — до текста ответа, итог-карточка — после
                 RenderCards(r.Cards?.Where(c => c.Type != "summary").ToList());
                 if (!string.IsNullOrWhiteSpace(r.Response))
-                    AddMessage(role, role, r.Response, "#16213e");
+                {
+                    var cardsJson = r.Cards != null && r.Cards.Count > 0
+                        ? JsonSerializer.Serialize(r.Cards) : null;
+                    AddMessage(role, role, r.Response, "#16213e", cardsJson);
+                }
                 var summary = r.Cards?.Where(c => c.Type == "summary").ToList();
-                // Если авторемонт выключен, файлы менялись, а режим не «ремонт» —
-                // проверка проекта не запускалась: помечаем итог.
                 if (summary != null && !_autoRepair && _mode != "repair" && (r.ChangedFiles?.Count ?? 0) > 0)
                 {
                     foreach (var c in summary)
                         c.Details += (string.IsNullOrEmpty(c.Details) ? "" : "\n") +
-                                     "⚠ авторемонт выключен — проверка проекта не запускалась";
+                            "⚠ авторемонт выключен — проверка проекта не запускалась";
                 }
                 RenderCards(summary);
                 break;
@@ -3528,10 +3593,12 @@ public partial class MainWindow
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindowTools.cs
-SIZE: 3509 bytes
+SIZE: 3569 bytes
 ------------------------------------------------
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 
 namespace MainApp;
 
@@ -3540,6 +3607,8 @@ public class ChatMessage
     public string Author { get; set; } = "";
     public string Text { get; set; } = "";
     public string Bg { get; set; } = "";
+    public string Time { get; set; } = "";
+    public string? CardsJson { get; set; }
 }
 
 class GatewayStatus
@@ -3612,9 +3681,9 @@ public static class HistoryStore
         {
             var path = GetPath();
             if (path == null || !File.Exists(path)) return new();
-            var loaded = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<ChatMessage>>>(
+            var loaded = JsonSerializer.Deserialize<Dictionary<string, List<ChatMessage>>>(
                 File.ReadAllText(path),
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             return loaded ?? new();
         }
         catch { return new(); }
@@ -3627,8 +3696,8 @@ public static class HistoryStore
             var path = GetPath();
             if (path == null) return;
             File.WriteAllText(path,
-                System.Text.Json.JsonSerializer.Serialize(map,
-                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                JsonSerializer.Serialize(map,
+                    new JsonSerializerOptions { WriteIndented = true }));
         }
         catch { }
     }
@@ -4068,7 +4137,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayState.cs
-SIZE: 17783 bytes
+SIZE: 18047 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Concurrent;
@@ -4360,7 +4429,7 @@ internal sealed partial class GatewayState
         {
             // никто не ждал — сохраняем в буфер, ожидание подхватит его по reqId
             OrphanResponses[role] = (reqId, text);
-            AgentLog($"[AI ORPHAN] роль={role} ответ сохранён в буфер (никто не ждал)");
+            AgentLog($"[ORPHAN] роль={role} ответ сохранён в буфер (подхватится ожиданием)");
         }
     }
 
@@ -4427,6 +4496,7 @@ internal sealed partial class GatewayState
     public string? EnsureCheckCommand(string root)
     {
         var settings = GetProjectSettings(root);
+        // уже найденная команда никогда не перезаписывается (в т.ч. пустотой)
         if (!string.IsNullOrWhiteSpace(settings.CheckCommand)) return settings.CheckCommand;
         var detected = DetectCheckCommand(root);
         if (!string.IsNullOrWhiteSpace(detected))
@@ -4434,6 +4504,7 @@ internal sealed partial class GatewayState
             settings.CheckCommand = detected;
             SaveConfig();
         }
+        // не определена — не выдумываем, проверки просто не будет
         return detected;
     }
 
@@ -4526,7 +4597,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayStateAgent.cs
-SIZE: 27162 bytes
+SIZE: 27407 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -4673,9 +4744,13 @@ internal sealed partial class GatewayState
                 sb.AppendLine($"Команда проверки проекта: {check}. После изменений проверка запускается автоматически.");
         }
         if (s.Mode == "repair")
-            sb.AppendLine("Режим ремонта: исправь одну ошибку минимально, затем повтори проверку.");
+        {
+            sb.AppendLine("Режим ремонта: чини ровно ОДНУ ошибку минимально — один маленький patch_file, без лишних правок и без перезаписи файлов целиком. После правки повтори проверку.");
+        }
         if (s.RepairMode)
-            sb.AppendLine("ВНИМАНИЕ: последняя проверка проекта упала. Сейчас ремонт: прочитай ошибку, исправь причину минимально и повтори проверку.");
+        {
+            sb.AppendLine("ВНИМАНИЕ: последняя проверка проекта упала. Сейчас ремонт: прочитай ошибку, найди причину (read_file), сделай один минимальный patch_file и повтори проверку.");
+        }
         sb.AppendLine();
         sb.AppendLine("ОТВЕТ-ПРОТОКОЛ: если нужно действие — ответь СТРОГО одним JSON-блоком");
         sb.AppendLine("{\"name\":\"имя_инструмента\",\"arguments\":{...}} без любого другого текста.");
@@ -4931,7 +5006,7 @@ internal sealed partial class GatewayState
                 return (true, await tcs.Task);
             }
             if (delayTask != null)
-                return (false, $"Браузер не ответил за {timeoutMs / 1000} секунд.");
+                return (false, "Браузер не ответил в отведённое время.");
             return (false, "cancelled");
         }
         catch (OperationCanceledException)
@@ -5043,6 +5118,7 @@ internal sealed partial class GatewayState
     public bool NeedsAsk(AgentSession s, PendingTool c)
     {
         if (!s.AllowTools) return false;
+
         if (c.Name == "run_command")
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -5060,6 +5136,7 @@ internal sealed partial class GatewayState
             }
             return true;
         }
+
         if (IsMutating(c.Name))
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -5071,6 +5148,7 @@ internal sealed partial class GatewayState
             if (s.Mode == "auto") return !IsAutoApproved(rule);
             return true;
         }
+
         return false;
     }
 }
@@ -5778,18 +5856,20 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubWindow.xaml
-SIZE: 7561 bytes
+SIZE: 7549 bytes
 ------------------------------------------------
 <local:ChromeWindow x:Class="MainApp.ProjectHubWindow"
-                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:local="clr-namespace:MainApp"
-                    Title="LERON GUI — проекты"
-                    Width="1100" Height="760"
-                    KeyDown="OnKeyDown">
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:MainApp"
+    Title="LERON GUI — проекты"
+    Width="1100" Height="760"
+    KeyDown="OnKeyDown">
+
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" NonClientFrameEdges="None"/>
     </WindowChrome.WindowChrome>
+
     <local:ChromeWindow.Resources>
         <Style TargetType="ScrollBar" BasedOn="{StaticResource LeronScrollBar}"/>
         <Style TargetType="Button">
@@ -5798,8 +5878,8 @@ SIZE: 7561 bytes
             <Setter Property="BorderBrush" Value="#1d5c3d"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontFamily" Value="Consolas"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Padding" Value="14,8"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -5826,56 +5906,61 @@ SIZE: 7561 bytes
             </Setter>
         </Style>
     </local:ChromeWindow.Resources>
+
     <Border BorderBrush="#123626" BorderThickness="1" Background="#04150c">
         <Grid x:Name="RootGrid" Background="#04150c">
             <Grid.RowDefinitions>
-                <RowDefinition Height="56"/>
+                <RowDefinition Height="60"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
+
             <Border Grid.Row="0" Background="#081711" MouseLeftButtonDown="DragWindow">
                 <Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                        <Border Width="40" Height="40" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
-                            <TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border Width="44" Height="44" CornerRadius="8" Background="#123020" BorderBrush="#1d5c3d" BorderThickness="1">
+                            <TextBlock Text="&gt;_" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#00ff88" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="LERON GUI" FontSize="20" FontWeight="Bold" Foreground="#00ff88" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                        <TextBlock Text="· хаб проектов" Margin="10,0,0,0" Foreground="#447a5a" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="LERON GUI" FontSize="22" FontWeight="Bold" Foreground="#00ff88" FontFamily="Consolas" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        <TextBlock Text="· хаб проектов" Margin="10,0,0,0" Foreground="#447a5a" FontSize="15" VerticalAlignment="Center"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
-                        <Button Content="⛶" Width="46" Height="34" Margin="0,0,6,0" Click="ToggleSize"/>
-                        <Button Content="✕" Width="46" Height="34" Click="CloseClick" Foreground="#e94560"/>
+                        <Button Content="⛶" Width="50" Height="38" Margin="0,0,6,0" Click="ToggleSize" FontSize="16"/>
+                        <Button Content="✕" Width="50" Height="38" Click="CloseClick" Foreground="#e94560" FontSize="16"/>
                     </StackPanel>
                 </Grid>
             </Border>
-            <Grid Grid.Row="1" Margin="20,16,20,12" Background="#04150c">
+
+            <Grid Grid.Row="1" Margin="20,18,20,14" Background="#04150c">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="ПРОЕКТЫ" FontSize="18" FontWeight="Bold" Foreground="#c8ffd8"/>
-                    <Border Background="#123020" CornerRadius="6" Padding="10,4" Margin="12,0,0,0">
-                        <TextBlock x:Name="CountText" Text="0" FontSize="15" Foreground="#00ff88"/>
+                    <TextBlock Text="ПРОЕКТЫ" FontSize="20" FontWeight="Bold" Foreground="#c8ffd8"/>
+                    <Border Background="#123020" CornerRadius="6" Padding="12,5" Margin="14,0,0,0">
+                        <TextBlock x:Name="CountText" Text="0" FontSize="16" Foreground="#00ff88"/>
                     </Border>
                 </StackPanel>
-                <Button Grid.Column="1" Content="+ новый проект (N)" Padding="18,10" Click="OnNewProjectButtonClick"/>
+                <Button Grid.Column="1" Content="+ новый проект (N)" Padding="20,11" Click="OnNewProjectButtonClick" FontSize="15"/>
             </Grid>
+
             <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="20,0,20,0" Padding="0,0,0,12" Background="#04150c">
                 <StackPanel>
                     <StackPanel x:Name="ProjectsPanel"/>
-                    <Grid x:Name="EmptyState" HorizontalAlignment="Center" Margin="0,28,0,0" Width="460" Height="180">
+                    <Grid x:Name="EmptyState" HorizontalAlignment="Center" Margin="0,28,0,0" Width="480" Height="190">
                         <Rectangle Stroke="#1d5c3d" StrokeThickness="1" StrokeDashArray="4 3" RadiusX="12" RadiusY="12" Fill="#061a10"/>
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock Text="📁+" FontSize="28" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Больше проектов нет" FontSize="14" Foreground="#4a7a5a" HorizontalAlignment="Center" Margin="0,10,0,4"/>
-                            <TextBlock Text="Нажмите N, чтобы создать новый проект" FontSize="13" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
+                            <TextBlock Text="📁+" FontSize="30" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Больше проектов нет" FontSize="16" Foreground="#4a7a5a" HorizontalAlignment="Center" Margin="0,10,0,4"/>
+                            <TextBlock Text="Нажмите N, чтобы создать новый проект" FontSize="14" Foreground="#2f6a4a" HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Grid>
                 </StackPanel>
             </ScrollViewer>
-            <Border Grid.Row="3" Background="#081711" Padding="16,12">
+
+            <Border Grid.Row="3" Background="#081711" Padding="18,14">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -5883,9 +5968,9 @@ SIZE: 7561 bytes
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="FooterLeft" Text="Нет проектов — нажми N" Foreground="#8fe3ae" FontSize="15" VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <TextBlock Text="Enter — открыть · N — новый · S — чат · Q — выход" Foreground="#447a5a" FontSize="13" VerticalAlignment="Center" Margin="0,0,14,0"/>
-                        <Button Content="чат (S)" Padding="14,8" Margin="0,0,8,0" Click="OnConfigureClick"/>
-                        <Button Content="выход (Q)" Padding="14,8" Click="OnExitClick"/>
+                        <TextBlock Text="Enter — открыть · N — новый · S — чат · Q — выход" Foreground="#447a5a" FontSize="14" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                        <Button Content="чат (S)" Padding="16,9" Margin="0,0,8,0" Click="OnConfigureClick" FontSize="15"/>
+                        <Button Content="выход (Q)" Padding="16,9" Click="OnExitClick" FontSize="15"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -5896,7 +5981,7 @@ SIZE: 7561 bytes
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubWindow.xaml.cs
-SIZE: 10737 bytes
+SIZE: 14361 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -5908,311 +5993,371 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
+
 namespace MainApp;
+
 public partial class ProjectHubWindow : ChromeWindow
 {
-public static ProjectHubWindow? Current { get; private set; }
-private List<ProjectEntry> _projects = new();
-private readonly List<System.Windows.Controls.Border> _rows = new();
-private int _selected = -1;
-public ProjectHubWindow()
-{
-InitializeComponent();
-Loaded += (_, _) =>
-{
-if (Current != null && Current != this) Current.Close();
-Current = this;
-_ = GatewayLauncher.EnsureRunningAsync();
-};
-Closed += (_, _) =>
-{
-if (Current == this) Current = null;
-if (Application.Current?.Windows.Count == 1) Application.Current.Shutdown();
-};
-_projects = ProjectStore.Load();
-Render();
-if (_projects.Count > 0)
-{
-var last = _projects.OrderByDescending(p => p.LastOpened ?? DateTime.MinValue).First();
-Select(_projects.IndexOf(last));
+    public static ProjectHubWindow? Current { get; private set; }
+    private List<ProjectEntry> _projects = new();
+    private readonly List<System.Windows.Controls.Border> _rows = new();
+    private int _selected = -1;
+
+    public ProjectHubWindow()
+    {
+        InitializeComponent();
+        Loaded += (_, _) =>
+        {
+            if (Current != null && Current != this) Current.Close();
+            Current = this;
+            _ = GatewayLauncher.EnsureRunningAsync();
+        };
+        Closed += (_, _) =>
+        {
+            if (Current == this) Current = null;
+            if (Application.Current?.Windows.Count == 1) Application.Current.Shutdown();
+        };
+
+        _projects = ProjectStore.Load();
+        Render();
+        if (_projects.Count > 0)
+        {
+            var last = _projects.OrderByDescending(p => p.LastOpened ?? DateTime.MinValue).First();
+            Select(_projects.IndexOf(last));
+        }
+    }
+
+    private void Render()
+    {
+        ProjectsPanel.Children.Clear();
+        _rows.Clear();
+        CountText.Text = _projects.Count.ToString();
+        EmptyState.Visibility = _projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        for (int i = 0; i < _projects.Count; i++)
+        {
+            var p = _projects[i];
+            var row = new System.Windows.Controls.Border
+            {
+                Background = Brush("#0c1710"),
+                BorderBrush = Brush("#142a1e"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Margin = new Thickness(0, 0, 0, 16),
+                Padding = new Thickness(20),
+                Cursor = Cursors.Hand,
+                Tag = i
+            };
+            row.MouseLeftButtonUp += (_, _) => OpenProject(p);
+            row.MouseEnter += (_, _) => { if ((int)row.Tag != _selected) row.BorderBrush = Brush("#2a5a40"); };
+            row.MouseLeave += (_, _) => { if ((int)row.Tag != _selected) row.BorderBrush = Brush("#142a1e"); };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var preview = GetFilesPreview(p.Path);
+
+            var iconBox = new System.Windows.Controls.Border
+            {
+                Width = 58,
+                Height = 58,
+                CornerRadius = new CornerRadius(10),
+                Background = Brush("#123020"),
+                BorderBrush = Brush("#1d5c3d"),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 16, 0)
+            };
+            iconBox.Child = new TextBlock
+            {
+                Text = "📁",
+                FontSize = 26,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(iconBox, 0);
+
+            var texts = new StackPanel();
+            texts.Children.Add(new TextBlock
+            {
+                Text = p.Name,
+                Foreground = Brush("#4ade80"),
+                FontSize = 19,
+                FontWeight = FontWeights.Bold
+            });
+            texts.Children.Add(new TextBlock
+            {
+                Text = p.Path,
+                Foreground = Brush("#4a7a5a"),
+                FontSize = 14,
+                Margin = new Thickness(0, 5, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            });
+            texts.Children.Add(new TextBlock
+            {
+                Text = "○ " + preview.Line,
+                Foreground = Brush("#3d6a4d"),
+                FontSize = 13,
+                Margin = new Thickness(0, 4, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+            Grid.SetColumn(texts, 1);
+
+            var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            right.Children.Add(new TextBlock
+            {
+                Text = FormatRelative(p.LastOpened),
+                Foreground = Brush("#4a7a5a"),
+                FontSize = 14,
+                Margin = new Thickness(0, 0, 14, 0)
+            });
+
+            var badge = new System.Windows.Controls.Border
+            {
+                Background = Brush("#123020"),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(14, 8, 14, 8),
+                ToolTip = preview.ToolTip
+            };
+            badge.Child = new TextBlock { Text = preview.Badge, Foreground = Brush("#7dffa8"), FontSize = 14 };
+            right.Children.Add(badge);
+
+            var del = new Button
+            {
+                Content = "✕",
+                ToolTip = "Убрать проект из списка и стереть его историю чата",
+                Background = Brush("#1a0f14"),
+                Foreground = Brush("#e94560"),
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                FontSize = 15,
+                Padding = new Thickness(10, 5, 10, 5),
+                Margin = new Thickness(12, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            int idx = i;
+            del.Click += (_, _) => DeleteProject(idx);
+            right.Children.Add(del);
+
+            Grid.SetColumn(right, 2);
+            grid.Children.Add(iconBox);
+            grid.Children.Add(texts);
+            grid.Children.Add(right);
+            row.Child = grid;
+            _rows.Add(row);
+            ProjectsPanel.Children.Add(row);
+        }
+        UpdateSelection();
+    }
+
+    private static (string Badge, string Line, string ToolTip) GetFilesPreview(string path)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                return ("📄 папка не найдена", "пусто", "");
+
+            var files = Directory.GetFiles(path)
+                .Select(f => Path.GetFileName(f))
+                .Where(n => !string.IsNullOrEmpty(n))
+                .Select(n => n!)
+                .ToList();
+
+            var dirs = Directory.GetDirectories(path)
+                .Select(d => Path.GetFileName(d))
+                .Where(n => !string.IsNullOrEmpty(n))
+                .Where(n => !n.StartsWith("."))
+                .ToList();
+
+            var badge = $"📄 {files.Count} файлов";
+            var shown = string.Join(", ", files.Take(4));
+            var line = dirs.Count > 0
+                ? $"[{dirs.Count} папок] {shown}"
+                : shown;
+            if (string.IsNullOrWhiteSpace(shown))
+                line = dirs.Count > 0 ? $"[{dirs.Count} папок]" : "пусто";
+
+            var tooltipList = files.Take(15).ToList();
+            var tooltip = tooltipList.Count > 0
+                ? string.Join("\n", tooltipList)
+                : "Файлов нет";
+
+            return (badge, line, tooltip);
+        }
+        catch
+        {
+            return ("📄 —", "пусто", "");
+        }
+    }
+
+    private void Select(int i) { _selected = i; UpdateSelection(); }
+
+    private void UpdateSelection()
+    {
+        for (int i = 0; i < _rows.Count; i++)
+        {
+            bool sel = i == _selected;
+            _rows[i].BorderBrush = Brush(sel ? "#00ff88" : "#142a1e");
+            _rows[i].BorderThickness = new Thickness(sel ? 1.5 : 1);
+            _rows[i].Background = Brush(sel ? "#10241a" : "#0c1710");
+        }
+        FooterLeft.Text = _selected >= 0 && _selected < _projects.Count
+            ? $"Выбран: {_projects[_selected].Name} · Enter — открыть"
+            : _projects.Count == 0 ? "Нет проектов — нажми N" : "Выбери проект";
+    }
+
+    private void OpenProject(ProjectEntry p)
+    {
+        p.LastOpened = DateTime.Now;
+        ProjectStore.Save(_projects);
+        var main = new MainWindow(p.Path, p.Name);
+        main.StartFullscreen = false;
+        main.UseFadeIn = false;
+        CopyGeometry(main);
+        SwapTo(main);
+    }
+
+    private void CopyGeometry(Window w)
+    {
+        w.WindowStartupLocation = WindowStartupLocation.Manual;
+        w.Left = Left;
+        w.Top = Top;
+        w.Width = Width;
+        w.Height = Height;
+    }
+
+    private void DeleteProject(int i)
+    {
+        if (i < 0 || i >= _projects.Count) return;
+        var p = _projects[i];
+        var res = MessageBox.Show(
+            $"Убрать \"{p.Name}\" из списка проектов?\nПапка и файлы останутся на диске.\nИстория чата этого проекта будет стёрта.",
+            "LERON GUI",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (res != MessageBoxResult.Yes) return;
+
+        _projects.RemoveAt(i);
+        ProjectStore.Save(_projects);
+        HistoryStore.DeleteProjectHistory(p.Path);
+        _selected = -1;
+        Render();
+    }
+
+    private void CreateNewProject()
+    {
+        var dlg = new OpenFolderDialog { Title = "Выбери папку проекта" };
+        if (dlg.ShowDialog() != true) return;
+
+        var path = dlg.FolderName;
+        var existing = _projects.FirstOrDefault(p =>
+            string.Equals(Norm(p.Path), Norm(path), StringComparison.OrdinalIgnoreCase));
+
+        int index;
+        if (existing != null)
+        {
+            index = _projects.IndexOf(existing);
+        }
+        else
+        {
+            _projects.Add(new ProjectEntry
+            {
+                Name = new DirectoryInfo(path).Name,
+                Path = path,
+                Role = "team"
+            });
+            index = _projects.Count - 1;
+        }
+        ProjectStore.Save(_projects);
+        Render();
+        Select(index);
+    }
+
+    private static string Norm(string p) => p.TrimEnd('\\', '/');
+
+    private static string FormatRelative(DateTime? dt)
+    {
+        if (dt == null) return "ещё не открыт";
+        var span = DateTime.Now - dt.Value;
+        if (span.TotalMinutes < 1) return "только что";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes} мин назад";
+        if (dt.Value.Date == DateTime.Today) return $"{(int)span.TotalHours} ч назад";
+        if (dt.Value.Date == DateTime.Today.AddDays(-1)) return $"вчера, {dt:HH:mm}";
+        if (span.TotalDays < 7) return $"{(int)span.TotalDays} дн назад";
+        return dt.Value.ToString("dd.MM.yyyy");
+    }
+
+    private static SolidColorBrush Brush(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
+
+    private void OnKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Up: Select(Math.Max(0, _selected - 1)); e.Handled = true; break;
+            case Key.Down: Select(Math.Min(_projects.Count - 1, _selected + 1)); e.Handled = true; break;
+            case Key.Enter: if (_selected >= 0) OpenProject(_projects[_selected]); else CreateNewProject(); e.Handled = true; break;
+            case Key.N: CreateNewProject(); e.Handled = true; break;
+            case Key.S: OnConfigureClick(this, new RoutedEventArgs()); e.Handled = true; break;
+            case Key.Delete: DeleteProject(_selected); e.Handled = true; break;
+            case Key.Q: Application.Current.Shutdown(); break;
+            case Key.Escape: Close(); break;
+        }
+    }
+
+    private void OnNewProjectClick(object sender, MouseButtonEventArgs e) => CreateNewProject();
+    private void OnNewProjectButtonClick(object sender, RoutedEventArgs e) => CreateNewProject();
+
+    private void OnConfigureClick(object sender, RoutedEventArgs e)
+    {
+        if (_selected >= 0 && _selected < _projects.Count)
+            OpenProject(_projects[_selected]);
+        else
+            FooterLeft.Text = "Сначала выбери проект (клик по строке) или создай новый (N).";
+    }
+
+    private void OnExitClick(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
 }
-}
-private void Render()
-{
-ProjectsPanel.Children.Clear();
-_rows.Clear();
-CountText.Text = _projects.Count.ToString();
-for (int i = 0; i < _projects.Count; i++)
-{
-var p = _projects[i];
-var row = new System.Windows.Controls.Border
-{
-Background = Brush("#0c1710"),
-BorderBrush = Brush("#142a1e"),
-BorderThickness = new Thickness(1),
-CornerRadius = new CornerRadius(10),
-Margin = new Thickness(0, 0, 0, 16),
-Padding = new Thickness(18),
-Cursor = Cursors.Hand,
-Tag = i
-};
-row.MouseLeftButtonUp += (_, _) => OpenProject(p);
-row.MouseEnter += (_, _) => { if ((int)row.Tag != _selected) row.BorderBrush = Brush("#2a5a40"); };
-row.MouseLeave += (_, _) => { if ((int)row.Tag != _selected) row.BorderBrush = Brush("#142a1e"); };
-var grid = new Grid();
-grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-var preview = GetFilesPreview(p.Path);
-var iconBox = new System.Windows.Controls.Border
-{
-Width = 54,
-Height = 54,
-CornerRadius = new CornerRadius(10),
-Background = Brush("#123020"),
-BorderBrush = Brush("#1d5c3d"),
-BorderThickness = new Thickness(1),
-Margin = new Thickness(0, 0, 16, 0)
-};
-iconBox.Child = new TextBlock
-{
-Text = "📁",
-FontSize = 24,
-HorizontalAlignment = HorizontalAlignment.Center,
-VerticalAlignment = VerticalAlignment.Center
-};
-Grid.SetColumn(iconBox, 0);
-var texts = new StackPanel();
-texts.Children.Add(new TextBlock { Text = p.Name, Foreground = Brush("#4ade80"), FontSize = 18, FontWeight = FontWeights.Bold });
-texts.Children.Add(new TextBlock { Text = p.Path, Foreground = Brush("#4a7a5a"), FontSize = 13, Margin = new Thickness(0, 5, 0, 0) });
-texts.Children.Add(new TextBlock
-{
-Text = "○ " + preview.Line,
-Foreground = Brush("#3d6a4d"),
-FontSize = 12,
-Margin = new Thickness(0, 4, 0, 0),
-TextTrimming = TextTrimming.CharacterEllipsis
-});
-Grid.SetColumn(texts, 1);
-var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-right.Children.Add(new TextBlock { Text = FormatRelative(p.LastOpened), Foreground = Brush("#4a7a5a"), FontSize = 13, Margin = new Thickness(0, 0, 14, 0) });
-var badge = new System.Windows.Controls.Border
-{
-Background = Brush("#123020"),
-CornerRadius = new CornerRadius(8),
-Padding = new Thickness(12, 7, 12, 7),
-ToolTip = preview.ToolTip
-};
-badge.Child = new TextBlock { Text = preview.Badge, Foreground = Brush("#7dffa8"), FontSize = 13 };
-right.Children.Add(badge);
-var del = new Button
-{
-Content = "✕",
-ToolTip = "Убрать проект из списка и стереть его историю чата",
-Background = Brush("#1a0f14"),
-Foreground = Brush("#e94560"),
-BorderThickness = new Thickness(0),
-Cursor = Cursors.Hand,
-FontSize = 14,
-Padding = new Thickness(9, 4, 9, 4),
-Margin = new Thickness(12, 0, 0, 0),
-VerticalAlignment = VerticalAlignment.Center
-};
-int idx = i;
-del.Click += (_, _) => DeleteProject(idx);
-right.Children.Add(del);
-Grid.SetColumn(right, 2);
-grid.Children.Add(iconBox);
-grid.Children.Add(texts);
-grid.Children.Add(right);
-row.Child = grid;
-_rows.Add(row);
-ProjectsPanel.Children.Add(row);
-}
-UpdateSelection();
-}
-private static (string Badge, string Line, string ToolTip) GetFilesPreview(string path)
-{
-try
-{
-if (!Directory.Exists(path))
-return ("📄 папка не найдена", "пусто", "");
-var files = Directory.GetFiles(path)
-.Select(Path.GetFileName)
-.Where(n => !string.IsNullOrEmpty(n))
-.Select(n => n!)
-.ToList();
-var dirs = Directory.GetDirectories(path)
-.Select(Path.GetFileName)
-.Where(n => !string.IsNullOrEmpty(n))
-.ToList();
-var badge = $"📄 {files.Count} файлов";
-var shown = string.Join(", ", files.Take(4));
-var line = dirs.Count > 0
-? $"[{dirs.Count} папок] {shown}"
-: shown;
-if (string.IsNullOrWhiteSpace(shown))
-line = dirs.Count > 0 ? $"[{dirs.Count} папок]" : "пусто";
-var tooltipList = files.Take(15).ToList();
-var tooltip = tooltipList.Count > 0
-? string.Join("\n", tooltipList)
-: "Файлов нет";
-return (badge, line, tooltip);
-}
-catch
-{
-return ("📄 —", "пусто", "");
-}
-}
-private void Select(int i) { _selected = i; UpdateSelection(); }
-private void UpdateSelection()
-{
-for (int i = 0; i < _rows.Count; i++)
-{
-bool sel = i == _selected;
-_rows[i].BorderBrush = Brush(sel ? "#00ff88" : "#142a1e");
-_rows[i].BorderThickness = new Thickness(sel ? 1.5 : 1);
-_rows[i].Background = Brush(sel ? "#10241a" : "#0c1710");
-}
-FooterLeft.Text = _selected >= 0 && _selected < _projects.Count
-? $"Выбран: {_projects[_selected].Name} · Enter — открыть"
-: _projects.Count == 0 ? "Нет проектов — нажми N" : "Выбери проект";
-}
-private void OpenProject(ProjectEntry p)
-{
-p.LastOpened = DateTime.Now;
-ProjectStore.Save(_projects);
-var main = new MainWindow(p.Path, p.Name);
-main.StartFullscreen = false;
-main.UseFadeIn = false;
-CopyGeometry(main);
-SwapTo(main);
-}
-private void CopyGeometry(Window w)
-{
-w.WindowStartupLocation = WindowStartupLocation.Manual;
-w.Left = Left;
-w.Top = Top;
-w.Width = Width;
-w.Height = Height;
-}
-private void DeleteProject(int i)
-{
-if (i < 0 || i >= _projects.Count) return;
-var p = _projects[i];
-var res = MessageBox.Show(
-$"Убрать \"{p.Name}\" из списка проектов?\nПапка и файлы останутся на диске.\nИстория чата этого проекта будет стёрта.",
-"LERON GUI",
-MessageBoxButton.YesNo,
-MessageBoxImage.Question);
-if (res != MessageBoxResult.Yes) return;
-_projects.RemoveAt(i);
-ProjectStore.Save(_projects);
-HistoryStore.DeleteProjectHistory(p.Path);
-_selected = -1;
-Render();
-}
-private void CreateNewProject()
-{
-var dlg = new OpenFolderDialog { Title = "Выбери папку проекта" };
-if (dlg.ShowDialog() != true) return;
-var path = dlg.FolderName;
-var existing = _projects.FirstOrDefault(p =>
-string.Equals(Norm(p.Path), Norm(path), StringComparison.OrdinalIgnoreCase));
-int index;
-if (existing != null)
-{
-index = _projects.IndexOf(existing);
-}
-else
-{
-_projects.Add(new ProjectEntry
-{
-Name = new DirectoryInfo(path).Name,
-Path = path,
-Role = "team"
-});
-index = _projects.Count - 1;
-}
-ProjectStore.Save(_projects);
-Render();
-Select(index);
-}
-private static string Norm(string p) => p.TrimEnd('\\', '/');
-private static string FormatRelative(DateTime? dt)
-{
-if (dt == null) return "ещё не открыт";
-var span = DateTime.Now - dt.Value;
-if (span.TotalMinutes < 1) return "только что";
-if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes} мин назад";
-if (dt.Value.Date == DateTime.Today) return $"{(int)span.TotalHours} ч назад";
-if (dt.Value.Date == DateTime.Today.AddDays(-1)) return $"вчера, {dt:HH:mm}";
-if (span.TotalDays < 7) return $"{(int)span.TotalDays} дн назад";
-return dt.Value.ToString("dd.MM.yyyy");
-}
-private static SolidColorBrush Brush(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
-private void OnKeyDown(object sender, KeyEventArgs e)
-{
-switch (e.Key)
-{
-case Key.Up: Select(Math.Max(0, _selected - 1)); e.Handled = true; break;
-case Key.Down: Select(Math.Min(_projects.Count - 1, _selected + 1)); e.Handled = true; break;
-case Key.Enter: if (_selected >= 0) OpenProject(_projects[_selected]); else CreateNewProject(); e.Handled = true; break;
-case Key.N: CreateNewProject(); e.Handled = true; break;
-case Key.S: OnConfigureClick(this, new RoutedEventArgs()); e.Handled = true; break;
-case Key.Delete: DeleteProject(_selected); e.Handled = true; break;
-case Key.Q: Application.Current.Shutdown(); break;
-case Key.Escape: Close(); break;
-}
-}
-private void OnNewProjectClick(object sender, MouseButtonEventArgs e) => CreateNewProject();
-private void OnNewProjectButtonClick(object sender, RoutedEventArgs e) => CreateNewProject();
-private void OnConfigureClick(object sender, RoutedEventArgs e)
-{
-if (_selected >= 0 && _selected < _projects.Count)
-OpenProject(_projects[_selected]);
-else
-FooterLeft.Text = "Сначала выбери проект (клик по строке) или создай новый (N).";
-}
-private void OnExitClick(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
-}
+
 public class ProjectEntry
 {
-public string Name { get; set; } = "";
-public string Path { get; set; } = "";
-public string Role { get; set; } = "team";
-public DateTime? LastOpened { get; set; }
+    public string Name { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string Role { get; set; } = "team";
+    public DateTime? LastOpened { get; set; }
 }
+
 public static class ProjectStore
 {
-public static List<ProjectEntry> Load()
-{
-try
-{
-var path = BrowserLauncher.GetConfigPath();
-if (path == null) return new();
-var node = JsonNode.Parse(File.ReadAllText(path));
-var arr = node?["Projects"] as JsonArray;
-if (arr == null) return new();
-return System.Text.Json.JsonSerializer.Deserialize<List<ProjectEntry>>(
-arr.ToJsonString(),
-new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
-}
-catch { return new(); }
-}
-public static void Save(List<ProjectEntry> projects)
-{
-try
-{
-var path = BrowserLauncher.GetConfigPath();
-if (path == null) return;
-var node = JsonNode.Parse(File.ReadAllText(path))?.AsObject();
-if (node == null) return;
-node["Projects"] = System.Text.Json.JsonSerializer.SerializeToNode(projects);
-File.WriteAllText(path, node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-}
-catch { }
-}
+    public static List<ProjectEntry> Load()
+    {
+        try
+        {
+            var path = BrowserLauncher.GetConfigPath();
+            if (path == null) return new();
+            var node = JsonNode.Parse(File.ReadAllText(path));
+            var arr = node?["Projects"] as JsonArray;
+            if (arr == null) return new();
+            return System.Text.Json.JsonSerializer.Deserialize<List<ProjectEntry>>(
+                arr.ToJsonString(),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+        }
+        catch { return new(); }
+    }
+
+    public static void Save(List<ProjectEntry> projects)
+    {
+        try
+        {
+            var path = BrowserLauncher.GetConfigPath();
+            if (path == null) return;
+            var node = JsonNode.Parse(File.ReadAllText(path))?.AsObject();
+            if (node == null) return;
+            node["Projects"] = System.Text.Json.JsonSerializer.SerializeToNode(projects);
+            File.WriteAllText(path, node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { }
+    }
 }
 
 
@@ -6938,7 +7083,7 @@ public static class UserProfile
 
 ------------------------------------------------
 FILE: program\sending and receiving\config.json
-SIZE: 1162 bytes
+SIZE: 1820 bytes
 ------------------------------------------------
 {
   "Roles": {
@@ -6950,10 +7095,10 @@ SIZE: 1162 bytes
   "RetryAttempts": 3,
   "Projects": [
     {
-      "Name": "test_qwen",
-      "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen",
+      "Name": "qwen_only_test",
+      "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\qwen_only_test",
       "Role": "team",
-      "LastOpened": "2026-08-22T19:10:04.6149702\u002B03:00"
+      "LastOpened": "2026-08-22T19:54:13.1291321\u002B03:00"
     }
   ],
   "AutoApprove": [
@@ -6964,14 +7109,31 @@ SIZE: 1162 bytes
     "write_file:Calculator",
     "run_command:cd calculator \u0026\u0026 dotnet build",
     "patch_file:Calculator",
-    "run_command:cd calculator \u0026\u0026 dotnet build -c release"
+    "run_command:cd calculator \u0026\u0026 dotnet build -c release",
+    "run_command:dotnet build calculator/calculator.csproj",
+    "write_file:.",
+    "run_command:cd calculator \u0026\u0026 dotnet build 2\u003E\u00261",
+    "run_command:pip install python-docx",
+    "run_command:python generate_report.py",
+    "write_file:CodeEditor",
+    "run_command:dotnet build codeeditor/codeeditor.csproj",
+    "patch_file:CodeEditor"
   ],
   "ProjectSettings": {
     "c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\test_qwen": {
       "CheckCommand": "dotnet build",
       "MaxSteps": null,
       "AutoRepair": true
+    },
+    "c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\qwen_test2": {
+      "CheckCommand": "dotnet build",
+      "MaxSteps": null,
+      "AutoRepair": true
     }
+  },
+  "UserProfile": {
+    "Nick": "LERON",
+    "About": ""
   }
 }
 
@@ -7154,231 +7316,314 @@ public static class GatewayHost
 
 ------------------------------------------------
 FILE: program\sending and receiving\history.json
-SIZE: 17943 bytes
+SIZE: 19587 bytes
 ------------------------------------------------
 {
   "coder": [
     {
       "Author": "\u0422\u044B",
       "Text": "\u0441\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "coder",
       "Text": "When an operator is pressed, I assess whether a calculation is pending or if the first operand is already set, ensuring correct state transitions. If a previous result exists and another operation follows, I preserve the current value as the new first operand. For equality operations, I determine which value to use based on whether the user is continuing a sequence or has just entered an operator. This approach maintains intuitive behavior consistent with standard calculator expectations.",
-      "Bg": "#16213e"
+      "Bg": "#16213e",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0421\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
       "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
-      "Bg": "#e94560"
+      "Bg": "#e94560",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0421\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
       "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
-      "Bg": "#e94560"
+      "Bg": "#e94560",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0421\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
       "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
-      "Bg": "#e94560"
+      "Bg": "#e94560",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0421\u0434\u0435\u043B\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
       "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
-      "Bg": "#e94560"
+      "Bg": "#e94560",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "coder",
       "Text": "\u042F \u0441\u043E\u0437\u0434\u0430\u043C \u0434\u043B\u044F \u0432\u0430\u0441 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#. \u0414\u0430\u0432\u0430\u0439\u0442\u0435 \u043D\u0430\u0447\u043D\u0435\u043C \u0441 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u044B \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u0438 \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438.",
-      "Bg": "#16213e"
+      "Bg": "#16213e",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
       "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
-      "Bg": "#e94560"
+      "Bg": "#e94560",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0441\u0438\u0441\u0442\u0435\u043C\u0430",
       "Text": "\u26A0 \u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C. \u041E\u0442\u0432\u0435\u0447\u0430\u044E \u0447\u0435\u0440\u0435\u0437 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 Qwen; \u0444\u0430\u0439\u043B\u044B \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E \u043D\u0435 \u0441\u043E\u0437\u0434\u0430\u044E\u0442\u0441\u044F.",
-      "Bg": "#123020"
+      "Bg": "#123020",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "coder",
       "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0427\u0435\u043C \u043C\u043E\u0433\u0443 \u043F\u043E\u043C\u043E\u0447\u044C? \uD83D\uDE0A",
-      "Bg": "#16213e"
+      "Bg": "#16213e",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u041E\u0448\u0438\u0431\u043A\u0430",
       "Text": "{\u0022error\u0022:\u0022\u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C.\u0022}",
-      "Bg": "#e94560"
+      "Bg": "#e94560",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C#",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0441\u0438\u0441\u0442\u0435\u043C\u0430",
       "Text": "\u26A0 \u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C. \u041E\u0442\u0432\u0435\u0447\u0430\u044E \u0447\u0435\u0440\u0435\u0437 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 Qwen.",
-      "Bg": "#123020"
+      "Bg": "#123020",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "coder",
       "Text": "\u0415\u0441\u043B\u0438 \u0432\u0430\u043C \u043D\u0443\u0436\u0435\u043D \u0433\u0440\u0430\u0444\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441 (WinForms/WPF) \u0438\u043B\u0438 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u043D\u044B\u0439 \u0444\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0430\u043B (\u0438\u0441\u0442\u043E\u0440\u0438\u044F, \u0441\u043A\u043E\u0431\u043A\u0438, \u0442\u0440\u0438\u0433\u043E\u043D\u043E\u043C\u0435\u0442\u0440\u0438\u044F) \u2014 \u0441\u043A\u0430\u0436\u0438\u0442\u0435, \u044F \u0434\u043E\u0431\u0430\u0432\u043B\u044E \u0432 \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u0432\u0435\u0440\u0441\u0438\u044E.",
-      "Bg": "#16213e"
+      "Bg": "#16213e",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0430\u0443",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0430\u0443",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0441\u0438\u0441\u0442\u0435\u043C\u0430",
       "Text": "\u26A0 \u041D\u0435\u0442 API-\u0442\u043E\u043A\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438 \u0432 Qwen \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 LERON \u0438 \u043E\u0431\u043D\u043E\u0432\u0438 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0430\u0442\u0430 (\u0442\u043E\u043A\u0435\u043D \u043F\u043E\u0434\u0445\u0432\u0430\u0442\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438) \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 qwen_free_cli/credentials.json \u0441 \u0442\u043E\u043A\u0435\u043D\u043E\u043C. \u041E\u0442\u0432\u0435\u0447\u0430\u044E \u0447\u0435\u0440\u0435\u0437 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 Qwen.",
-      "Bg": "#123020"
+      "Bg": "#123020",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "coder",
       "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.",
-      "Bg": "#16213e"
+      "Bg": "#16213e",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u043A\u0430\u043A \u0434\u0435\u043B\u0430?",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "coder",
       "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.\n\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0447\u0442\u0435\u043D\u0438\u044F. \u0416\u0434\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.",
-      "Bg": "#16213e"
+      "Bg": "#16213e",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0430\u0443",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "coder",
       "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0413\u043E\u0442\u043E\u0432 \u043F\u043E\u043C\u043E\u0447\u044C \u0441 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u043C.",
-      "Bg": "#16213e"
+      "Bg": "#16213e",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0430 \u0441\u0435\u0439\u0447\u0430\u0441?",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "coder",
       "Text": "\u041D\u0430 \u0441\u0432\u044F\u0437\u0438. \u0416\u0434\u0443 \u043A\u043E\u043C\u0430\u043D\u0434\u0443.",
-      "Bg": "#16213e"
+      "Bg": "#16213e",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u0430\u0443",
-      "Bg": "#0f3460"
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
     },
     {
       "Author": "coder",
       "Text": "\u0413\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435.",
-      "Bg": "#16213e"
+      "Bg": "#16213e",
+      "Time": "",
+      "CardsJson": null
     }
   ],
-  "proj|c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\test_qwen": [
+  "proj|c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\qwen_test2": [
     {
       "Author": "\u0422\u044B",
-      "Text": "\u0441\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 txt \u0430\u0439\u043B \u0441 \u043D\u0430\u0434\u043F\u0438\u0441\u044C\u044E \u043F\u0440\u0438\u0432\u0435\u0442",
-      "Bg": "#0f3460"
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u0442\u0438\u043F\u043E \u043A\u0430\u043A visual studio code \u0433\u0434\u0435 \u044F \u0441\u043C\u043E\u0433\u0443 \u043F\u0440\u043E\u0441\u0442\u043E \u043F\u0438\u0441\u0430\u0442\u044C \u043A\u043E\u0434. \u041D\u0430\u043F\u0438\u0448\u0438 \u043D\u0430 C# \u043D\u0430 winform \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C \u0438 \u043F\u0440\u043E\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043D\u044B\u043C UI",
+      "Bg": "#0f3460",
+      "Time": "",
+      "CardsJson": null
+    }
+  ],
+  "proj|c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\qwen_only_test": [
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460",
+      "Time": "19:54",
+      "CardsJson": null
     },
     {
       "Author": "coder",
-      "Text": "\u0424\u0430\u0439\u043B \u043F\u0440\u0438\u0432\u0435\u0442.txt \u0441 \u043D\u0430\u0434\u043F\u0438\u0441\u044C\u044E \u00AB\u043F\u0440\u0438\u0432\u0435\u0442\u00BB \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0441\u043E\u0437\u0434\u0430\u043D \u0432 \u043A\u043E\u0440\u043D\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u0430.",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u0421\u043E\u0437\u0434\u0430\u043D \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u0442\u0435\u043C\u043D\u044B\u043C UI \u0432 \u043F\u0430\u043F\u043A\u0435 Calculator. \u041F\u0440\u043E\u0435\u043A\u0442 \u0441\u043E\u0431\u0438\u0440\u0430\u0435\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 dotnet build (net8.0-windows). \u0411\u0430\u0442\u043D\u0438\u043A build_and_run.bat \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D \u0434\u043B\u044F \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u043E\u0439 \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0430.",
-      "Bg": "#16213e"
+      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
+      "Bg": "#16213e",
+      "Time": "19:54",
+      "CardsJson": "[{\u0022Type\u0022:\u0022summary\u0022,\u0022Icon\u0022:\u0022\\u274C\u0022,\u0022Title\u0022:\u0022\\u0418\\u0442\\u043E\\u0433\u0022,\u0022Status\u0022:\u0022failed\u0022,\u0022Details\u0022:\u0022\\u23F9 \\u041E\\u0442\\u043C\\u0435\\u043D\\u0435\\u043D\\u043E \\u043F\\u043E\\u043B\\u044C\\u0437\\u043E\\u0432\\u0430\\u0442\\u0435\\u043B\\u0435\\u043C.\\r\\n\u0022,\u0022Path\u0022:null,\u0022Command\u0022:null,\u0022Shell\u0022:null,\u0022ExitCode\u0022:null,\u0022Count\u0022:null,\u0022Backup\u0022:false,\u0022OldText\u0022:null,\u0022NewText\u0022:null}]"
     }
   ]
 }
