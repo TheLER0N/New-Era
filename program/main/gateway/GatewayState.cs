@@ -164,8 +164,7 @@ internal sealed partial class GatewayState
 
     public void CancelRole(string role)
     {
-        if (PendingCancels.TryRemove(role, out var cts))
-            cts.Cancel();
+        if (PendingCancels.TryRemove(role, out var cts)) cts.Cancel();
         if (RoleLoopCts.TryRemove(role, out var loop))
         {
             try { loop.Cancel(); } catch { }
@@ -278,11 +277,13 @@ internal sealed partial class GatewayState
         var role = ChatRoleMap.ContainsKey(chatId) ? ChatRoleMap[chatId] : "unknown";
         LastAiText[role] = text;
         AgentLog($"[AI RECV] роль={role} reqid={reqId} текст={Truncate(text, 120)}");
+
         if (LastSentText.TryGetValue(role, out var sentEcho) && sentEcho == text)
         {
             AgentLog($"[{role}] пропущено эхо пользователя");
             return;
         }
+
         // ответ со старым id (хвост прошлого запроса) — отбрасываем, не даём закрыть чужое ожидание
         if (!string.IsNullOrEmpty(reqId) &&
             ExpectedReqId.TryGetValue(role, out var expected) &&
@@ -291,6 +292,7 @@ internal sealed partial class GatewayState
             AgentLog($"[AI STALE] роль={role} ответ от запроса {reqId}, ждали {expected} — отброшен");
             return;
         }
+
         LogRole(role, $"[AI]: {text}");
         if (PendingResponses.TryGetValue(role, out var tcs))
         {
@@ -335,8 +337,7 @@ internal sealed partial class GatewayState
                 if (SkipDir(Path.GetFileName(d))) continue;
                 stack.Push(d);
             }
-            foreach (var f in files)
-                yield return f;
+            foreach (var f in files) yield return f;
         }
     }
 
@@ -356,6 +357,9 @@ internal sealed partial class GatewayState
                 }
                 catch { }
             }
+            // Python: pyproject.toml / requirements.txt / test_*.py → pytest
+            foreach (var _ in EnumProjectFiles(root, "pyproject.toml")) return "pytest";
+            foreach (var _ in EnumProjectFiles(root, "requirements.txt")) return "pytest";
             foreach (var _ in EnumProjectFiles(root, "test_*.py")) return "pytest";
         }
         catch { }
@@ -365,8 +369,7 @@ internal sealed partial class GatewayState
     public string? EnsureCheckCommand(string root)
     {
         var settings = GetProjectSettings(root);
-        if (!string.IsNullOrWhiteSpace(settings.CheckCommand))
-            return settings.CheckCommand;
+        if (!string.IsNullOrWhiteSpace(settings.CheckCommand)) return settings.CheckCommand;
         var detected = DetectCheckCommand(root);
         if (!string.IsNullOrWhiteSpace(detected))
         {
@@ -395,8 +398,7 @@ internal sealed partial class GatewayState
         {
             foreach (var approved in AutoApproved)
             {
-                if (string.Equals(approved, rule, StringComparison.OrdinalIgnoreCase))
-                    return true;
+                if (string.Equals(approved, rule, StringComparison.OrdinalIgnoreCase)) return true;
                 if (!rule.StartsWith("run_command:", StringComparison.OrdinalIgnoreCase) &&
                     rule.StartsWith(approved.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase))
                     return true;
@@ -409,7 +411,13 @@ internal sealed partial class GatewayState
     {
         foreach (var grant in s.OutsideGrants)
         {
-            if (!fullPath.StartsWith(grant.Path, StringComparison.OrdinalIgnoreCase)) continue;
+            // Точное совпадение или путь ВНУТРИ гранта: грант на C:\foo
+            // не должен разрешать C:\foobar.
+            var g = grant.Path.TrimEnd(Path.DirectorySeparatorChar, '/');
+            bool inside =
+                string.Equals(fullPath, g, StringComparison.OrdinalIgnoreCase) ||
+                fullPath.StartsWith(g + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            if (!inside) continue;
             if (grant.Actions.Contains(action, StringComparer.OrdinalIgnoreCase) ||
                 grant.Actions.Contains("all", StringComparer.OrdinalIgnoreCase))
                 return true;
@@ -423,6 +431,8 @@ internal sealed partial class GatewayState
         try
         {
             var trimmed = raw.Trim().Trim('"').Replace('/', Path.DirectorySeparatorChar);
+            // Явный запрет ".." ещё до нормализации: путь не имеет права покидать корень.
+            if (trimmed.Split(Path.DirectorySeparatorChar).Any(p => p == "..")) return null;
             string full = Path.IsPathRooted(trimmed)
                 ? Path.GetFullPath(trimmed)
                 : Path.GetFullPath(Path.Combine(s.Root ?? Directory.GetCurrentDirectory(), trimmed));

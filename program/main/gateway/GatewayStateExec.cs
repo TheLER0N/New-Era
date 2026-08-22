@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
 namespace MainApp;
@@ -14,9 +15,7 @@ internal sealed partial class GatewayState
             command.Trim().StartsWith("powershell", StringComparison.OrdinalIgnoreCase) ||
             command.Trim().StartsWith("pwsh", StringComparison.OrdinalIgnoreCase)
                 ? "PowerShell" : "CMD";
-
         var workDir = Directory.Exists(cwd) ? cwd : AppContext.BaseDirectory;
-
         try
         {
             var psi = new ProcessStartInfo("cmd.exe", $"/c {command}")
@@ -29,14 +28,11 @@ internal sealed partial class GatewayState
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
-
             using var p = new Process { StartInfo = psi };
             p.Start();
-
             var stdoutTask = p.StandardOutput.ReadToEndAsync();
             var stderrTask = p.StandardError.ReadToEndAsync();
             var exited = await Task.Run(() => p.WaitForExit(timeoutMs));
-
             if (!exited)
             {
                 try { p.Kill(true); } catch { }
@@ -50,10 +46,8 @@ internal sealed partial class GatewayState
                     TimedOut = true
                 };
             }
-
             var stdout = await stdoutTask;
             var stderr = await stderrTask;
-
             var outputBuilder = new StringBuilder();
             if (!string.IsNullOrWhiteSpace(stdout)) outputBuilder.AppendLine(stdout.TrimEnd());
             if (!string.IsNullOrWhiteSpace(stderr))
@@ -62,7 +56,6 @@ internal sealed partial class GatewayState
                 outputBuilder.AppendLine("stderr:");
                 outputBuilder.AppendLine(stderr.TrimEnd());
             }
-
             return new CommandResult
             {
                 ExitCode = p.ExitCode,
@@ -143,16 +136,29 @@ internal sealed partial class GatewayState
 
         if (s.RepairAttempts >= 3)
         {
+            // Потолок ремонта (3 попытки): гарантированно останавливаемся и задаём
+            // пользователю один диагностический вопрос карточкой, не полагаясь на ИИ.
+            // Вопрос кладём в Pending — цикл агента сам покажет его на следующем шаге.
+            s.Pending.Enqueue(new PendingTool
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = "request_user_input",
+                Args = new JsonObject
+                {
+                    ["question"] =
+                        $"Проверка проекта '{cmd}' упала {s.RepairAttempts} раза подряд — автоматический ремонт остановлен.\n" +
+                        $"Последняя ошибка:\n{Tail(errorText, 1500)}\n\n" +
+                        "Что делать дальше? Например: «откати последний патч», «продолжай без проверки», «остановись»."
+                }
+            });
             return
-                $"Автоматическая проверка '{cmd}' упала {s.RepairAttempts} раза.\n" +
-                $"Ошибка:\n{errorText}\n" +
-                "Дальше автоматический ремонт продолжать нельзя. " +
-                "Вызови request_user_input и задай пользователю один диагностический вопрос.";
+                $"Автоматическая проверка '{cmd}' упала {s.RepairAttempts} раза. " +
+                "Ремонт остановлен, пользователю задан диагностический вопрос — жди его ответа.";
         }
 
         return
-            $"Автоматическая проверка '{cmd}' упала (попытка {s.RepairAttempts}).\n" +
+            $"Автоматическая проверка '{cmd}' упала (попытка {s.RepairAttempts} из 3).\n" +
             $"Ошибка:\n{errorText}\n" +
-            "Исправь причину минимально через patch_file и повтори проверку.";
+            "Режим ремонта: прочитай ошибку, найди причину (read_file), исправь минимально через patch_file и повтори проверку.";
     }
 }

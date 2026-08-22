@@ -23,6 +23,7 @@ internal sealed partial class GatewayState
         AgentLog($"[FINAL] {Truncate(text, 500)}");
         if (!string.IsNullOrEmpty(s.Role))
             LogRole(s.Role, $"[AGENT]: {Truncate(text, 300)}");
+
         var changed = s.ChangedFiles.Take(50).ToList();
         var details = new StringBuilder();
         details.AppendLine(text);
@@ -44,6 +45,7 @@ internal sealed partial class GatewayState
             Icon = resultStatus == "failed" ? "❌" : resultStatus == "needs_user" ? "⚠️" : "✅",
             Title = "Итог", Status = resultStatus, Details = details.ToString()
         });
+
         return new
         {
             status = "final", role = s.Role, resultStatus, response = text,
@@ -144,6 +146,8 @@ internal sealed partial class GatewayState
         }
         if (s.Mode == "repair")
             sb.AppendLine("Режим ремонта: исправь одну ошибку минимально, затем повтори проверку.");
+        if (s.RepairMode)
+            sb.AppendLine("ВНИМАНИЕ: последняя проверка проекта упала. Сейчас ремонт: прочитай ошибку, исправь причину минимально и повтори проверку.");
         sb.AppendLine();
         sb.AppendLine("Если нужно действие, ответь строго одним JSON-блоком:");
         sb.AppendLine("{\"name\":\"...\",\"arguments\":{...}}");
@@ -163,12 +167,29 @@ internal sealed partial class GatewayState
         {
             if (loopToken.IsCancellationRequested)
                 return Finish(s, "⏹ Цикл агента завершён (новая задача или отмена).", "failed");
+
             if (s.StepUsed >= s.StepLimit)
             {
-                return Finish(s,
-                    "Лимит шагов закончился. Если нужно продолжить, запроси дополнительные шаги через request_more_steps.",
-                    "needs_user");
+                // Лимит исчерпан: не закрываем сессию через final, а показываем
+                // карточку +4 / +8 / Стоп. Если в очереди уже стоит специальный
+                // запрос (например, вопрос после проваленной проверки) — сначала он.
+                if (s.Pending.Count > 0 && IsSpecial(s.Pending.Peek().Name))
+                    return PauseSpecial(s, s.Pending.Peek());
+
+                var limit = new PendingTool
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Name = "request_more_steps",
+                    Args = new JsonObject
+                    {
+                        ["count"] = 4,
+                        ["reason"] = $"Лимит шагов исчерпан ({s.StepLimit}). Задача ещё не завершена."
+                    }
+                };
+                s.Pending.Enqueue(limit);
+                return PauseSpecial(s, limit);
             }
+
             while (s.Pending.Count > 0)
             {
                 var head = s.Pending.Peek();
@@ -177,6 +198,7 @@ internal sealed partial class GatewayState
                 s.Pending.Dequeue();
                 s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, head);
             }
+
             string prompt;
             if (!string.IsNullOrEmpty(s.BrowserNextPrompt))
             {
@@ -198,6 +220,7 @@ internal sealed partial class GatewayState
                     prompt = userText;
                 }
             }
+
             var reqId = NextReqId();
             AgentLog($"[BROWSER] шаг {s.StepUsed + 1} reqid={reqId}: {Truncate(prompt, 220)}");
             var (ok, text) = await SendToBrowserAndWait(s.Role, prompt, s.Think, 300000, loopToken, reqId);
@@ -211,33 +234,40 @@ internal sealed partial class GatewayState
                     : $"⚠ {text}", "failed");
             }
             s.StepUsed++;
+
             var parsed = TryParseTextToolCall(text);
             if (parsed == null)
                 return Finish(s, StripProviderMetadata(text), "success");
+
             var c = new PendingTool
             {
                 Id = Guid.NewGuid().ToString(),
                 Name = parsed.Value.name,
                 Args = parsed.Value.args
             };
+
             if (!s.AllowTools && !IsSpecial(c.Name))
                 return Finish(s, "Инструменты недоступны в этом режиме.", "failed");
+
             if (c.Name == "finish")
             {
                 return Finish(s,
                     GetStr(c.Args, "summary", "Задача завершена."),
                     GetStr(c.Args, "status", "success"));
             }
+
             if (IsSpecial(c.Name))
             {
                 s.Pending.Enqueue(c);
                 return PauseSpecial(s, c);
             }
+
             if (NeedsAsk(s, c))
             {
                 s.Pending.Enqueue(c);
                 return ApprovalPause(s, c);
             }
+
             s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, c);
         }
         return Finish(s, "Агент остановлен по внутреннему лимиту.", "failed");
@@ -253,21 +283,25 @@ internal sealed partial class GatewayState
             if (abort.IsCancellationRequested) return (false, "cancelled");
             if (!RoleChatMap.ContainsKey(role))
                 return (false, $"Роль '{role}' не закреплена за чатом. Закрепи роль в Qwen.");
+
             ExpectedReqId[role] = reqId;
             LastSentText[role] = text;
             AgentLog($"[SEND] роль={role} reqid={reqId} текст={Truncate(text, 120)}");
             LogRole(role, $"[USER]: {Truncate(text, 300)}");
+
             var tcs = new TaskCompletionSource<string>();
             PendingResponses[role] = tcs;
             var cts = new CancellationTokenSource();
             PendingCancels[role] = cts;
             using var abortReg = abort.Register(() => tcs.TrySetCanceled());
+
             var chatId = RoleChatMap[role];
             var url = Config.Roles.TryGetValue(role, out var roleCfg) && !string.IsNullOrEmpty(roleCfg.Url)
                 ? roleCfg.Url : $"https://chat.qwen.ai/c/{chatId}";
             var payload = Encoding.UTF8.GetBytes(
                 $"TYPE:{role}|{chatId}|{url}|{(think ? "1" : "0")}|{reqId}|{text}");
             LastTypePayload[role] = payload;
+
             // Один запрос = один получатель: шлём только ПЕРВОМУ живому клиенту,
             // иначе несколько сокетов продублировали бы одно и то же сообщение в Qwen.
             bool sent = false;
@@ -284,12 +318,14 @@ internal sealed partial class GatewayState
                 PendingCancels.TryRemove(role, out _);
                 return (false, "Браузерная панель не подключена. Открой LERON GUI и дождись подключения.");
             }
+
             var delayTask = Task.Delay(timeoutMs);
             var cancelTask = Task.Run(async () => { try { await Task.Delay(Timeout.Infinite, cts.Token); } catch { } });
             var done = await Task.WhenAny(tcs.Task, delayTask, cancelTask);
             PendingResponses.TryRemove(role, out _);
             PendingCancels.TryRemove(role, out _);
             LastSentText.TryRemove(role, out _);
+
             if (done == tcs.Task)
             {
                 if (tcs.Task.IsCanceled || abort.IsCancellationRequested) return (false, "cancelled");
@@ -318,7 +354,9 @@ internal sealed partial class GatewayState
         {
             if (s.Pending.Count == 0)
                 return new { status = "final", role = s.Role, response = "В сессии нет действия, ожидающего подтверждения.", resultStatus = "failed", cards = NewCards(s) };
+
             var pt = s.Pending.Peek();
+
             if (pt.Name == "request_more_steps")
             {
                 s.Pending.Dequeue();
@@ -328,14 +366,18 @@ internal sealed partial class GatewayState
                 s.BrowserNextPrompt = $"Пользователь разрешил дополнительные шаги: +{add}. Продолжай работу.";
                 return await RunBrowserAgentLoopAsync(s, loopCts.Token);
             }
+
             if (pt.Name == "request_user_input")
             {
                 s.Pending.Dequeue();
                 if (!req.Approve || string.IsNullOrWhiteSpace(req.InputText))
                     return Finish(s, "Пользователь не дал ответа. Заверши задачу текстом.", "needs_user");
+                // Ответ пользователя = новый контекст: даём ремонту новый цикл попыток.
+                s.RepairAttempts = 0;
                 s.BrowserNextPrompt = $"Ответ пользователя на твой вопрос:\n{req.InputText}";
                 return await RunBrowserAgentLoopAsync(s, loopCts.Token);
             }
+
             if (pt.Name == "request_outside_access")
             {
                 s.Pending.Dequeue();
@@ -363,6 +405,7 @@ internal sealed partial class GatewayState
                 }
                 return await RunBrowserAgentLoopAsync(s, loopCts.Token);
             }
+
             s.Pending.Dequeue();
             if (!req.Approve)
             {
@@ -371,6 +414,7 @@ internal sealed partial class GatewayState
                 s.BrowserNextPrompt = "Действие отклонено пользователем. Не повторяй его. Предложи альтернативу или ответь текстом на русском.";
                 return await RunBrowserAgentLoopAsync(s, loopCts.Token);
             }
+
             if (pt.Name == "run_command")
             {
                 var cmd = NormCommand(GetStr(pt.Args, "command"));
@@ -386,6 +430,7 @@ internal sealed partial class GatewayState
                     AddAutoRule(PathRule(pt.Name, resolved ?? raw, s.Root));
                 }
             }
+
             s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, pt);
             return await RunBrowserAgentLoopAsync(s, loopCts.Token);
         }
@@ -398,6 +443,7 @@ internal sealed partial class GatewayState
     public bool NeedsAsk(AgentSession s, PendingTool c)
     {
         if (!s.AllowTools) return false;
+
         if (c.Name == "run_command")
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -415,6 +461,7 @@ internal sealed partial class GatewayState
             }
             return true;
         }
+
         if (IsMutating(c.Name))
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -426,6 +473,7 @@ internal sealed partial class GatewayState
             if (s.Mode == "auto") return !IsAutoApproved(rule);
             return true;
         }
+
         return false;
     }
 }

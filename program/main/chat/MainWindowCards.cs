@@ -22,6 +22,7 @@ public partial class MainWindow
     private void AddActionCard(ActionCardDto card)
     {
         var borderColor = "#123626";
+
         if (card.Type == "error") borderColor = "#e94560";
         else if (card.Type == "outside") borderColor = "#e94560";
         else if (card.Type == "repair") borderColor = "#ffb14a";
@@ -45,13 +46,18 @@ public partial class MainWindow
         var left = new StackPanel { Orientation = Orientation.Horizontal };
         left.Children.Add(CardText(card.Icon + " ", "#00ff88", 13, true));
         left.Children.Add(CardText(card.Title, "#d9ffe7", 13, true));
+
         if (!string.IsNullOrWhiteSpace(card.Status))
             left.Children.Add(CardText(" · " + card.Status, "#7dffa8", 12));
 
         var sub = !string.IsNullOrWhiteSpace(card.Path) ? card.Path
-            : !string.IsNullOrWhiteSpace(card.Command) ? card.Command : "";
+                : !string.IsNullOrWhiteSpace(card.Command) ? card.Command : "";
+
         if (!string.IsNullOrWhiteSpace(sub))
             left.Children.Add(CardText("  " + sub, "#447a5a", 12));
+
+        if (card.Type == "outside" || IsOutsidePath(card.Path))
+            left.Children.Add(CardText("  вне проекта", "#e94560", 12));
 
         Grid.SetColumn(left, 0);
         header.Children.Add(left);
@@ -61,7 +67,9 @@ public partial class MainWindow
             Margin = new Thickness(0, 6, 0, 0),
             Visibility = Visibility.Collapsed
         };
+
         FillCardDetails(details, card);
+
         if (card.Backup)
             details.Children.Add(CardText("💾 создан бэкап", "#7dffa8", 12));
 
@@ -75,6 +83,7 @@ public partial class MainWindow
                 Foreground = B("#447a5a"), FontFamily = Theme.Font(),
                 FontSize = 13, VerticalAlignment = VerticalAlignment.Center
             };
+
             chevron.Click += (_, _) =>
             {
                 bool show = details.Visibility != Visibility.Visible;
@@ -82,6 +91,7 @@ public partial class MainWindow
                 chevron.Content = show ? "˅" : "˄";
                 ChatScroll.ScrollToEnd();
             };
+
             Grid.SetColumn(chevron, 1);
             header.Children.Add(chevron);
         }
@@ -89,8 +99,23 @@ public partial class MainWindow
         sp.Children.Add(header);
         sp.Children.Add(details);
         border.Child = sp;
+
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
+    }
+
+    private static bool IsOutsidePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+
+        try
+        {
+            return System.IO.Path.IsPathRooted(path);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void FillCardDetails(StackPanel details, ActionCardDto card)
@@ -117,10 +142,16 @@ public partial class MainWindow
                 if (!string.IsNullOrWhiteSpace(card.Command))
                     details.Children.Add(CodeBlock(
                         $"команда · {card.Shell ?? "CMD"}", card.Command!, "#7dffa8"));
+
                 if (!string.IsNullOrWhiteSpace(card.Details))
                     details.Children.Add(CodeBlock(
                         $"вывод · exit {card.ExitCode}", card.Details,
                         card.ExitCode.HasValue && card.ExitCode.Value != 0 ? "#e94560" : "#9fe8bb"));
+                break;
+
+            case "outside":
+                if (!string.IsNullOrWhiteSpace(card.Details))
+                    details.Children.Add(CodeBlock("вне проекта", card.Details, "#e94560"));
                 break;
 
             default:
@@ -133,18 +164,21 @@ public partial class MainWindow
     private static UIElement CodeBlock(string header, string text, string accent)
     {
         var sp = new StackPanel { Margin = new Thickness(0, 3, 0, 3) };
+
         sp.Children.Add(new TextBlock
         {
             Text = header, Foreground = B(accent),
             FontFamily = Theme.Font(), FontSize = 11,
             Margin = new Thickness(2, 0, 0, 3)
         });
+
         var code = new TextBlock
         {
             Text = text, Foreground = B("#d9ffe7"),
             FontFamily = new FontFamily("Consolas"), FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap
         };
+
         var scroll = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -152,6 +186,7 @@ public partial class MainWindow
             MaxHeight = 320,
             Content = code
         };
+
         var box = new Border
         {
             Background = B("#04110c"), BorderBrush = B("#123626"),
@@ -159,6 +194,7 @@ public partial class MainWindow
             Padding = new Thickness(8, 6, 8, 6),
             Child = scroll
         };
+
         sp.Children.Add(box);
         return sp;
     }
@@ -181,11 +217,13 @@ public partial class MainWindow
             Content = text, Background = B(background), Foreground = B(foreground),
             Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(0, 0, 6, 0)
         };
+
         btn.Click += (_, _) =>
         {
             btn.IsEnabled = false;
             onClick();
         };
+
         return btn;
     }
 
@@ -210,9 +248,12 @@ public partial class MainWindow
 
         var sp = new StackPanel();
         var title = r.Dangerous ? "⚠️ ОПАСНОЕ ДЕЙСТВИЕ" : "🛠 Подтверждение действия";
+
         sp.Children.Add(CardText(title, r.Dangerous ? "#e94560" : "#00ff88", 14, true));
+
         var statusTb = CardText("ожидает ответа", "#447a5a", 12);
         sp.Children.Add(statusTb);
+
         sp.Children.Add(CardText($"Инструмент: {r.Tool}", "#d9ffe7", 13));
         sp.Children.Add(CardText(DescribePending(r), "#9fe8bb", 13));
 
@@ -220,18 +261,21 @@ public partial class MainWindow
         {
             Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
         };
+
         buttons.Children.Add(MakeButton("Разрешить", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 0, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("Разрешить и запомнить", "#0d2418", "#7dffa8", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = true,
                 steps = 0, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("Запретить", "#1a0f14", "#e94560", () =>
             AnswerAndClose(border, new
             {
@@ -242,6 +286,7 @@ public partial class MainWindow
         sp.Children.Add(buttons);
         border.Child = sp;
         border.Tag = statusTb;
+
         _interactiveCards.Add(border);
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
@@ -258,9 +303,12 @@ public partial class MainWindow
 
         var sp = new StackPanel();
         sp.Children.Add(CardText("⏱ ИИ просит дополнительные шаги", "#00ff88", 14, true));
+
         var statusTb = CardText("ожидает ответа", "#447a5a", 12);
         sp.Children.Add(statusTb);
+
         sp.Children.Add(CardText($"Просит: +{r.RequestedCount}", "#d9ffe7", 13));
+
         if (!string.IsNullOrWhiteSpace(r.Reason))
             sp.Children.Add(CardText("Причина: " + r.Reason, "#9fe8bb", 13));
 
@@ -268,18 +316,21 @@ public partial class MainWindow
         {
             Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
         };
+
         buttons.Children.Add(MakeButton("+4", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 4, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("+8", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 8, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("Стоп", "#1a0f14", "#e94560", () =>
             AnswerAndClose(border, new
             {
@@ -290,6 +341,7 @@ public partial class MainWindow
         sp.Children.Add(buttons);
         border.Child = sp;
         border.Tag = statusTb;
+
         _interactiveCards.Add(border);
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
@@ -306,8 +358,10 @@ public partial class MainWindow
 
         var sp = new StackPanel();
         sp.Children.Add(CardText("❓ Вопрос пользователю", "#00ff88", 14, true));
+
         var statusTb = CardText("ожидает ответа", "#447a5a", 12);
         sp.Children.Add(statusTb);
+
         sp.Children.Add(CardText(r.Question ?? "Нужна дополнительная информация.", "#d9ffe7", 13));
 
         var box = new TextBox
@@ -322,12 +376,14 @@ public partial class MainWindow
         {
             Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
         };
+
         buttons.Children.Add(MakeButton("Ответить", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 0, inputText = box.Text.Trim()
             })));
+
         buttons.Children.Add(MakeButton("Пропустить", "#1a0f14", "#e94560", () =>
             AnswerAndClose(border, new
             {
@@ -339,6 +395,7 @@ public partial class MainWindow
         sp.Children.Add(buttons);
         border.Child = sp;
         border.Tag = statusTb;
+
         _interactiveCards.Add(border);
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
@@ -355,8 +412,10 @@ public partial class MainWindow
 
         var sp = new StackPanel();
         sp.Children.Add(CardText("🚨 ВНЕ ПРОЕКТА — запрос доступа", "#e94560", 14, true));
+
         var statusTb = CardText("ожидает ответа", "#447a5a", 12);
         sp.Children.Add(statusTb);
+
         sp.Children.Add(CardText($"Путь: {r.Path}", "#d9ffe7", 13));
         sp.Children.Add(CardText($"Причина: {r.Reason}", "#9fe8bb", 13));
         sp.Children.Add(CardText($"Действия: {r.RequestedActions}", "#9fe8bb", 13));
@@ -365,12 +424,14 @@ public partial class MainWindow
         {
             Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
         };
+
         buttons.Children.Add(MakeButton("Разрешить доступ", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 0, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("Запретить", "#1a0f14", "#e94560", () =>
             AnswerAndClose(border, new
             {
@@ -381,6 +442,7 @@ public partial class MainWindow
         sp.Children.Add(buttons);
         border.Child = sp;
         border.Tag = statusTb;
+
         _interactiveCards.Add(border);
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
@@ -392,6 +454,7 @@ public partial class MainWindow
         {
             using var doc = JsonDocument.Parse(r.Arguments ?? "{}");
             var root = doc.RootElement;
+
             string Get(string name) =>
                 root.TryGetProperty(name, out var v) ? v.ToString() : "";
 

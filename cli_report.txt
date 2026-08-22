@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : cli
-  GENERATED      : 22.08.2026 17:24:26
+  GENERATED      : 22.08.2026 18:14:28
   PATH           : C:\Users\Пользователь\Desktop\cli
 ================================================================
 
@@ -962,7 +962,7 @@ public static class Theme
 
 ------------------------------------------------
 FILE: program\main\browser\BrowserBridge.cs
-SIZE: 16284 bytes
+SIZE: 17940 bytes
 ------------------------------------------------
 namespace MainApp;
 
@@ -978,6 +978,7 @@ internal const string BridgeScript = """
 (function(){
 if (window.__LERON_BRIDGE__) return;
 window.__LERON_BRIDGE__ = true;
+
 var lastText = '';
 var lastChange = 0;
 window.__LERON_STREAMING__ = false;
@@ -987,6 +988,7 @@ window.__LERON_STREAM_START__ = 0;
 window.__LERON_STREAM_ID__ = '';
 window.__LERON_SEEN_STREAM__ = false;
 window.__LERON_REQID__ = '';
+
 function assistantEls(){
 var candidates = [
 '[data-testid="assistant-message"]',
@@ -1014,11 +1016,20 @@ out.push(containers[j]);
 }
 return out;
 }
+
 function extractText(el){
 var inner = el.querySelector('[class*="markdown"]') || el.querySelector('[class*="content"]') ||
 el.querySelector('[class*="prose"]') || el;
 return (inner.innerText || '').trim();
 }
+
+// Снапшот последнего ответа ассистента — SendScript вызывает его ПЕРЕД
+// отправкой, чтобы DOM-фолбэк не принял старый ответ за новый.
+window.__LERON_SNAPSHOT__ = function(){
+var els = assistantEls();
+return els.length ? extractText(els[els.length-1]) : '';
+};
+
 function findStopButton(){
 var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
 for (var i=0;i<btns.length;i++){
@@ -1030,9 +1041,11 @@ text.indexOf('stop')>=0 || text.indexOf('остановить')>=0) return b;
 }
 return null;
 }
+
 function post(msg){
 if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(msg);
 }
+
 function reportAi(text, id){
 if (!text) return;
 window.__LERON_LAST_AI__ = text;
@@ -1040,6 +1053,7 @@ lastText = text;
 lastChange = Date.now();
 post({ action: 'aiResponse', text: text, reqid: id || window.__LERON_REQID__ });
 }
+
 function finishStream(){
 window.__LERON_STREAMING__ = false;
 if (window.__LERON_EXPECT__ && window.__LERON_STREAM_TEXT__) {
@@ -1047,27 +1061,48 @@ window.__LERON_EXPECT__ = false;
 reportAi(window.__LERON_STREAM_TEXT__, window.__LERON_STREAM_ID__);
 }
 }
+
 function check(){
 if (!window.__LERON_EXPECT__) return;
-if (window.__LERON_STREAMING__) {
 var now = Date.now();
+
+if (window.__LERON_STREAMING__) {
 var base = window.__LERON_STREAM_TIME__ || window.__LERON_STREAM_START__;
 var idle = now - base;
 var total = now - window.__LERON_STREAM_START__;
 if ((base && idle > 4000) || total > 90000) finishStream();
 return;
 }
-if (window.__LERON_SEEN_STREAM__) return;
+
+// Стрим был, но закончился/оборвался без репорта (reader умер, done при
+// пустом full и т.п.). Есть накопленный текст и 4с тишины — отдаём его;
+// текста нет 15с — снимаем SEEN_STREAM и пускаем в работу DOM-фолбэк.
+if (window.__LERON_SEEN_STREAM__) {
+if (window.__LERON_STREAM_TEXT__) {
+var last = window.__LERON_STREAM_TIME__ || window.__LERON_STREAM_START__;
+if (last && now - last > 4000) {
+window.__LERON_EXPECT__ = false;
+reportAi(window.__LERON_STREAM_TEXT__, window.__LERON_STREAM_ID__);
+}
+} else if (now - window.__LERON_STREAM_START__ > 15000) {
+window.__LERON_SEEN_STREAM__ = false;
+}
+return;
+}
+
 if (findStopButton()) return;
+
 var els = assistantEls();
 if (els.length === 0) return;
 var cur = extractText(els[els.length-1]);
 if (cur !== lastText){ lastText = cur; lastChange = Date.now(); }
 if ((Date.now() - lastChange) < 3500) return;
 if (!cur || cur === window.__LERON_LAST_AI__) return;
+
 window.__LERON_EXPECT__ = false;
 reportAi(cur, window.__LERON_REQID__);
 }
+
 function startObserve(){
 if (!document.body){ setTimeout(startObserve, 100); return; }
 var observer = new MutationObserver(check);
@@ -1075,10 +1110,12 @@ observer.observe(document.body, { childList:true, subtree:true, characterData:tr
 setInterval(check, 800);
 }
 startObserve();
+
 var origFetch = window.fetch;
 window.fetch = async function(){
 var response = await origFetch.apply(this, arguments);
 var url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url || '');
+
 if (response.ok && (url.indexOf('/chat')>=0 || url.indexOf('/completion')>=0)) {
 var myId = window.__LERON_REQID__;
 window.__LERON_SEEN_STREAM__ = true;
@@ -1087,12 +1124,14 @@ window.__LERON_STREAM_TEXT__ = '';
 window.__LERON_STREAM_ID__ = myId;
 window.__LERON_STREAM_START__ = Date.now();
 window.__LERON_STREAM_TIME__ = 0;
+
 try {
 var clone = response.clone();
 var reader = clone.body.getReader();
 var decoder = new TextDecoder();
 var full = '';
 var NL = String.fromCharCode(10);
+
 (async function(){
 try {
 while(true){
@@ -1105,9 +1144,11 @@ reportAi(full, myId);
 }
 break;
 }
+
 var chunk = decoder.decode(r.value, {stream:true});
 var gotData = false;
 var lines = chunk.split(NL);
+
 for (var i=0;i<lines.length;i++){
 if (lines[i].indexOf('data: ')===0){
 var data = lines[i].substring(6).trim();
@@ -1124,14 +1165,17 @@ post({ action: 'aiStream', text: full, delta: delta });
 } catch(e){}
 }
 }
+
 if (gotData) window.__LERON_STREAM_TIME__ = Date.now();
 }
 } catch(e){ window.__LERON_STREAMING__ = false; }
 })();
 } catch(e){ window.__LERON_STREAMING__ = false; }
 }
+
 return response;
 };
+
 setInterval(function(){
 var c = document.querySelector('iframe[src*="challenges.cloudflare.com"], #challenge-stage, #px-captcha, [class*="captcha"], [id*="captcha"]');
 var t = (document.body ? document.body.innerText : '').slice(0,3000).toLowerCase();
@@ -1151,15 +1195,19 @@ if (hit) post({ action: 'captcha' });
 internal const string SyncUiScript = @"
 (async function() {
 var wantThink = __THINK__;
+
 function wait(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 function post(m) { if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(m); }
+
 function vis(el) {
 if (!el) return false;
 if (el.getClientRects && el.getClientRects().length > 0) return true;
 return el.offsetParent !== null;
 }
+
 function txt(el) { return (el && el.innerText ? el.innerText : '').trim(); }
 function safeToken(s) { return (s ? s : '?').replace(/[\s|]+/g, '-'); }
+
 function fire(el, type) {
 if (!el) return;
 var opts = { bubbles: true, cancelable: true, view: window, button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true };
@@ -1177,6 +1225,7 @@ ev.initMouseEvent(type, true, true, window, 0, 0, 0, 0, 0, false, false, false, 
 }
 if (ev) el.dispatchEvent(ev);
 }
+
 function fullClick(el) {
 if (!el) return;
 fire(el, 'pointerover');
@@ -1187,6 +1236,7 @@ fire(el, 'pointerup');
 fire(el, 'mouseup');
 fire(el, 'click');
 }
+
 // Поиск пункта ОТКРЫТОГО меню по тексту (портал вне excludeRoot).
 function findItem(fn, maxLen, excludeRoot) {
 var els = document.querySelectorAll('div, span, button, li, p, a');
@@ -1201,6 +1251,7 @@ if (fn(t.toLowerCase()) && t.length < bLen) { best = el; bLen = t.length; }
 }
 return best;
 }
+
 // Открыть меню: полная последовательность событий по триггеру и родителям,
 // после каждой попытки проверяем, что меню реально открылось. Два прохода.
 async function openMenu(trigger, isOpenFn) {
@@ -1208,6 +1259,7 @@ if (!trigger) return false;
 var targets = [];
 var el = trigger;
 for (var i = 0; el && i < 4; i++) { targets.push(el); el = el.parentElement; }
+
 for (var pass = 0; pass < 2; pass++) {
 for (var t = 0; t < targets.length; t++) {
 fullClick(targets[t]);
@@ -1217,13 +1269,16 @@ if (isOpenFn()) return true;
 }
 return isOpenFn();
 }
+
 var report = [];
 try {
 await wait(200);
+
 // ── модель ────────────────────────────────────────────────
 var modelTextEl = document.querySelector('.wms-trigger__text');
 var modelTrigger = document.querySelector('.wms-trigger');
 if (!modelTrigger && modelTextEl) modelTrigger = modelTextEl;
+
 if (modelTrigger) {
 var cm = txt(modelTextEl || modelTrigger).toLowerCase();
 if (cm.indexOf('3.8') >= 0 && cm.indexOf('max') >= 0) {
@@ -1249,10 +1304,12 @@ report.push('model:menu-fail');
 } else {
 report.push('model:no-ui');
 }
+
 // ── мышление ──────────────────────────────────────────────
 var thinkRoot = document.querySelector('.qwen-thinking-selector');
 var thinkBtn = thinkRoot ? thinkRoot.querySelector('.qwen-chat-v2-dropdown-menu-select') : null;
 var thinkLabel = thinkRoot ? thinkRoot.querySelector('.qwen-chat-v2-dropdown-menu-select-label') : null;
+
 if (thinkBtn || thinkLabel) {
 var ct = txt(thinkLabel || thinkBtn).toLowerCase();
 var isThink = ct.indexOf('мышл') >= 0 || ct.indexOf('think') >= 0 || ct.indexOf('reason') >= 0;
@@ -1284,26 +1341,33 @@ report.push('think:no-ui');
 } catch (e) {
 report.push('sync-err:' + safeToken(e && e.message ? e.message : 'unknown'));
 }
+
 post('SYNC:' + report.join(' '));
 return 'sync-started';
 })();";
 
 // Отправка: сначала ждём окончания старого стрима, ПОТОМ взводим EXPECT и новый REQID.
 // send() вызывается ровно ОДИН раз. Статус уходит в C# через postMessage('SENDRES:...').
+// Повтор в C# разрешён только при NOT_SENT. SENDFAIL здесь больше не шлём,
+// чтобы gateway не сделал параллельный RESEND и не продублировал сообщение.
 internal const string SendScript = @"
 (async function() {
 var text = __TEXT__;
 var reqid = '__REQID__';
+
 function wait(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 function post(m) { if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(m); }
 function done(code) { post('SENDRES:' + code); }
+
 function inputEl() { return document.querySelector('textarea') || document.querySelector('[contenteditable=""true""]'); }
+
 function isEmpty() {
 var el = inputEl();
 if (!el) return true;
 if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') return el.value === '';
 return (el.innerText || '') === '';
 }
+
 function sendBtn() {
 var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
 for (var j = 0; j < btns.length; j++) {
@@ -1312,23 +1376,33 @@ if (!b.disabled && (b.getAttribute('aria-label') || '').toLowerCase().indexOf('s
 }
 return null;
 }
+
 function send() {
 var sb = sendBtn();
 if (sb) { sb.click(); return; }
 var el = inputEl();
 if (el) el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
 }
+
 try {
 var waited = 0;
 while (window.__LERON_STREAMING__ && waited < 15000) { await wait(250); waited += 250; }
+
 window.__LERON_REQID__ = reqid;
 window.__LERON_EXPECT__ = true;
 window.__LERON_SEEN_STREAM__ = false;
 window.__LERON_STREAM_TEXT__ = '';
+
+// запоминаем текущий последний ответ ассистента, чтобы DOM-фолбэк
+// не принял его за ответ на новое сообщение
+if (window.__LERON_SNAPSHOT__) { window.__LERON_LAST_AI__ = window.__LERON_SNAPSHOT__(); }
+
 var input = inputEl();
 if (!input) { done('NO_INPUT'); return 'started'; }
 input.focus();
+
 var isTa = input.tagName === 'TEXTAREA' || input.tagName === 'INPUT';
+
 function put(chunk) {
 if (isTa) {
 var s = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
@@ -1338,6 +1412,7 @@ input.dispatchEvent(new Event('input', { bubbles: true }));
 document.execCommand('insertText', false, chunk);
 }
 }
+
 function clearInput() {
 if (isTa) {
 var s2 = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
@@ -1348,7 +1423,9 @@ document.execCommand('selectAll', false, null);
 document.execCommand('delete', false, null);
 }
 }
+
 clearInput();
+
 if (text.length > 200) {
 put(text);
 await wait(200);
@@ -1364,7 +1441,9 @@ setTimeout(step, 10 + Math.random() * 25);
 })();
 });
 }
+
 send();
+
 var waitedAfterSend = 0;
 while (waitedAfterSend < 3000) {
 await wait(250);
@@ -1372,11 +1451,11 @@ waitedAfterSend += 250;
 if (isEmpty()) { done('OK'); return 'started'; }
 if (window.__LERON_STREAMING__ || window.__LERON_SEEN_STREAM__) { done('OK'); return 'started'; }
 }
-post({ action: 'sendfail' });
+
 done('NOT_SENT');
 return 'started';
 } catch (e) {
-done('ERR:' + (e && e.message ? e.message : 'unknown'));
+done('NOT_SENT');
 return 'started';
 }
 })();";
@@ -4022,7 +4101,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayState.cs
-SIZE: 17311 bytes
+SIZE: 18171 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Concurrent;
@@ -4190,8 +4269,7 @@ internal sealed partial class GatewayState
 
     public void CancelRole(string role)
     {
-        if (PendingCancels.TryRemove(role, out var cts))
-            cts.Cancel();
+        if (PendingCancels.TryRemove(role, out var cts)) cts.Cancel();
         if (RoleLoopCts.TryRemove(role, out var loop))
         {
             try { loop.Cancel(); } catch { }
@@ -4304,11 +4382,13 @@ internal sealed partial class GatewayState
         var role = ChatRoleMap.ContainsKey(chatId) ? ChatRoleMap[chatId] : "unknown";
         LastAiText[role] = text;
         AgentLog($"[AI RECV] роль={role} reqid={reqId} текст={Truncate(text, 120)}");
+
         if (LastSentText.TryGetValue(role, out var sentEcho) && sentEcho == text)
         {
             AgentLog($"[{role}] пропущено эхо пользователя");
             return;
         }
+
         // ответ со старым id (хвост прошлого запроса) — отбрасываем, не даём закрыть чужое ожидание
         if (!string.IsNullOrEmpty(reqId) &&
             ExpectedReqId.TryGetValue(role, out var expected) &&
@@ -4317,6 +4397,7 @@ internal sealed partial class GatewayState
             AgentLog($"[AI STALE] роль={role} ответ от запроса {reqId}, ждали {expected} — отброшен");
             return;
         }
+
         LogRole(role, $"[AI]: {text}");
         if (PendingResponses.TryGetValue(role, out var tcs))
         {
@@ -4361,8 +4442,7 @@ internal sealed partial class GatewayState
                 if (SkipDir(Path.GetFileName(d))) continue;
                 stack.Push(d);
             }
-            foreach (var f in files)
-                yield return f;
+            foreach (var f in files) yield return f;
         }
     }
 
@@ -4382,6 +4462,9 @@ internal sealed partial class GatewayState
                 }
                 catch { }
             }
+            // Python: pyproject.toml / requirements.txt / test_*.py → pytest
+            foreach (var _ in EnumProjectFiles(root, "pyproject.toml")) return "pytest";
+            foreach (var _ in EnumProjectFiles(root, "requirements.txt")) return "pytest";
             foreach (var _ in EnumProjectFiles(root, "test_*.py")) return "pytest";
         }
         catch { }
@@ -4391,8 +4474,7 @@ internal sealed partial class GatewayState
     public string? EnsureCheckCommand(string root)
     {
         var settings = GetProjectSettings(root);
-        if (!string.IsNullOrWhiteSpace(settings.CheckCommand))
-            return settings.CheckCommand;
+        if (!string.IsNullOrWhiteSpace(settings.CheckCommand)) return settings.CheckCommand;
         var detected = DetectCheckCommand(root);
         if (!string.IsNullOrWhiteSpace(detected))
         {
@@ -4421,8 +4503,7 @@ internal sealed partial class GatewayState
         {
             foreach (var approved in AutoApproved)
             {
-                if (string.Equals(approved, rule, StringComparison.OrdinalIgnoreCase))
-                    return true;
+                if (string.Equals(approved, rule, StringComparison.OrdinalIgnoreCase)) return true;
                 if (!rule.StartsWith("run_command:", StringComparison.OrdinalIgnoreCase) &&
                     rule.StartsWith(approved.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase))
                     return true;
@@ -4435,7 +4516,13 @@ internal sealed partial class GatewayState
     {
         foreach (var grant in s.OutsideGrants)
         {
-            if (!fullPath.StartsWith(grant.Path, StringComparison.OrdinalIgnoreCase)) continue;
+            // Точное совпадение или путь ВНУТРИ гранта: грант на C:\foo
+            // не должен разрешать C:\foobar.
+            var g = grant.Path.TrimEnd(Path.DirectorySeparatorChar, '/');
+            bool inside =
+                string.Equals(fullPath, g, StringComparison.OrdinalIgnoreCase) ||
+                fullPath.StartsWith(g + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            if (!inside) continue;
             if (grant.Actions.Contains(action, StringComparer.OrdinalIgnoreCase) ||
                 grant.Actions.Contains("all", StringComparer.OrdinalIgnoreCase))
                 return true;
@@ -4449,6 +4536,8 @@ internal sealed partial class GatewayState
         try
         {
             var trimmed = raw.Trim().Trim('"').Replace('/', Path.DirectorySeparatorChar);
+            // Явный запрет ".." ещё до нормализации: путь не имеет права покидать корень.
+            if (trimmed.Split(Path.DirectorySeparatorChar).Any(p => p == "..")) return null;
             string full = Path.IsPathRooted(trimmed)
                 ? Path.GetFullPath(trimmed)
                 : Path.GetFullPath(Path.Combine(s.Root ?? Directory.GetCurrentDirectory(), trimmed));
@@ -4484,7 +4573,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayStateAgent.cs
-SIZE: 21085 bytes
+SIZE: 22436 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -4511,6 +4600,7 @@ internal sealed partial class GatewayState
         AgentLog($"[FINAL] {Truncate(text, 500)}");
         if (!string.IsNullOrEmpty(s.Role))
             LogRole(s.Role, $"[AGENT]: {Truncate(text, 300)}");
+
         var changed = s.ChangedFiles.Take(50).ToList();
         var details = new StringBuilder();
         details.AppendLine(text);
@@ -4532,6 +4622,7 @@ internal sealed partial class GatewayState
             Icon = resultStatus == "failed" ? "❌" : resultStatus == "needs_user" ? "⚠️" : "✅",
             Title = "Итог", Status = resultStatus, Details = details.ToString()
         });
+
         return new
         {
             status = "final", role = s.Role, resultStatus, response = text,
@@ -4632,6 +4723,8 @@ internal sealed partial class GatewayState
         }
         if (s.Mode == "repair")
             sb.AppendLine("Режим ремонта: исправь одну ошибку минимально, затем повтори проверку.");
+        if (s.RepairMode)
+            sb.AppendLine("ВНИМАНИЕ: последняя проверка проекта упала. Сейчас ремонт: прочитай ошибку, исправь причину минимально и повтори проверку.");
         sb.AppendLine();
         sb.AppendLine("Если нужно действие, ответь строго одним JSON-блоком:");
         sb.AppendLine("{\"name\":\"...\",\"arguments\":{...}}");
@@ -4651,12 +4744,29 @@ internal sealed partial class GatewayState
         {
             if (loopToken.IsCancellationRequested)
                 return Finish(s, "⏹ Цикл агента завершён (новая задача или отмена).", "failed");
+
             if (s.StepUsed >= s.StepLimit)
             {
-                return Finish(s,
-                    "Лимит шагов закончился. Если нужно продолжить, запроси дополнительные шаги через request_more_steps.",
-                    "needs_user");
+                // Лимит исчерпан: не закрываем сессию через final, а показываем
+                // карточку +4 / +8 / Стоп. Если в очереди уже стоит специальный
+                // запрос (например, вопрос после проваленной проверки) — сначала он.
+                if (s.Pending.Count > 0 && IsSpecial(s.Pending.Peek().Name))
+                    return PauseSpecial(s, s.Pending.Peek());
+
+                var limit = new PendingTool
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Name = "request_more_steps",
+                    Args = new JsonObject
+                    {
+                        ["count"] = 4,
+                        ["reason"] = $"Лимит шагов исчерпан ({s.StepLimit}). Задача ещё не завершена."
+                    }
+                };
+                s.Pending.Enqueue(limit);
+                return PauseSpecial(s, limit);
             }
+
             while (s.Pending.Count > 0)
             {
                 var head = s.Pending.Peek();
@@ -4665,6 +4775,7 @@ internal sealed partial class GatewayState
                 s.Pending.Dequeue();
                 s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, head);
             }
+
             string prompt;
             if (!string.IsNullOrEmpty(s.BrowserNextPrompt))
             {
@@ -4686,6 +4797,7 @@ internal sealed partial class GatewayState
                     prompt = userText;
                 }
             }
+
             var reqId = NextReqId();
             AgentLog($"[BROWSER] шаг {s.StepUsed + 1} reqid={reqId}: {Truncate(prompt, 220)}");
             var (ok, text) = await SendToBrowserAndWait(s.Role, prompt, s.Think, 300000, loopToken, reqId);
@@ -4699,33 +4811,40 @@ internal sealed partial class GatewayState
                     : $"⚠ {text}", "failed");
             }
             s.StepUsed++;
+
             var parsed = TryParseTextToolCall(text);
             if (parsed == null)
                 return Finish(s, StripProviderMetadata(text), "success");
+
             var c = new PendingTool
             {
                 Id = Guid.NewGuid().ToString(),
                 Name = parsed.Value.name,
                 Args = parsed.Value.args
             };
+
             if (!s.AllowTools && !IsSpecial(c.Name))
                 return Finish(s, "Инструменты недоступны в этом режиме.", "failed");
+
             if (c.Name == "finish")
             {
                 return Finish(s,
                     GetStr(c.Args, "summary", "Задача завершена."),
                     GetStr(c.Args, "status", "success"));
             }
+
             if (IsSpecial(c.Name))
             {
                 s.Pending.Enqueue(c);
                 return PauseSpecial(s, c);
             }
+
             if (NeedsAsk(s, c))
             {
                 s.Pending.Enqueue(c);
                 return ApprovalPause(s, c);
             }
+
             s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, c);
         }
         return Finish(s, "Агент остановлен по внутреннему лимиту.", "failed");
@@ -4741,21 +4860,25 @@ internal sealed partial class GatewayState
             if (abort.IsCancellationRequested) return (false, "cancelled");
             if (!RoleChatMap.ContainsKey(role))
                 return (false, $"Роль '{role}' не закреплена за чатом. Закрепи роль в Qwen.");
+
             ExpectedReqId[role] = reqId;
             LastSentText[role] = text;
             AgentLog($"[SEND] роль={role} reqid={reqId} текст={Truncate(text, 120)}");
             LogRole(role, $"[USER]: {Truncate(text, 300)}");
+
             var tcs = new TaskCompletionSource<string>();
             PendingResponses[role] = tcs;
             var cts = new CancellationTokenSource();
             PendingCancels[role] = cts;
             using var abortReg = abort.Register(() => tcs.TrySetCanceled());
+
             var chatId = RoleChatMap[role];
             var url = Config.Roles.TryGetValue(role, out var roleCfg) && !string.IsNullOrEmpty(roleCfg.Url)
                 ? roleCfg.Url : $"https://chat.qwen.ai/c/{chatId}";
             var payload = Encoding.UTF8.GetBytes(
                 $"TYPE:{role}|{chatId}|{url}|{(think ? "1" : "0")}|{reqId}|{text}");
             LastTypePayload[role] = payload;
+
             // Один запрос = один получатель: шлём только ПЕРВОМУ живому клиенту,
             // иначе несколько сокетов продублировали бы одно и то же сообщение в Qwen.
             bool sent = false;
@@ -4772,12 +4895,14 @@ internal sealed partial class GatewayState
                 PendingCancels.TryRemove(role, out _);
                 return (false, "Браузерная панель не подключена. Открой LERON GUI и дождись подключения.");
             }
+
             var delayTask = Task.Delay(timeoutMs);
             var cancelTask = Task.Run(async () => { try { await Task.Delay(Timeout.Infinite, cts.Token); } catch { } });
             var done = await Task.WhenAny(tcs.Task, delayTask, cancelTask);
             PendingResponses.TryRemove(role, out _);
             PendingCancels.TryRemove(role, out _);
             LastSentText.TryRemove(role, out _);
+
             if (done == tcs.Task)
             {
                 if (tcs.Task.IsCanceled || abort.IsCancellationRequested) return (false, "cancelled");
@@ -4806,7 +4931,9 @@ internal sealed partial class GatewayState
         {
             if (s.Pending.Count == 0)
                 return new { status = "final", role = s.Role, response = "В сессии нет действия, ожидающего подтверждения.", resultStatus = "failed", cards = NewCards(s) };
+
             var pt = s.Pending.Peek();
+
             if (pt.Name == "request_more_steps")
             {
                 s.Pending.Dequeue();
@@ -4816,14 +4943,18 @@ internal sealed partial class GatewayState
                 s.BrowserNextPrompt = $"Пользователь разрешил дополнительные шаги: +{add}. Продолжай работу.";
                 return await RunBrowserAgentLoopAsync(s, loopCts.Token);
             }
+
             if (pt.Name == "request_user_input")
             {
                 s.Pending.Dequeue();
                 if (!req.Approve || string.IsNullOrWhiteSpace(req.InputText))
                     return Finish(s, "Пользователь не дал ответа. Заверши задачу текстом.", "needs_user");
+                // Ответ пользователя = новый контекст: даём ремонту новый цикл попыток.
+                s.RepairAttempts = 0;
                 s.BrowserNextPrompt = $"Ответ пользователя на твой вопрос:\n{req.InputText}";
                 return await RunBrowserAgentLoopAsync(s, loopCts.Token);
             }
+
             if (pt.Name == "request_outside_access")
             {
                 s.Pending.Dequeue();
@@ -4851,6 +4982,7 @@ internal sealed partial class GatewayState
                 }
                 return await RunBrowserAgentLoopAsync(s, loopCts.Token);
             }
+
             s.Pending.Dequeue();
             if (!req.Approve)
             {
@@ -4859,6 +4991,7 @@ internal sealed partial class GatewayState
                 s.BrowserNextPrompt = "Действие отклонено пользователем. Не повторяй его. Предложи альтернативу или ответь текстом на русском.";
                 return await RunBrowserAgentLoopAsync(s, loopCts.Token);
             }
+
             if (pt.Name == "run_command")
             {
                 var cmd = NormCommand(GetStr(pt.Args, "command"));
@@ -4874,6 +5007,7 @@ internal sealed partial class GatewayState
                     AddAutoRule(PathRule(pt.Name, resolved ?? raw, s.Root));
                 }
             }
+
             s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, pt);
             return await RunBrowserAgentLoopAsync(s, loopCts.Token);
         }
@@ -4886,6 +5020,7 @@ internal sealed partial class GatewayState
     public bool NeedsAsk(AgentSession s, PendingTool c)
     {
         if (!s.AllowTools) return false;
+
         if (c.Name == "run_command")
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -4903,6 +5038,7 @@ internal sealed partial class GatewayState
             }
             return true;
         }
+
         if (IsMutating(c.Name))
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -4914,6 +5050,7 @@ internal sealed partial class GatewayState
             if (s.Mode == "auto") return !IsAutoApproved(rule);
             return true;
         }
+
         return false;
     }
 }
@@ -4921,12 +5058,13 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayStateExec.cs
-SIZE: 6085 bytes
+SIZE: 7250 bytes
 ------------------------------------------------
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
 namespace MainApp;
@@ -4939,9 +5077,7 @@ internal sealed partial class GatewayState
             command.Trim().StartsWith("powershell", StringComparison.OrdinalIgnoreCase) ||
             command.Trim().StartsWith("pwsh", StringComparison.OrdinalIgnoreCase)
                 ? "PowerShell" : "CMD";
-
         var workDir = Directory.Exists(cwd) ? cwd : AppContext.BaseDirectory;
-
         try
         {
             var psi = new ProcessStartInfo("cmd.exe", $"/c {command}")
@@ -4954,14 +5090,11 @@ internal sealed partial class GatewayState
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
-
             using var p = new Process { StartInfo = psi };
             p.Start();
-
             var stdoutTask = p.StandardOutput.ReadToEndAsync();
             var stderrTask = p.StandardError.ReadToEndAsync();
             var exited = await Task.Run(() => p.WaitForExit(timeoutMs));
-
             if (!exited)
             {
                 try { p.Kill(true); } catch { }
@@ -4975,10 +5108,8 @@ internal sealed partial class GatewayState
                     TimedOut = true
                 };
             }
-
             var stdout = await stdoutTask;
             var stderr = await stderrTask;
-
             var outputBuilder = new StringBuilder();
             if (!string.IsNullOrWhiteSpace(stdout)) outputBuilder.AppendLine(stdout.TrimEnd());
             if (!string.IsNullOrWhiteSpace(stderr))
@@ -4987,7 +5118,6 @@ internal sealed partial class GatewayState
                 outputBuilder.AppendLine("stderr:");
                 outputBuilder.AppendLine(stderr.TrimEnd());
             }
-
             return new CommandResult
             {
                 ExitCode = p.ExitCode,
@@ -5068,24 +5198,37 @@ internal sealed partial class GatewayState
 
         if (s.RepairAttempts >= 3)
         {
+            // Потолок ремонта (3 попытки): гарантированно останавливаемся и задаём
+            // пользователю один диагностический вопрос карточкой, не полагаясь на ИИ.
+            // Вопрос кладём в Pending — цикл агента сам покажет его на следующем шаге.
+            s.Pending.Enqueue(new PendingTool
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = "request_user_input",
+                Args = new JsonObject
+                {
+                    ["question"] =
+                        $"Проверка проекта '{cmd}' упала {s.RepairAttempts} раза подряд — автоматический ремонт остановлен.\n" +
+                        $"Последняя ошибка:\n{Tail(errorText, 1500)}\n\n" +
+                        "Что делать дальше? Например: «откати последний патч», «продолжай без проверки», «остановись»."
+                }
+            });
             return
-                $"Автоматическая проверка '{cmd}' упала {s.RepairAttempts} раза.\n" +
-                $"Ошибка:\n{errorText}\n" +
-                "Дальше автоматический ремонт продолжать нельзя. " +
-                "Вызови request_user_input и задай пользователю один диагностический вопрос.";
+                $"Автоматическая проверка '{cmd}' упала {s.RepairAttempts} раза. " +
+                "Ремонт остановлен, пользователю задан диагностический вопрос — жди его ответа.";
         }
 
         return
-            $"Автоматическая проверка '{cmd}' упала (попытка {s.RepairAttempts}).\n" +
+            $"Автоматическая проверка '{cmd}' упала (попытка {s.RepairAttempts} из 3).\n" +
             $"Ошибка:\n{errorText}\n" +
-            "Исправь причину минимально через patch_file и повтори проверку.";
+            "Режим ремонта: прочитай ошибку, найди причину (read_file), исправь минимально через patch_file и повтори проверку.";
     }
 }
 
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayStateTools.cs
-SIZE: 26853 bytes
+SIZE: 27999 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -5106,11 +5249,9 @@ internal sealed partial class GatewayState
             if (s.Root == null) return null;
             var rootFull = Path.GetFullPath(s.Root);
             if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) return null;
-
             var rel = Path.GetRelativePath(rootFull, fullPath);
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
             var dest = Path.Combine(rootFull, ".leron", "backup", stamp, rel);
-
             if (File.Exists(fullPath))
             {
                 var destDir = Path.GetDirectoryName(dest);
@@ -5122,7 +5263,6 @@ internal sealed partial class GatewayState
                 CopyDirectory(fullPath, dest);
             }
             else return null;
-
             card.Backup = true;
             return $".leron/backup/{stamp}/{rel.Replace('\\', '/')}";
         }
@@ -5139,7 +5279,6 @@ internal sealed partial class GatewayState
 
         var stack = new Stack<string>();
         stack.Push(baseDir);
-
         while (stack.Count > 0 && !truncated)
         {
             var dir = stack.Pop();
@@ -5155,7 +5294,6 @@ internal sealed partial class GatewayState
             {
                 if (!SkipDir(Path.GetFileName(d))) stack.Push(d);
             }
-
             foreach (var f in files)
             {
                 if (filesSeen++ > 3000) { truncated = true; break; }
@@ -5184,13 +5322,11 @@ internal sealed partial class GatewayState
     public async Task<ToolExecution> ExecuteToolAsync(AgentSession s, PendingTool c)
     {
         string Arg(string key) => GetStr(c.Args, key);
-
         var exec = new ToolExecution
         {
             Tool = c.Name,
             Card = new ActionCard { Type = "info", Icon = "🛠", Title = c.Name, Status = "выполняется" }
         };
-
         try
         {
             switch (c.Name)
@@ -5287,15 +5423,28 @@ internal sealed partial class GatewayState
                     string output; int count; bool truncated;
                     if (File.Exists(p))
                     {
-                        var dir = Path.GetDirectoryName(p) ?? ".";
-                        var fileName = Path.GetFileName(p);
-                        var all = GrepFiles(s, dir, pattern, caseSensitive);
-                        var lines = all.output.Split('\n')
-                            .Where(x => x.StartsWith(fileName + ":", StringComparison.OrdinalIgnoreCase))
-                            .ToList();
-                        output = string.Join('\n', lines);
-                        count = lines.Count;
-                        truncated = all.truncated;
+                        // Один файл: ищем прямо в нём. Раньше здесь был поиск по папке
+                        // с фильтром по имени файла — он ломался на вложенных путях
+                        // (DisplayPath возвращает "sub/file.cs", а не "file.cs").
+                        var cmp = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+                        var sb = new StringBuilder();
+                        count = 0; truncated = false;
+                        try
+                        {
+                            int lineNo = 0;
+                            foreach (var line in File.ReadLines(p))
+                            {
+                                lineNo++;
+                                if (!line.Contains(pattern, cmp)) continue;
+                                count++;
+                                var t = line.Trim();
+                                if (t.Length > 300) t = t.Substring(0, 300) + "…";
+                                sb.AppendLine($"{DisplayPath(s, p)}:{lineNo}:{t}");
+                                if (count >= 200) { truncated = true; break; }
+                            }
+                        }
+                        catch { }
+                        output = sb.ToString();
                     }
                     else if (Directory.Exists(p))
                     {
@@ -5344,17 +5493,20 @@ internal sealed partial class GatewayState
                     var dir = Path.GetDirectoryName(p);
                     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
                     var content = Arg("content");
-                    File.WriteAllText(p, content);
-                    exec.Output = $"Файл записан: {raw}";
-                    exec.Log = $"write_file {raw} → OK";
-                    exec.Path = p;
-                    exec.Mutated = true;
-                    exec.Card = new ActionCard
+                    var card = new ActionCard
                     {
                         Type = "write", Icon = "✏️", Title = "Запись файла", Status = "OK",
                         Path = DisplayPath(s, p), NewText = Truncate(content, 6000),
                         Details = $"{content.Length} символов"
                     };
+                    // Перезапись существующего файла: бэкап предыдущей версии до записи.
+                    if (File.Exists(p)) BackupFullPath(s, p, card);
+                    File.WriteAllText(p, content);
+                    exec.Output = $"Файл записан: {raw}" + (card.Backup ? "\nСоздан бэкап предыдущей версии." : "");
+                    exec.Log = $"write_file {raw} → OK";
+                    exec.Path = p;
+                    exec.Mutated = true;
+                    exec.Card = card;
                     return exec;
                 }
 
@@ -5459,7 +5611,7 @@ internal sealed partial class GatewayState
                     if (File.Exists(source)) File.Move(source, dest);
                     else Directory.Move(source, dest);
                     exec.Output = $"Переименовано: {rawSource} → {rawDest}" +
-                                  (backup != null ? $"\nСоздан бэкап: {backup}" : "");
+                        (backup != null ? $"\nСоздан бэкап: {backup}" : "");
                     exec.Log = $"rename_file {rawSource} → OK";
                     exec.Path = dest;
                     exec.Mutated = true;
@@ -6785,7 +6937,7 @@ SIZE: 679 bytes
       "Name": "test_qwen",
       "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen",
       "Role": "team",
-      "LastOpened": "2026-08-22T17:23:18.7448877\u002B03:00"
+      "LastOpened": "2026-08-22T18:12:56.3100314\u002B03:00"
     }
   ],
   "AutoApprove": [],
@@ -6969,7 +7121,7 @@ public static class GatewayHost
 
 ------------------------------------------------
 FILE: program\sending and receiving\history.json
-SIZE: 40023 bytes
+SIZE: 34693 bytes
 ------------------------------------------------
 {
   "coder": [
@@ -7177,22 +7329,22 @@ SIZE: 40023 bytes
   "proj|c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\test_qwen": [
     {
       "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u26A0 \u0411\u0440\u0430\u0443\u0437\u0435\u0440 \u043D\u0435 \u043E\u0442\u0432\u0435\u0442\u0438\u043B \u0437\u0430 300 \u0441\u0435\u043A\u0443\u043D\u0434.\n\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439: 1.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
       "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
       "Bg": "#0f3460"
     },
     {
       "Author": "coder",
-      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u0427\u0435\u043C \u044F \u043C\u043E\u0433\u0443 \u0432\u0430\u043C \u043F\u043E\u043C\u043E\u0447\u044C?",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u043A\u0430\u043A \u0434\u0435\u043B\u0430",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u0421\u043F\u0430\u0441\u0438\u0431\u043E, \u0432\u0441\u0451 \u043E\u0442\u043B\u0438\u0447\u043D\u043E! \u042F \u0438\u0441\u043A\u0443\u0441\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0439 \u0438\u043D\u0442\u0435\u043B\u043B\u0435\u043A\u0442, \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u0443 \u043C\u0435\u043D\u044F \u0432\u0441\u0435\u0433\u0434\u0430 \u0432\u0441\u0451 \u0441\u0442\u0430\u0431\u0438\u043B\u044C\u043D\u043E, \u0438 \u044F \u0433\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435. \uD83D\uDE0A\n\n\u0410 \u043A\u0430\u043A \u0432\u0430\u0448\u0438 \u0434\u0435\u043B\u0430? \u0427\u0435\u043C \u043C\u043E\u0433\u0443 \u0431\u044B\u0442\u044C \u043F\u043E\u043B\u0435\u0437\u0435\u043D \u0432\u0430\u043C \u0441\u0435\u0433\u043E\u0434\u043D\u044F?",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u042F \u0433\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u043F\u0440\u043E\u0435\u043A\u0442\u0435 \u0060C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen\u0060.\n\n\u041E\u0431\u0440\u0430\u0442\u0438\u0442\u0435 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u0435: \u0441\u0435\u0439\u0447\u0430\u0441 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B (\u0440\u0435\u0436\u0438\u043C \u043E\u0431\u044B\u0447\u043D\u043E\u0433\u043E \u0447\u0430\u0442\u0430). \u0427\u0442\u043E\u0431\u044B \u044F \u043C\u043E\u0433 \u0447\u0438\u0442\u0430\u0442\u044C \u0444\u0430\u0439\u043B\u044B \u0438 \u0432\u043D\u043E\u0441\u0438\u0442\u044C \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F, \u043F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u0430\u043C.\n\n\u0427\u0435\u043C \u043C\u043E\u0433\u0443 \u043F\u043E\u043C\u043E\u0447\u044C?",
       "Bg": "#16213e"
     },
     {
@@ -7202,12 +7354,72 @@ SIZE: 40023 bytes
     },
     {
       "Author": "coder",
-      "Text": "\u041A\u043E\u043D\u0435\u0447\u043D\u043E! \u0414\u043B\u044F \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u043A\u0440\u0430\u0441\u0438\u0432\u043E\u0433\u043E UI \u043D\u0430 C# \u043B\u0443\u0447\u0448\u0435 \u0432\u0441\u0435\u0433\u043E \u043F\u043E\u0434\u043E\u0439\u0434\u0435\u0442 **WPF** (Windows Presentation Foundation). \u041E\u043D \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u043B\u0435\u0433\u043A\u043E \u0441\u0442\u0438\u043B\u0438\u0437\u043E\u0432\u0430\u0442\u044C \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u044B, \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C \u0441\u043A\u0440\u0443\u0433\u043B\u0435\u043D\u0438\u044F, \u0442\u0435\u043D\u0438 \u0438 \u0441\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0435 \u0446\u0432\u0435\u0442\u0430, \u0432 \u043E\u0442\u043B\u0438\u0447\u0438\u0435 \u043E\u0442 \u0443\u0441\u0442\u0430\u0440\u0435\u0432\u0448\u0435\u0433\u043E Windows Forms.\n\n\u041D\u0438\u0436\u0435 \u043F\u0440\u0435\u0434\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u043F\u043E\u043B\u043D\u044B\u0439 \u043A\u043E\u0434 \u0441\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E\u0433\u043E \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430 \u0432 \u0442\u0435\u043C\u043D\u043E\u0439 \u0442\u0435\u043C\u0435, \u0430 \u0442\u0430\u043A\u0436\u0435 \u0431\u0430\u0442\u043D\u0438\u043A \u0434\u043B\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u043E\u0439 \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0430.\n\n### 1. \u041A\u043E\u0434 \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u044F\n\n\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0060Calculator.cs\u0060 \u0432 \u043D\u043E\u0432\u043E\u0439 \u043F\u0430\u043F\u043A\u0435. \u042D\u0442\u043E\u0442 \u0444\u0430\u0439\u043B \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u0442 \u0432\u0441\u044E \u043B\u043E\u0433\u0438\u043A\u0443 \u0438 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 XAML \u0432\u043D\u0443\u0442\u0440\u0438 \u0441\u0435\u0431\u044F (\u0434\u043B\u044F \u0443\u0434\u043E\u0431\u0441\u0442\u0432\u0430 \u0437\u0430\u043F\u0443\u0441\u043A\u0430 \u043E\u0434\u043D\u0438\u043C \u0444\u0430\u0439\u043B\u043E\u043C \u0447\u0435\u0440\u0435\u0437 \u0060dotnet run\u0060).\n\n\u0060\u0060\u0060csharp\n// Calculator.cs\nusing System;\nusing System.Windows;\nusing System.Windows.Controls;\nusing System.Windows.Media;\nusing System.Windows.Shapes;\n\nnamespace ModernCalculator\n{\n    public class App : Application\n    {\n        [STAThread]\n        public static void Main()\n        {\n            var app = new App();\n            app.InitializeComponent();\n            app.Run(new CalculatorWindow());\n        }\n\n        protected override void OnStartup(StartupEventArgs e)\n        {\n            base.OnStartup(e);\n        }\n    }\n\n    public class CalculatorWindow : Window\n    {\n        private TextBlock _displayCurrent;\n        private TextBlock _displayHistory;\n        private double _num1 = 0;\n        private string _operator = \u0022\u0022;\n        private bool _isNewEntry = true;\n\n        public CalculatorWindow()\n        {\n            Title = \u0022Modern Calculator\u0022;\n            Width = 340;\n            Height = 520;\n            ResizeMode = ResizeMode.NoResize;\n            Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)); // Dark Gray\n            WindowStyle = WindowStyle.None; // \u0411\u0435\u0437\u0440\u0430\u043C\u043E\u0447\u043D\u043E\u0435 \u043E\u043A\u043D\u043E \u0434\u043B\u044F \u043A\u0440\u0430\u0441\u043E\u0442\u044B\n            AllowsTransparency = true;\n            BorderBrush = new SolidColorBrush(Color.FromRgb(60, 60, 60));\n            BorderThickness = new Thickness(1);\n            \n            // \u041A\u0430\u0441\u0442\u043E\u043C\u043D\u0430\u044F \u043F\u0430\u043D\u0435\u043B\u044C \u043F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u044F\n            MouseLeftButtonDown \u002B= (s, e) =\u003E DragMove();\n\n            var grid = new Grid { Margin = new Thickness(10) };\n            \n            // \u041E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u0441\u0442\u0440\u043E\u043A \u0438 \u043A\u043E\u043B\u043E\u043D\u043E\u043A\n            for (int i = 0; i \u003C 5; i\u002B\u002B) \n                grid.RowDefinitions.Add(new RowDefinition { Height = i == 0 ? new GridLength(100) : new GridLength(1, GridUnitType.Star) });\n            for (int i = 0; i \u003C 4; i\u002B\u002B) \n                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });\n\n            // \u0414\u0438\u0441\u043F\u043B\u0435\u0439\n            var displayStack = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(10, 0, 10, 10) };\n            _displayHistory = new TextBlock { Text = \u0022\u0022, FontSize = 16, Foreground = Brushes.Gray, HorizontalAlignment = HorizontalAlignment.Right };\n            _displayCurrent = new TextBlock { Text = \u00220\u0022, FontSize = 42, FontWeight = FontWeights.Light, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Right };\n            displayStack.Children.Add(_displayHistory);\n            displayStack.Children.Add(_displayCurrent);\n            Grid.SetRow(displayStack, 0);\n            Grid.SetColumnSpan(displayStack, 4);\n            grid.Children.Add(displayStack);\n\n            // \u041A\u043D\u043E\u043F\u043A\u0438\n            string[,] buttons = {\n                { \u0022C\u0022, \u0022\u00B1\u0022, \u0022%\u0022, \u0022\u00F7\u0022 },\n                { \u00227\u0022, \u00228\u0022, \u00229\u0022, \u0022\u00D7\u0022 },\n                { \u00224\u0022, \u00225\u0022, \u00226\u0022, \u0022-\u0022 },\n                { \u00221\u0022, \u00222\u0022, \u00223\u0022, \u0022\u002B\u0022 },\n                { \u00220\u0022, \u0022.\u0022, \u0022\u232B\u0022, \u0022=\u0022 }\n            };\n\n            for (int r = 0; r \u003C 5; r\u002B\u002B)\n            {\n                for (int c = 0; c \u003C 4; c\u002B\u002B)\n                {\n                    var btn = CreateButton(buttons[r, c]);\n                    Grid.SetRow(btn, r \u002B 1); // \u002B1 \u0442.\u043A. 0 \u0440\u044F\u0434 \u0437\u0430\u043D\u044F\u0442 \u0434\u0438\u0441\u043F\u043B\u0435\u0435\u043C (\u0432\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u043E \u043C\u044B \u043E\u0442\u0441\u0442\u0443\u043F\u0438\u043B\u0438, \u043D\u043E \u0432 \u0433\u0440\u0438\u0434\u0435 \u044D\u0442\u043E \u0432\u0430\u0436\u043D\u043E)\n                    // \u041A\u043E\u0440\u0440\u0435\u043A\u0442\u0438\u0440\u043E\u0432\u043A\u0430: \u0434\u0438\u0441\u043F\u043B\u0435\u0439 \u0432 Row 0, \u043A\u043D\u043E\u043F\u043A\u0438 \u043D\u0430\u0447\u0438\u043D\u0430\u044E\u0442\u0441\u044F \u0441 Row 1\n                    // \u041D\u043E \u0443 \u043D\u0430\u0441 5 \u0440\u044F\u0434\u043E\u0432 \u043A\u043D\u043E\u043F\u043E\u043A. \u0418\u0441\u043F\u0440\u0430\u0432\u0438\u043C \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0443 \u0433\u0440\u0438\u0434\u0430 \u0432\u044B\u0448\u0435.\n                    // \u041F\u0440\u043E\u0449\u0435 \u0441\u0434\u0435\u043B\u0430\u0442\u044C \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u0439 \u0433\u0440\u0438\u0434 \u0434\u043B\u044F \u043A\u043D\u043E\u043F\u043E\u043A.\n                }\n            }\n            \n            // \u041F\u0435\u0440\u0435\u0434\u0435\u043B\u0430\u0435\u043C \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0443 \u0434\u043B\u044F \u0447\u0438\u0441\u0442\u043E\u0442\u044B: \u0412\u0435\u0440\u0445 - \u0434\u0438\u0441\u043F\u043B\u0435\u0439, \u041D\u0438\u0437 - \u0433\u0440\u0438\u0434 \u043A\u043D\u043E\u043F\u043E\u043A\n            var mainStack = new StackPanel();\n            mainStack.Children.Add(displayStack);\n            \n            var btnGrid = new Grid { Margin = new Thickness(5) };\n            for (int i = 0; i \u003C 5; i\u002B\u002B) btnGrid.RowDefinitions.Add(new RowDefinition());\n            for (int i = 0; i \u003C 4; i\u002B\u002B) btnGrid.ColumnDefinitions.Add(new ColumnDefinition());\n\n            for (int r = 0; r \u003C 5; r\u002B\u002B)\n            {\n                for (int c = 0; c \u003C 4; c\u002B\u002B)\n                {\n                    var btn = CreateButton(buttons[r, c]);\n                    Grid.SetRow(btn, r);\n                    Grid.SetColumn(btn, c);\n                    btnGrid.Children.Add(btn);\n                }\n            }\n            mainStack.Children.Add(btnGrid);\n            Content = mainStack;\n        }\n\n        private Button CreateButton(string content)\n        {\n            var btn = new Button\n            {\n                Content = content,\n                FontSize = 20,\n                Margin = new Thickness(3),\n                BorderThickness = new Thickness(0),\n                Cursor = System.Windows.Input.Cursors.Hand,\n                Template = GetRoundedTemplate()\n            };\n\n            // \u0426\u0432\u0435\u0442\u043E\u0432\u0430\u044F \u0441\u0445\u0435\u043C\u0430\n            Color bg = Color.FromRgb(50, 50, 50); // \u041E\u0431\u044B\u0447\u043D\u044B\u0435 \u0446\u0438\u0444\u0440\u044B\n            Color fg = Colors.White;\n\n            if (content == \u0022=\u0022) { bg = Color.FromRgb(255, 159, 10); fg = Colors.Black; } // Orange accent\n            else if (\u0022\u00F7\u00D7-\u002B\u0022.Contains(content)) { bg = Color.FromRgb(70, 70, 70); fg = Color.FromRgb(255, 159, 10); }\n            else if (content == \u0022C\u0022 || content == \u0022\u232B\u0022) { bg = Color.FromRgb(70, 70, 70); }\n\n            btn.Background = new SolidColorBrush(bg);\n            btn.Foreground = new SolidColorBrush(fg);\n            \n            // Hover \u044D\u0444\u0444\u0435\u043A\u0442\n            btn.MouseEnter \u002B= (s, e) =\u003E btn.Opacity = 0.8;\n            btn.MouseLeave \u002B= (s, e) =\u003E btn.Opacity = 1.0;\n            \n            btn.Click \u002B= Button_Click;\n            return btn;\n        }\n\n        private ControlTemplate GetRoundedTemplate()\n        {\n            var factory = new FrameworkElementFactory(typeof(Border));\n            factory.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));\n            factory.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));\n            var cp = new FrameworkElementFactory(typeof(ContentPresenter));\n            cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);\n            cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);\n            factory.AppendChild(cp);\n            var template = new ControlTemplate(typeof(Button)) { VisualTree = factory };\n            return template;\n        }\n\n        private void Button_Click(object sender, RoutedEventArgs e)\n        {\n            var btn = (Button)sender;\n            string val = btn.Content.ToString();\n\n            if (val == \u0022C\u0022) { Reset(); return; }\n            if (val == \u0022\u232B\u0022) { Backspace(); return; }\n            if (val == \u0022\u00B1\u0022) { ToggleSign(); return; }\n            if (val == \u0022%\u0022) { Percent(); return; }\n\n            if (\u00220123456789.\u0022.Contains(val))\n            {\n                if (_isNewEntry) { _displayCurrent.Text = (val == \u0022.\u0022) ? \u00220.\u0022 : val; _isNewEntry = false; }\n                else \n                {\n                    if (val == \u0022.\u0022 \u0026\u0026 _displayCurrent.Text.Contains(\u0022.\u0022)) return;\n                    if (_displayCurrent.Text == \u00220\u0022 \u0026\u0026 val != \u0022.\u0022) _displayCurrent.Text = val;\n                    else _displayCurrent.Text \u002B= val;\n                }\n            }\n            else if (\u0022\u002B-\u00D7\u00F7\u0022.Contains(val))\n            {\n                if (!_isNewEntry \u0026\u0026 _operator != \u0022\u0022) Calculate();\n                _num1 = double.Parse(_displayCurrent.Text.Replace(\u0027,\u0027, \u0027.\u0027));\n                _operator = val;\n                _displayHistory.Text = $\u0022{FormatNumber(_num1)} {val}\u0022;\n                _isNewEntry = true;\n            }\n            else if (val == \u0022=\u0022)\n            {\n                Calculate();\n                _displayHistory.Text = \u0022\u0022;\n                _operator = \u0022\u0022;\n                _isNewEntry = true;\n            }\n        }\n\n        private void Calculate()\n        {\n            double num2 = double.Parse(_displayCurrent.Text.Replace(\u0027,\u0027, \u0027.\u0027));\n            double result = 0;\n            switch (_operator)\n            {\n                case \u0022\u002B\u0022: result = _num1 \u002B num2; break;\n                case \u0022-\u0022: result = _num1 - num2; break;\n                case \u0022\u00D7\u0022: result = _num1 * num2; break;\n                case \u0022\u00F7\u0022: result = (num2 != 0) ? _num1 / num2 : 0; break;\n            }\n            _displayCurrent.Text = FormatNumber(result);\n            _num1 = result;\n        }\n\n        private void Reset() { _displayCurrent.Text = \u00220\u0022; _displayHistory.Text = \u0022\u0022; _num1 = 0; _operator = \u0022\u0022; _isNewEntry = true; }\n        private void Backspace() \n        { \n            if (_isNewEntry) return;\n            string t = _displayCurrent.Text;\n            _displayCurrent.Text = t.Length \u003E 1 ? t.Substring(0, t.Length - 1) : \u00220\u0022;\n            if (_displayCurrent.Text == \u00220\u0022) _isNewEntry = true;\n        }\n        private void ToggleSign() \n        { \n            double v = double.Parse(_displayCurrent.Text.Replace(\u0027,\u0027, \u0027.\u0027)); \n            _displayCurrent.Text = FormatNumber(-v); \n        }\n        private void Percent() \n        { \n            double v = double.Parse(_displayCurrent.Text.Replace(\u0027,\u0027, \u0027.\u0027)); \n            _displayCurrent.Text = FormatNumber(v / 100.0); \n            _isNewEntry = true;\n        }\n\n        private string FormatNumber(double val)\n        {\n            string s = val.ToString(\u0022G15\u0022).Replace(\u0027.\u0027, \u0027,\u0027);\n            return s;\n        }\n    }\n}\n\u0060\u0060\u0060\n\n### 2. \u0424\u0430\u0439\u043B \u043F\u0440\u043E\u0435\u043A\u0442\u0430\n\n\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0060Calculator.csproj\u0060 \u0440\u044F\u0434\u043E\u043C \u0441 \u0060Calculator.cs\u0060:\n\n\u0060\u0060\u0060xml\n\u003CProject Sdk=\u0022Microsoft.NET.Sdk\u0022\u003E\n  \u003CPropertyGroup\u003E\n    \u003COutputType\u003EWinExe\u003C/OutputType\u003E\n    \u003CTargetFramework\u003Enet8.0-windows\u003C/TargetFramework\u003E\n    \u003CUseWPF\u003Etrue\u003C/UseWPF\u003E\n    \u003CStartupObject\u003EModernCalculator.App\u003C/StartupObject\u003E\n    \u003C!-- \u0423\u0431\u0438\u0440\u0430\u0435\u043C \u043A\u043E\u043D\u0441\u043E\u043B\u044C\u043D\u043E\u0435 \u043E\u043A\u043D\u043E \u043F\u0440\u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0435 --\u003E\n    \u003CDisableWinExeOutputRedirection\u003Etrue\u003C/DisableWinExeOutputRedirection\u003E\n  \u003C/PropertyGroup\u003E\n\u003C/Project\u003E\n\u0060\u0060\u0060\n\n### 3. \u0411\u0430\u0442\u043D\u0438\u043A \u0434\u043B\u044F \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0430 (\u0060run.bat\u0060)\n\n\u042D\u0442\u043E\u0442 \u0441\u043A\u0440\u0438\u043F\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442 \u043D\u0430\u043B\u0438\u0447\u0438\u0435 .NET SDK, \u0441\u043E\u0431\u0435\u0440\u0435\u0442 \u043F\u0440\u043E\u0435\u043A\u0442 \u0432 Release-\u0440\u0435\u0436\u0438\u043C\u0435 \u0438 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442 \u0435\u0433\u043E.\n\n\u0060\u0060\u0060bat\n@echo off\nchcp 65001 \u003Enul\ntitle Modern Calculator Builder\n\necho ==========================================\necho   \u0421\u0431\u043E\u0440\u043A\u0430 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430...\necho ==========================================\n\n:: \u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u043D\u0430\u043B\u0438\u0447\u0438\u044F dotnet\nwhere dotnet \u003Enul 2\u003Enul\nif %ERRORLEVEL% NEQ 0 (\n    echo [\u041E\u0428\u0418\u0411\u041A\u0410] .NET SDK \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D!\n    echo \u041F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 .NET 8 SDK: https://dotnet.microsoft.com/download\n    pause\n    exit /b 1\n)\n\necho [1/2] \u0421\u0431\u043E\u0440\u043A\u0430 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 (Release)...\ndotnet build -c Release --nologo -v q\nif %ERRORLEVEL% NEQ 0 (\n    echo [\u041E\u0428\u0418\u0411\u041A\u0410] \u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0431\u0440\u0430\u0442\u044C \u043F\u0440\u043E\u0435\u043A\u0442. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043A\u043E\u0434.\n    pause\n    exit /b 1\n)\n\necho [2/2] \u0417\u0430\u043F\u0443\u0441\u043A \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u044F...\necho ------------------------------------------\nstart \u0022\u0022 \u0022bin\\Release\\net8.0-windows\\Calculator.exe\u0022\n\necho \u041F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u0435 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u043E!\nexit /b 0\n\u0060\u0060\u0060\n\n### \u041A\u0430\u043A \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C\u0441\u044F:\n1. \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0443\u0441\u0442\u0443\u044E \u043F\u0430\u043F\u043A\u0443.\n2. \u041F\u043E\u043B\u043E\u0436\u0438\u0442\u0435 \u0432 \u043D\u0435\u0451 \u0442\u0440\u0438 \u0444\u0430\u0439\u043B\u0430: \u0060Calculator.cs\u0060, \u0060Calculator.csproj\u0060, \u0060run.bat\u0060.\n3. \u0414\u0432\u0430\u0436\u0434\u044B \u043A\u043B\u0438\u043A\u043D\u0438\u0442\u0435 \u043F\u043E \u0060run.bat\u0060.\n\n### \u041E\u0441\u043E\u0431\u0435\u043D\u043D\u043E\u0441\u0442\u0438 \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438:\n*   **\u0411\u0435\u0437\u0440\u0430\u043C\u043E\u0447\u043D\u044B\u0439 \u0434\u0438\u0437\u0430\u0439\u043D:** \u0060WindowStyle=\u0022None\u0022\u0060 \u002B \u0060AllowsTransparency\u0060 \u0434\u0430\u044E\u0442 \u044D\u0444\u0444\u0435\u043A\u0442 \u0441\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E\u0433\u043E \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0431\u0435\u0437 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u043E\u0439 \u0431\u0435\u043B\u043E\u0439 \u0440\u0430\u043C\u043A\u0438 Windows. \u041E\u043A\u043D\u043E \u043C\u043E\u0436\u043D\u043E \u0442\u0430\u0441\u043A\u0430\u0442\u044C \u0437\u0430 \u043B\u044E\u0431\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C.\n*   **\u0426\u0432\u0435\u0442\u043E\u0432\u0430\u044F \u043F\u0430\u043B\u0438\u0442\u0440\u0430:** \u0422\u0435\u043C\u043D\u043E-\u0441\u0435\u0440\u044B\u0439 \u0444\u043E\u043D (\u043A\u0430\u043A \u0432 macOS/Windows 11 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430\u0445) \u0441 \u043E\u0440\u0430\u043D\u0436\u0435\u0432\u044B\u043C \u0430\u043A\u0446\u0435\u043D\u0442\u043E\u043C \u043D\u0430 \u043A\u043D\u043E\u043F\u043A\u0435 \u0440\u0430\u0432\u0435\u043D\u0441\u0442\u0432\u0430.\n*   **\u0415\u0434\u0438\u043D\u044B\u0439 \u0444\u0430\u0439\u043B:** \u0412\u0435\u0441\u044C XAML \u0437\u0430\u043C\u0435\u043D\u0435\u043D \u043D\u0430 code-behind \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044E UI. \u042D\u0442\u043E \u0438\u0437\u0431\u0430\u0432\u043B\u044F\u0435\u0442 \u043E\u0442 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u0438 \u043D\u0430\u0441\u0442\u0440\u0430\u0438\u0432\u0430\u0442\u044C \u0441\u043B\u043E\u0436\u043D\u044B\u0435 \u043F\u0443\u0442\u0438 \u043A \u0440\u0435\u0441\u0443\u0440\u0441\u0430\u043C \u0438 \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0441\u043E\u0431\u0440\u0430\u0442\u044C \u043F\u0440\u043E\u0435\u043A\u0442 \u0438\u0437 \u043E\u0434\u043D\u043E\u0433\u043E \u0060.cs\u0060 \u0444\u0430\u0439\u043B\u0430.\n*   **\u041B\u043E\u0433\u0438\u043A\u0430:** \u041F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442 \u0446\u0435\u043F\u043E\u0447\u043A\u0438 \u0432\u044B\u0447\u0438\u0441\u043B\u0435\u043D\u0438\u0439, \u043F\u0440\u043E\u0446\u0435\u043D\u0442\u044B, \u0441\u043C\u0435\u043D\u0443 \u0437\u043D\u0430\u043A\u0430, backspace \u0438 \u0437\u0430\u0449\u0438\u0442\u0443 \u043E\u0442 \u0434\u0435\u043B\u0435\u043D\u0438\u044F \u043D\u0430 \u043D\u043E\u043B\u044C.\n\n\u003E \u26A0\uFE0F **\u0422\u0440\u0435\u0431\u043E\u0432\u0430\u043D\u0438\u044F:** \u041D\u0430 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u0435 \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D **.NET 8 SDK** (\u0438\u043B\u0438 \u0432\u044B\u0448\u0435). \u0415\u0441\u043B\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u0434\u0440\u0443\u0433\u0430\u044F \u0432\u0435\u0440\u0441\u0438\u044F, \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u0435 \u0060\u003CTargetFramework\u003E\u0060 \u0432 \u0060.csproj\u0060 \u043D\u0430 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u044E\u0449\u0443\u044E (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0060net6.0-windows\u0060).",
+      "Text": "\u0418\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u0441\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B, \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u044F \u043D\u0435 \u043C\u043E\u0433\u0443 \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u0444\u0430\u0439\u043B\u044B \u043D\u0430\u043F\u0440\u044F\u043C\u0443\u044E. \u041E\u0434\u043D\u0430\u043A\u043E \u044F \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u0438\u043B \u0434\u043B\u044F \u0432\u0430\u0441 \u043F\u043E\u043B\u043D\u044B\u0439 \u043A\u043E\u0434 \u0438 \u0438\u043D\u0441\u0442\u0440\u0443\u043A\u0446\u0438\u0438. \u041A\u0430\u043A \u0442\u043E\u043B\u044C\u043A\u043E \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u0431\u0443\u0434\u0443\u0442 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u044B, \u044F \u0441\u043C\u043E\u0433\u0443 \u0437\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u0438\u0445 \u0432 \u043F\u0440\u043E\u0435\u043A\u0442 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438.\n\n\u0410 \u043F\u043E\u043A\u0430 \u0432\u044B \u043C\u043E\u0436\u0435\u0442\u0435 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u044D\u0442\u0438 \u0444\u0430\u0439\u043B\u044B \u0432\u0440\u0443\u0447\u043D\u0443\u044E \u0438\u043B\u0438 \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B, \u0447\u0442\u043E\u0431\u044B \u044F \u0441\u0434\u0435\u043B\u0430\u043B \u044D\u0442\u043E \u0441\u0430\u043C.\n\n### 1. \u0060Calculator.cs\u0060 (\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u043A\u043E\u0434 \u0441 UI)\n\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u043C WinForms \u0434\u043B\u044F \u043A\u043B\u0430\u0441\u0441\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0438 \u0430\u043A\u043A\u0443\u0440\u0430\u0442\u043D\u043E\u0433\u043E \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430.\n\n\u0060\u0060\u0060csharp\nusing System;\nusing System.Drawing;\nusing System.Windows.Forms;\n\nnamespace Calculator\n{\n    public class MainForm : Form\n    {\n        private TextBox display;\n        private double num1 = 0;\n        private string op = \u0022\u0022;\n        private bool isNewEntry = true;\n\n        public MainForm()\n        {\n            Text = \u0022\u041A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0022;\n            Size = new Size(320, 450);\n            StartPosition = FormStartPosition.CenterScreen;\n            FormBorderStyle = FormBorderStyle.FixedSingle;\n            MaximizeBox = false;\n            BackColor = Color.FromArgb(45, 45, 48);\n\n            display = new TextBox\n            {\n                Font = new Font(\u0022Segoe UI\u0022, 24),\n                TextAlign = HorizontalAlignment.Right,\n                Size = new Size(280, 60),\n                Location = new Point(12, 12),\n                ReadOnly = true,\n                BackColor = Color.FromArgb(37, 37, 38),\n                ForeColor = Color.White,\n                BorderStyle = BorderStyle.None,\n                Text = \u00220\u0022\n            };\n            Controls.Add(display);\n\n            string[,] buttons = {\n                {\u0022C\u0022, \u0022\u00B1\u0022, \u0022%\u0022, \u0022/\u0022},\n                {\u00227\u0022, \u00228\u0022, \u00229\u0022, \u0022*\u0022},\n                {\u00224\u0022, \u00225\u0022, \u00226\u0022, \u0022-\u0022},\n                {\u00221\u0022, \u00222\u0022, \u00223\u0022, \u0022\u002B\u0022},\n                {\u00220\u0022, \u0022.\u0022, \u0022=\u0022, \u0022=\u0022}\n            };\n\n            for (int r = 0; r \u003C 5; r\u002B\u002B)\n            {\n                for (int c = 0; c \u003C 4; c\u002B\u002B)\n                {\n                    var btn = new Button();\n                    btn.Text = buttons[r, c];\n                    btn.Size = new Size(65, 65);\n                    btn.Location = new Point(12 \u002B c * 70, 85 \u002B r * 70);\n                    btn.FlatStyle = FlatStyle.Flat;\n                    btn.FlatAppearance.BorderSize = 0;\n                    btn.Font = new Font(\u0022Segoe UI\u0022, 16);\n                    btn.Cursor = Cursors.Hand;\n\n                    if (btn.Text == \u0022=\u0022) btn.BackColor = Color.FromArgb(0, 122, 204);\n                    else if (\u0022/*-\u002B%\u0022.Contains(btn.Text)) btn.BackColor = Color.FromArgb(62, 62, 66);\n                    else if (btn.Text == \u0022C\u0022) btn.BackColor = Color.FromArgb(200, 50, 50);\n                    else btn.BackColor = Color.FromArgb(50, 50, 53);\n\n                    btn.ForeColor = Color.White;\n                    btn.Click \u002B= Button_Click;\n                    Controls.Add(btn);\n                }\n            }\n        }\n\n        private void Button_Click(object sender, EventArgs e)\n        {\n            var btn = (Button)sender;\n            string text = btn.Text;\n\n            if (char.IsDigit(text[0]) || text == \u0022.\u0022)\n            {\n                if (isNewEntry) { display.Text = text == \u0022.\u0022 ? \u00220.\u0022 : text; isNewEntry = false; }\n                else if (text != \u0022.\u0022 || !display.Text.Contains(\u0022.\u0022)) display.Text \u002B= text;\n            }\n            else if (text == \u0022C\u0022) { display.Text = \u00220\u0022; num1 = 0; op = \u0022\u0022; isNewEntry = true; }\n            else if (text == \u0022\u00B1\u0022) { display.Text = (double.Parse(display.Text) * -1).ToString(); }\n            else if (text == \u0022%\u0022) { display.Text = (double.Parse(display.Text) / 100).ToString(); }\n            else if (text == \u0022=\u0022)\n            {\n                Calculate();\n                op = \u0022\u0022;\n                isNewEntry = true;\n            }\n            else\n            {\n                if (!isNewEntry \u0026\u0026 op != \u0022\u0022) Calculate();\n                num1 = double.Parse(display.Text);\n                op = text;\n                isNewEntry = true;\n            }\n        }\n\n        private void Calculate()\n        {\n            double num2 = double.Parse(display.Text);\n            switch (op)\n            {\n                case \u0022\u002B\u0022: display.Text = (num1 \u002B num2).ToString(); break;\n                case \u0022-\u0022: display.Text = (num1 - num2).ToString(); break;\n                case \u0022*\u0022: display.Text = (num1 * num2).ToString(); break;\n                case \u0022/\u0022: display.Text = num2 != 0 ? (num1 / num2).ToString() : \u0022\u041E\u0448\u0438\u0431\u043A\u0430\u0022; break;\n            }\n        }\n    }\n\n    static class Program\n    {\n        [STAThread]\n        static void Main()\n        {\n            Application.EnableVisualStyles();\n            Application.Run(new MainForm());\n        }\n    }\n}\n\u0060\u0060\u0060\n\n### 2. \u0060build_and_run.bat\u0060 (\u0421\u0431\u043E\u0440\u043A\u0430 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A)\n\u042D\u0442\u043E\u0442 \u0441\u043A\u0440\u0438\u043F\u0442 \u043D\u0430\u0439\u0434\u0435\u0442 \u043A\u043E\u043C\u043F\u0438\u043B\u044F\u0442\u043E\u0440 C# \u0432 \u0441\u0438\u0441\u0442\u0435\u043C\u0435, \u0441\u043E\u0431\u0435\u0440\u0435\u0442 \u043F\u0440\u043E\u0435\u043A\u0442 \u0438 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442 \u0435\u0433\u043E.\n\n\u0060\u0060\u0060batch\n@echo off\nchcp 65001 \u003Enul\necho \u041F\u043E\u0438\u0441\u043A \u043A\u043E\u043C\u043F\u0438\u043B\u044F\u0442\u043E\u0440\u0430 C#...\n\nset CSC=\nfor /f \u0022delims=\u0022 %%i in (\u0027dir /b /s \u0022%ProgramFiles%\\dotnet\\sdk\\*\\Roslyn\\bincore\\csc.dll\u0022 2^\u003Enul\u0027) do set CSC=%%i\nif \u0022%CSC%\u0022==\u0022\u0022 (\n    for /f \u0022delims=\u0022 %%i in (\u0027dir /b /s \u0022%ProgramFiles(x86)%\\MSBuild\\*\\Bin\\Roslyn\\csc.exe\u0022 2^\u003Enul\u0027) do set CSC=%%i\n)\n\nif \u0022%CSC%\u0022==\u0022\u0022 (\n    echo \u041E\u0448\u0438\u0431\u043A\u0430: \u041A\u043E\u043C\u043F\u0438\u043B\u044F\u0442\u043E\u0440 C# \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D. \u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 .NET SDK \u0438\u043B\u0438 Visual Studio Build Tools.\n    pause\n    exit /b 1\n)\n\necho \u041A\u043E\u043C\u043F\u0438\u043B\u044F\u0446\u0438\u044F...\nif exist \u0022%ProgramFiles%\\dotnet\\dotnet.exe\u0022 (\n    dotnet \u0022%CSC%\u0022 /target:winexe /out:Calculator.exe Calculator.cs\n) else (\n    \u0022%CSC%\u0022 /target:winexe /out:Calculator.exe Calculator.cs\n)\n\nif %errorlevel% neq 0 (\n    echo \u041E\u0448\u0438\u0431\u043A\u0430 \u043A\u043E\u043C\u043F\u0438\u043B\u044F\u0446\u0438\u0438!\n    pause\n    exit /b 1\n)\n\necho \u0417\u0430\u043F\u0443\u0441\u043A \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430...\nstart Calculator.exe\n\u0060\u0060\u0060\n\n**\u0427\u0442\u043E \u0434\u0435\u043B\u0430\u0442\u044C \u0434\u0430\u043B\u044C\u0448\u0435:**\n1. \u0412\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B, \u043D\u0430\u043F\u0438\u0441\u0430\u0432 \u00AB\u0432\u043A\u043B\u044E\u0447\u0438 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B\u00BB \u0438\u043B\u0438 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0432 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0432 GUI \u2014 \u044F \u0441\u043E\u0437\u0434\u0430\u043C \u044D\u0442\u0438 \u0444\u0430\u0439\u043B\u044B \u0432 \u043A\u043E\u0440\u043D\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u0060test_qwen\u0060.\n2. \u041B\u0438\u0431\u043E \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0435 \u043A\u043E\u0434 \u0432\u044B\u0448\u0435 \u0432 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0444\u0430\u0439\u043B\u044B \u0432\u0440\u0443\u0447\u043D\u0443\u044E \u0438 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 \u0060build_and_run.bat\u0060.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
       "Bg": "#16213e"
     },
     {
       "Author": "\u0422\u044B",
       "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
+      "Bg": "#0f3460"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u042F \u0433\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u043F\u0440\u043E\u0435\u043A\u0442\u0435 \u0060C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen\u0060.\n\n\u041E\u0431\u0440\u0430\u0442\u0438 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u0435: \u0441\u0435\u0439\u0447\u0430\u0441 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B (\u0440\u0435\u0436\u0438\u043C \u043E\u0431\u044B\u0447\u043D\u043E\u0433\u043E \u0447\u0430\u0442\u0430). \u0427\u0442\u043E\u0431\u044B \u044F \u043C\u043E\u0433 \u0447\u0438\u0442\u0430\u0442\u044C \u0444\u0430\u0439\u043B\u044B \u0438 \u0432\u043D\u043E\u0441\u0438\u0442\u044C \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F, \u043F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u0430\u043A\u0442\u0438\u0432\u0438\u0440\u0443\u0439 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u0430\u043C. \u041F\u043E\u0441\u043B\u0435 \u044D\u0442\u043E\u0433\u043E \u0441\u043A\u0430\u0436\u0438, \u0441 \u0447\u0435\u0433\u043E \u043D\u0430\u0447\u0430\u0442\u044C \u0438\u043B\u0438 \u043A\u0430\u043A\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443 \u0440\u0435\u0448\u0438\u0442\u044C.",
+      "Bg": "#16213e"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
       "Bg": "#0f3460"
     }
   ]

@@ -17,11 +17,9 @@ internal sealed partial class GatewayState
             if (s.Root == null) return null;
             var rootFull = Path.GetFullPath(s.Root);
             if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) return null;
-
             var rel = Path.GetRelativePath(rootFull, fullPath);
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
             var dest = Path.Combine(rootFull, ".leron", "backup", stamp, rel);
-
             if (File.Exists(fullPath))
             {
                 var destDir = Path.GetDirectoryName(dest);
@@ -33,7 +31,6 @@ internal sealed partial class GatewayState
                 CopyDirectory(fullPath, dest);
             }
             else return null;
-
             card.Backup = true;
             return $".leron/backup/{stamp}/{rel.Replace('\\', '/')}";
         }
@@ -50,7 +47,6 @@ internal sealed partial class GatewayState
 
         var stack = new Stack<string>();
         stack.Push(baseDir);
-
         while (stack.Count > 0 && !truncated)
         {
             var dir = stack.Pop();
@@ -66,7 +62,6 @@ internal sealed partial class GatewayState
             {
                 if (!SkipDir(Path.GetFileName(d))) stack.Push(d);
             }
-
             foreach (var f in files)
             {
                 if (filesSeen++ > 3000) { truncated = true; break; }
@@ -95,13 +90,11 @@ internal sealed partial class GatewayState
     public async Task<ToolExecution> ExecuteToolAsync(AgentSession s, PendingTool c)
     {
         string Arg(string key) => GetStr(c.Args, key);
-
         var exec = new ToolExecution
         {
             Tool = c.Name,
             Card = new ActionCard { Type = "info", Icon = "🛠", Title = c.Name, Status = "выполняется" }
         };
-
         try
         {
             switch (c.Name)
@@ -198,15 +191,28 @@ internal sealed partial class GatewayState
                     string output; int count; bool truncated;
                     if (File.Exists(p))
                     {
-                        var dir = Path.GetDirectoryName(p) ?? ".";
-                        var fileName = Path.GetFileName(p);
-                        var all = GrepFiles(s, dir, pattern, caseSensitive);
-                        var lines = all.output.Split('\n')
-                            .Where(x => x.StartsWith(fileName + ":", StringComparison.OrdinalIgnoreCase))
-                            .ToList();
-                        output = string.Join('\n', lines);
-                        count = lines.Count;
-                        truncated = all.truncated;
+                        // Один файл: ищем прямо в нём. Раньше здесь был поиск по папке
+                        // с фильтром по имени файла — он ломался на вложенных путях
+                        // (DisplayPath возвращает "sub/file.cs", а не "file.cs").
+                        var cmp = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+                        var sb = new StringBuilder();
+                        count = 0; truncated = false;
+                        try
+                        {
+                            int lineNo = 0;
+                            foreach (var line in File.ReadLines(p))
+                            {
+                                lineNo++;
+                                if (!line.Contains(pattern, cmp)) continue;
+                                count++;
+                                var t = line.Trim();
+                                if (t.Length > 300) t = t.Substring(0, 300) + "…";
+                                sb.AppendLine($"{DisplayPath(s, p)}:{lineNo}:{t}");
+                                if (count >= 200) { truncated = true; break; }
+                            }
+                        }
+                        catch { }
+                        output = sb.ToString();
                     }
                     else if (Directory.Exists(p))
                     {
@@ -255,17 +261,20 @@ internal sealed partial class GatewayState
                     var dir = Path.GetDirectoryName(p);
                     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
                     var content = Arg("content");
-                    File.WriteAllText(p, content);
-                    exec.Output = $"Файл записан: {raw}";
-                    exec.Log = $"write_file {raw} → OK";
-                    exec.Path = p;
-                    exec.Mutated = true;
-                    exec.Card = new ActionCard
+                    var card = new ActionCard
                     {
                         Type = "write", Icon = "✏️", Title = "Запись файла", Status = "OK",
                         Path = DisplayPath(s, p), NewText = Truncate(content, 6000),
                         Details = $"{content.Length} символов"
                     };
+                    // Перезапись существующего файла: бэкап предыдущей версии до записи.
+                    if (File.Exists(p)) BackupFullPath(s, p, card);
+                    File.WriteAllText(p, content);
+                    exec.Output = $"Файл записан: {raw}" + (card.Backup ? "\nСоздан бэкап предыдущей версии." : "");
+                    exec.Log = $"write_file {raw} → OK";
+                    exec.Path = p;
+                    exec.Mutated = true;
+                    exec.Card = card;
                     return exec;
                 }
 
@@ -370,7 +379,7 @@ internal sealed partial class GatewayState
                     if (File.Exists(source)) File.Move(source, dest);
                     else Directory.Move(source, dest);
                     exec.Output = $"Переименовано: {rawSource} → {rawDest}" +
-                                  (backup != null ? $"\nСоздан бэкап: {backup}" : "");
+                        (backup != null ? $"\nСоздан бэкап: {backup}" : "");
                     exec.Log = $"rename_file {rawSource} → OK";
                     exec.Path = dest;
                     exec.Mutated = true;
