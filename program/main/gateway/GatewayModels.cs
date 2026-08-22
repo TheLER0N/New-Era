@@ -87,6 +87,8 @@ class AgentSession
     public HashSet<string> ChangedFiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public int StepLimit { get; set; } = 8;
     public int StepUsed { get; set; }
+    // напоминания «ответь JSON-блоком» при тексте/неизвестном инструменте (максимум 2)
+    public int TextRetries { get; set; }
     public bool RepairMode { get; set; }
     public int RepairAttempts { get; set; }
     public List<OutsideGrant> OutsideGrants { get; set; } = new();
@@ -147,21 +149,15 @@ class CommandResult
 internal sealed partial class GatewayState
 {
     public static string NormPath(string path) => path.TrimEnd('\\', '/');
-
     public static string Truncate(string s, int n) =>
         string.IsNullOrEmpty(s) || s.Length <= n ? s : s.Substring(0, n) + "…";
-
     public static string Tail(string s, int n) =>
         string.IsNullOrEmpty(s) || s.Length <= n ? s : s.Substring(s.Length - n);
-
     public static string NormCommand(string command) =>
         Regex.Replace(command.Trim().ToLowerInvariant(), @"\s+", " ");
-
     public static string CommandKey(string command) => $"run_command:{NormCommand(command)}";
-
     public static bool SkipDir(string name) =>
         name is "bin" or "obj" or ".git" or ".vs" or ".vscode" or ".idea" or ".leron" or "node_modules";
-
     public static bool IsBinaryExt(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
@@ -169,23 +165,18 @@ internal sealed partial class GatewayState
             or ".zip" or ".rar" or ".7z" or ".exe" or ".dll" or ".pdb" or ".bin"
             or ".mp3" or ".mp4" or ".avi" or ".mov" or ".woff" or ".woff2" or ".ttf";
     }
-
     public static bool ModeAllowsEdit(string mode) =>
         mode is "edit" or "auto" or "yolo" or "repair";
-
     public static bool IsMutating(string name) =>
         name is "write_file" or "patch_file" or "edit_file" or "rename_file"
-            or "delete_file" or "create_directory";
-
+        or "delete_file" or "create_directory";
     public static bool IsSpecial(string name) =>
         name is "request_user_input" or "request_more_steps" or "request_outside_access";
-
     public static bool IsKnownTool(string name) =>
         name is "read_file" or "list_files" or "grep" or "write_file" or "patch_file"
-            or "edit_file" or "rename_file" or "delete_file" or "create_directory"
-            or "run_command" or "request_user_input" or "request_more_steps"
-            or "request_outside_access" or "finish";
-
+        or "edit_file" or "rename_file" or "delete_file" or "create_directory"
+        or "run_command" or "request_user_input" or "request_more_steps"
+        or "request_outside_access" or "finish";
     public static bool IsDangerousCommand(string command)
     {
         var cmd = NormCommand(command);
@@ -199,13 +190,11 @@ internal sealed partial class GatewayState
             if (cmd.Contains(d)) return true;
         return false;
     }
-
     public static bool IsDangerousTool(AgentSession s, PendingTool c)
     {
         if (c.Name != "run_command") return false;
         return IsDangerousCommand(GetStr(c.Args, "command"));
     }
-
     public static string PathRule(string tool, string fullPath, string? root)
     {
         try
@@ -228,7 +217,6 @@ internal sealed partial class GatewayState
         catch { }
         return $"{tool}:{fullPath.Replace('\\', '/').Trim('/')}";
     }
-
     public static string StripProviderMetadata(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
@@ -258,16 +246,47 @@ internal sealed partial class GatewayState
         return null;
     }
 
+    // Расширенный парсер: находит первый объект с полем "name", даже если
+    // инструмент НЕизвестный (Qwen любит вызывать свой встроенный web_search).
+    // Известные инструменты имеют приоритет над первым неизвестным.
+    public static (string name, JsonObject args, bool known)? TryParseAnyToolCall(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        (string, JsonObject, bool)? firstUnknown = null;
+        foreach (var candidate in ExtractJsonObjects(text))
+        {
+            try
+            {
+                var node = JsonNode.Parse(candidate) as JsonObject;
+                if (node == null) continue;
+                var name = GetStr(node, "name");
+                if (string.IsNullOrEmpty(name)) continue;
+                var args = node["arguments"] as JsonObject;
+                if (args == null)
+                {
+                    string? argsStr = null;
+                    try { argsStr = node["arguments"]?.GetValue<string>(); } catch { }
+                    if (!string.IsNullOrWhiteSpace(argsStr))
+                    {
+                        try { args = JsonNode.Parse(argsStr) as JsonObject; } catch { }
+                    }
+                }
+                if (IsKnownTool(name)) return (name, args ?? new JsonObject(), true);
+                firstUnknown ??= (name, args ?? new JsonObject(), false);
+            }
+            catch { }
+        }
+        return firstUnknown;
+    }
+
     private static (string name, JsonObject args)? TryParseToolObject(string candidate)
     {
         try
         {
             var node = JsonNode.Parse(candidate) as JsonObject;
             if (node == null) return null;
-
             var name = GetStr(node, "name");
             if (string.IsNullOrEmpty(name) || !IsKnownTool(name)) return null;
-
             var args = node["arguments"] as JsonObject;
             if (args == null)
             {

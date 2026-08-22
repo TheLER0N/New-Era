@@ -23,7 +23,6 @@ internal sealed partial class GatewayState
         AgentLog($"[FINAL] {Truncate(text, 500)}");
         if (!string.IsNullOrEmpty(s.Role))
             LogRole(s.Role, $"[AGENT]: {Truncate(text, 300)}");
-
         var changed = s.ChangedFiles.Take(50).ToList();
         var details = new StringBuilder();
         details.AppendLine(text);
@@ -45,7 +44,6 @@ internal sealed partial class GatewayState
             Icon = resultStatus == "failed" ? "❌" : resultStatus == "needs_user" ? "⚠️" : "✅",
             Title = "Итог", Status = resultStatus, Details = details.ToString()
         });
-
         return new
         {
             status = "final", role = s.Role, resultStatus, response = text,
@@ -149,9 +147,10 @@ internal sealed partial class GatewayState
         if (s.RepairMode)
             sb.AppendLine("ВНИМАНИЕ: последняя проверка проекта упала. Сейчас ремонт: прочитай ошибку, исправь причину минимально и повтори проверку.");
         sb.AppendLine();
-        sb.AppendLine("Если нужно действие, ответь строго одним JSON-блоком:");
-        sb.AppendLine("{\"name\":\"...\",\"arguments\":{...}}");
-        sb.AppendLine("Если действие не нужно, ответь текстом на русском.");
+        sb.AppendLine("ОТВЕТ-ПРОТОКОЛ: если нужно действие — ответь СТРОГО одним JSON-блоком");
+        sb.AppendLine("{\"name\":\"имя_инструмента\",\"arguments\":{...}} без любого другого текста.");
+        sb.AppendLine("Действие не нужно — ответь обычным текстом на русском.");
+        sb.AppendLine("Используй ТОЛЬКО инструменты из списка выше. Не выдумывай web_search, list_directory и т.п.");
         sb.AppendLine();
         return sb.ToString();
     }
@@ -175,7 +174,6 @@ internal sealed partial class GatewayState
                 // запрос (например, вопрос после проваленной проверки) — сначала он.
                 if (s.Pending.Count > 0 && IsSpecial(s.Pending.Peek().Name))
                     return PauseSpecial(s, s.Pending.Peek());
-
                 var limit = new PendingTool
                 {
                     Id = Guid.NewGuid().ToString(),
@@ -199,31 +197,25 @@ internal sealed partial class GatewayState
                 s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, head);
             }
 
-            string prompt;
+            string body;
             if (!string.IsNullOrEmpty(s.BrowserNextPrompt))
             {
-                prompt = s.BrowserNextPrompt;
+                body = s.BrowserNextPrompt;
                 s.BrowserNextPrompt = "";
             }
             else
             {
-                var userText = s.Messages.Count > 0
+                body = s.Messages.Count > 0
                     ? s.Messages[s.Messages.Count - 1]?["content"]?.GetValue<string>() ?? "" : "";
-                // полная инструкция — один раз на сессию чата, дальше только текст задачи
-                if (!InstructionSent.TryGetValue(s.Role, out var sent) || !sent)
-                {
-                    prompt = BrowserInstruction(s) + userText;
-                    InstructionSent[s.Role] = true;
-                }
-                else
-                {
-                    prompt = userText;
-                }
             }
+
+            // ПОЛНАЯ инструкция каждый шаг: без неё Qwen забывает протокол
+            // инструментов и начинает отвечать текстом или своими инструментами.
+            string prompt = BrowserInstruction(s) + "\n" + body;
 
             var reqId = NextReqId();
             AgentLog($"[BROWSER] шаг {s.StepUsed + 1} reqid={reqId}: {Truncate(prompt, 220)}");
-            var (ok, text) = await SendToBrowserAndWait(s.Role, prompt, s.Think, 300000, loopToken, reqId);
+            var (ok, text) = await SendToBrowserAndWait(s.Role, prompt, s.Think, Timeout.Infinite, loopToken, reqId);
             if (!ok)
             {
                 AgentLog($"[BROWSER ERROR] {text}");
@@ -235,10 +227,41 @@ internal sealed partial class GatewayState
             }
             s.StepUsed++;
 
-            var parsed = TryParseTextToolCall(text);
+            var parsed = TryParseAnyToolCall(text);
             if (parsed == null)
+            {
+                // ИИ ответил текстом вместо JSON: до 2 напоминаний, потом финал.
+                if (s.AllowTools && s.TextRetries < 2)
+                {
+                    s.TextRetries++;
+                    AgentLog($"[RETRY] роль={s.Role} текст вместо JSON (попытка {s.TextRetries}/2)");
+                    s.BrowserNextPrompt =
+                        "Ты ответил текстом, но задача не завершена. Если нужно действие — ответь одним " +
+                        "JSON-блоком {\"name\":\"...\",\"arguments\":{...}}. Если действий больше нет — вызови " +
+                        "{\"name\":\"finish\",\"arguments\":{\"summary\":\"...\",\"status\":\"success\"}}.";
+                    continue;
+                }
                 return Finish(s, StripProviderMetadata(text), "success");
+            }
 
+            if (!parsed.Value.known)
+            {
+                // Qwen вызвал свой встроенный инструмент (web_search и т.п.) — поправляем.
+                if (s.AllowTools && s.TextRetries < 2)
+                {
+                    s.TextRetries++;
+                    AgentLog($"[RETRY] роль={s.Role} неизвестный инструмент '{parsed.Value.name}' (попытка {s.TextRetries}/2)");
+                    s.BrowserNextPrompt =
+                        $"Неизвестный инструмент '{parsed.Value.name}'. Его нет в системе. Разрешены только: " +
+                        "read_file, list_files, grep, write_file, patch_file, rename_file, delete_file, " +
+                        "create_directory, run_command, request_user_input, request_more_steps, " +
+                        "request_outside_access, finish. Повтори ответ одним корректным JSON-блоком.";
+                    continue;
+                }
+                return Finish(s, StripProviderMetadata(text), "success");
+            }
+
+            s.TextRetries = 0;
             var c = new PendingTool
             {
                 Id = Guid.NewGuid().ToString(),
@@ -289,11 +312,31 @@ internal sealed partial class GatewayState
             AgentLog($"[SEND] роль={role} reqid={reqId} текст={Truncate(text, 120)}");
             LogRole(role, $"[USER]: {Truncate(text, 300)}");
 
+            // осиротевший ответ мог прийти ещё до этого запроса — подхватываем сразу
+            if (OrphanResponses.TryRemove(role, out var early) &&
+                (string.IsNullOrEmpty(early.reqId) || early.reqId == reqId))
+            {
+                AgentLog($"[ORPHAN] роль={role} ответ подхвачен из буфера до отправки");
+                LastSentText.TryRemove(role, out _);
+                return (true, early.text);
+            }
+
             var tcs = new TaskCompletionSource<string>();
             PendingResponses[role] = tcs;
             var cts = new CancellationTokenSource();
             PendingCancels[role] = cts;
             using var abortReg = abort.Register(() => tcs.TrySetCanceled());
+
+            // ответ мог влететь между установкой ожидания и отправкой
+            if (OrphanResponses.TryRemove(role, out var between) &&
+                (string.IsNullOrEmpty(between.reqId) || between.reqId == reqId))
+            {
+                PendingResponses.TryRemove(role, out _);
+                PendingCancels.TryRemove(role, out _);
+                LastSentText.TryRemove(role, out _);
+                AgentLog($"[ORPHAN] роль={role} ответ подхвачен из буфера до ожидания");
+                return (true, between.text);
+            }
 
             var chatId = RoleChatMap[role];
             var url = Config.Roles.TryGetValue(role, out var roleCfg) && !string.IsNullOrEmpty(roleCfg.Url)
@@ -319,20 +362,47 @@ internal sealed partial class GatewayState
                 return (false, "Браузерная панель не подключена. Открой LERON GUI и дождись подключения.");
             }
 
-            var delayTask = Task.Delay(timeoutMs);
             var cancelTask = Task.Run(async () => { try { await Task.Delay(Timeout.Infinite, cts.Token); } catch { } });
-            var done = await Task.WhenAny(tcs.Task, delayTask, cancelTask);
+            Task? delayTask = timeoutMs > 0 ? Task.Delay(timeoutMs) : null;
+
+            while (true)
+            {
+                var racers = new List<Task> { tcs.Task, cancelTask };
+                // есть таймаут — ждём его; нет — короткие срезы для проверки буфера
+                racers.Add(delayTask ?? Task.Delay(2000));
+                var done = await Task.WhenAny(racers);
+
+                if (done == tcs.Task || done == cancelTask) break;
+                if (delayTask != null) break; // сработал таймаут
+
+                // срез бесконечного ожидания: отмена или осиротевший ответ из буфера
+                if (abort.IsCancellationRequested)
+                {
+                    tcs.TrySetCanceled();
+                    break;
+                }
+                if (OrphanResponses.TryGetValue(role, out var orph) &&
+                    (string.IsNullOrEmpty(orph.reqId) || orph.reqId == reqId))
+                {
+                    OrphanResponses.TryRemove(role, out _);
+                    AgentLog($"[ORPHAN] роль={role} ответ подхвачен из буфера во время ожидания");
+                    tcs.TrySetResult(orph.text);
+                    break;
+                }
+            }
+
             PendingResponses.TryRemove(role, out _);
             PendingCancels.TryRemove(role, out _);
             LastSentText.TryRemove(role, out _);
 
-            if (done == tcs.Task)
+            if (tcs.Task.IsCompleted)
             {
                 if (tcs.Task.IsCanceled || abort.IsCancellationRequested) return (false, "cancelled");
                 return (true, await tcs.Task);
             }
-            if (done == cancelTask) return (false, "cancelled");
-            return (false, "Браузер не ответил за 300 секунд.");
+            if (delayTask != null)
+                return (false, $"Браузер не ответил за {timeoutMs / 1000} секунд.");
+            return (false, "cancelled");
         }
         catch (OperationCanceledException)
         {
@@ -443,7 +513,6 @@ internal sealed partial class GatewayState
     public bool NeedsAsk(AgentSession s, PendingTool c)
     {
         if (!s.AllowTools) return false;
-
         if (c.Name == "run_command")
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -461,7 +530,6 @@ internal sealed partial class GatewayState
             }
             return true;
         }
-
         if (IsMutating(c.Name))
         {
             if (s.Mode is "chat" or "plan") return false;
@@ -473,7 +541,6 @@ internal sealed partial class GatewayState
             if (s.Mode == "auto") return !IsAutoApproved(rule);
             return true;
         }
-
         return false;
     }
 }

@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : cli
-  GENERATED      : 22.08.2026 18:14:28
+  GENERATED      : 22.08.2026 18:22:57
   PATH           : C:\Users\Пользователь\Desktop\cli
 ================================================================
 
@@ -3057,7 +3057,7 @@ public partial class MainWindow : ChromeWindow
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindowCards.cs
-SIZE: 17378 bytes
+SIZE: 18122 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -3083,6 +3083,7 @@ public partial class MainWindow
     private void AddActionCard(ActionCardDto card)
     {
         var borderColor = "#123626";
+
         if (card.Type == "error") borderColor = "#e94560";
         else if (card.Type == "outside") borderColor = "#e94560";
         else if (card.Type == "repair") borderColor = "#ffb14a";
@@ -3106,13 +3107,18 @@ public partial class MainWindow
         var left = new StackPanel { Orientation = Orientation.Horizontal };
         left.Children.Add(CardText(card.Icon + " ", "#00ff88", 13, true));
         left.Children.Add(CardText(card.Title, "#d9ffe7", 13, true));
+
         if (!string.IsNullOrWhiteSpace(card.Status))
             left.Children.Add(CardText(" · " + card.Status, "#7dffa8", 12));
 
         var sub = !string.IsNullOrWhiteSpace(card.Path) ? card.Path
-            : !string.IsNullOrWhiteSpace(card.Command) ? card.Command : "";
+                : !string.IsNullOrWhiteSpace(card.Command) ? card.Command : "";
+
         if (!string.IsNullOrWhiteSpace(sub))
             left.Children.Add(CardText("  " + sub, "#447a5a", 12));
+
+        if (card.Type == "outside" || IsOutsidePath(card.Path))
+            left.Children.Add(CardText("  вне проекта", "#e94560", 12));
 
         Grid.SetColumn(left, 0);
         header.Children.Add(left);
@@ -3122,7 +3128,9 @@ public partial class MainWindow
             Margin = new Thickness(0, 6, 0, 0),
             Visibility = Visibility.Collapsed
         };
+
         FillCardDetails(details, card);
+
         if (card.Backup)
             details.Children.Add(CardText("💾 создан бэкап", "#7dffa8", 12));
 
@@ -3136,6 +3144,7 @@ public partial class MainWindow
                 Foreground = B("#447a5a"), FontFamily = Theme.Font(),
                 FontSize = 13, VerticalAlignment = VerticalAlignment.Center
             };
+
             chevron.Click += (_, _) =>
             {
                 bool show = details.Visibility != Visibility.Visible;
@@ -3143,6 +3152,7 @@ public partial class MainWindow
                 chevron.Content = show ? "˅" : "˄";
                 ChatScroll.ScrollToEnd();
             };
+
             Grid.SetColumn(chevron, 1);
             header.Children.Add(chevron);
         }
@@ -3150,8 +3160,23 @@ public partial class MainWindow
         sp.Children.Add(header);
         sp.Children.Add(details);
         border.Child = sp;
+
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
+    }
+
+    private static bool IsOutsidePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+
+        try
+        {
+            return System.IO.Path.IsPathRooted(path);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void FillCardDetails(StackPanel details, ActionCardDto card)
@@ -3178,10 +3203,16 @@ public partial class MainWindow
                 if (!string.IsNullOrWhiteSpace(card.Command))
                     details.Children.Add(CodeBlock(
                         $"команда · {card.Shell ?? "CMD"}", card.Command!, "#7dffa8"));
+
                 if (!string.IsNullOrWhiteSpace(card.Details))
                     details.Children.Add(CodeBlock(
                         $"вывод · exit {card.ExitCode}", card.Details,
                         card.ExitCode.HasValue && card.ExitCode.Value != 0 ? "#e94560" : "#9fe8bb"));
+                break;
+
+            case "outside":
+                if (!string.IsNullOrWhiteSpace(card.Details))
+                    details.Children.Add(CodeBlock("вне проекта", card.Details, "#e94560"));
                 break;
 
             default:
@@ -3194,18 +3225,21 @@ public partial class MainWindow
     private static UIElement CodeBlock(string header, string text, string accent)
     {
         var sp = new StackPanel { Margin = new Thickness(0, 3, 0, 3) };
+
         sp.Children.Add(new TextBlock
         {
             Text = header, Foreground = B(accent),
             FontFamily = Theme.Font(), FontSize = 11,
             Margin = new Thickness(2, 0, 0, 3)
         });
+
         var code = new TextBlock
         {
             Text = text, Foreground = B("#d9ffe7"),
             FontFamily = new FontFamily("Consolas"), FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap
         };
+
         var scroll = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -3213,6 +3247,7 @@ public partial class MainWindow
             MaxHeight = 320,
             Content = code
         };
+
         var box = new Border
         {
             Background = B("#04110c"), BorderBrush = B("#123626"),
@@ -3220,6 +3255,7 @@ public partial class MainWindow
             Padding = new Thickness(8, 6, 8, 6),
             Child = scroll
         };
+
         sp.Children.Add(box);
         return sp;
     }
@@ -3242,11 +3278,13 @@ public partial class MainWindow
             Content = text, Background = B(background), Foreground = B(foreground),
             Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(0, 0, 6, 0)
         };
+
         btn.Click += (_, _) =>
         {
             btn.IsEnabled = false;
             onClick();
         };
+
         return btn;
     }
 
@@ -3271,9 +3309,12 @@ public partial class MainWindow
 
         var sp = new StackPanel();
         var title = r.Dangerous ? "⚠️ ОПАСНОЕ ДЕЙСТВИЕ" : "🛠 Подтверждение действия";
+
         sp.Children.Add(CardText(title, r.Dangerous ? "#e94560" : "#00ff88", 14, true));
+
         var statusTb = CardText("ожидает ответа", "#447a5a", 12);
         sp.Children.Add(statusTb);
+
         sp.Children.Add(CardText($"Инструмент: {r.Tool}", "#d9ffe7", 13));
         sp.Children.Add(CardText(DescribePending(r), "#9fe8bb", 13));
 
@@ -3281,18 +3322,21 @@ public partial class MainWindow
         {
             Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
         };
+
         buttons.Children.Add(MakeButton("Разрешить", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 0, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("Разрешить и запомнить", "#0d2418", "#7dffa8", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = true,
                 steps = 0, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("Запретить", "#1a0f14", "#e94560", () =>
             AnswerAndClose(border, new
             {
@@ -3303,6 +3347,7 @@ public partial class MainWindow
         sp.Children.Add(buttons);
         border.Child = sp;
         border.Tag = statusTb;
+
         _interactiveCards.Add(border);
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
@@ -3319,9 +3364,12 @@ public partial class MainWindow
 
         var sp = new StackPanel();
         sp.Children.Add(CardText("⏱ ИИ просит дополнительные шаги", "#00ff88", 14, true));
+
         var statusTb = CardText("ожидает ответа", "#447a5a", 12);
         sp.Children.Add(statusTb);
+
         sp.Children.Add(CardText($"Просит: +{r.RequestedCount}", "#d9ffe7", 13));
+
         if (!string.IsNullOrWhiteSpace(r.Reason))
             sp.Children.Add(CardText("Причина: " + r.Reason, "#9fe8bb", 13));
 
@@ -3329,18 +3377,21 @@ public partial class MainWindow
         {
             Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
         };
+
         buttons.Children.Add(MakeButton("+4", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 4, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("+8", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 8, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("Стоп", "#1a0f14", "#e94560", () =>
             AnswerAndClose(border, new
             {
@@ -3351,6 +3402,7 @@ public partial class MainWindow
         sp.Children.Add(buttons);
         border.Child = sp;
         border.Tag = statusTb;
+
         _interactiveCards.Add(border);
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
@@ -3367,8 +3419,10 @@ public partial class MainWindow
 
         var sp = new StackPanel();
         sp.Children.Add(CardText("❓ Вопрос пользователю", "#00ff88", 14, true));
+
         var statusTb = CardText("ожидает ответа", "#447a5a", 12);
         sp.Children.Add(statusTb);
+
         sp.Children.Add(CardText(r.Question ?? "Нужна дополнительная информация.", "#d9ffe7", 13));
 
         var box = new TextBox
@@ -3383,12 +3437,14 @@ public partial class MainWindow
         {
             Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
         };
+
         buttons.Children.Add(MakeButton("Ответить", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 0, inputText = box.Text.Trim()
             })));
+
         buttons.Children.Add(MakeButton("Пропустить", "#1a0f14", "#e94560", () =>
             AnswerAndClose(border, new
             {
@@ -3400,6 +3456,7 @@ public partial class MainWindow
         sp.Children.Add(buttons);
         border.Child = sp;
         border.Tag = statusTb;
+
         _interactiveCards.Add(border);
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
@@ -3416,8 +3473,10 @@ public partial class MainWindow
 
         var sp = new StackPanel();
         sp.Children.Add(CardText("🚨 ВНЕ ПРОЕКТА — запрос доступа", "#e94560", 14, true));
+
         var statusTb = CardText("ожидает ответа", "#447a5a", 12);
         sp.Children.Add(statusTb);
+
         sp.Children.Add(CardText($"Путь: {r.Path}", "#d9ffe7", 13));
         sp.Children.Add(CardText($"Причина: {r.Reason}", "#9fe8bb", 13));
         sp.Children.Add(CardText($"Действия: {r.RequestedActions}", "#9fe8bb", 13));
@@ -3426,12 +3485,14 @@ public partial class MainWindow
         {
             Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
         };
+
         buttons.Children.Add(MakeButton("Разрешить доступ", "#123626", "#00ff88", () =>
             AnswerAndClose(border, new
             {
                 sessionId = r.SessionId, approve = true, remember = false,
                 steps = 0, inputText = (string?)null
             })));
+
         buttons.Children.Add(MakeButton("Запретить", "#1a0f14", "#e94560", () =>
             AnswerAndClose(border, new
             {
@@ -3442,6 +3503,7 @@ public partial class MainWindow
         sp.Children.Add(buttons);
         border.Child = sp;
         border.Tag = statusTb;
+
         _interactiveCards.Add(border);
         ChatMessages.Children.Add(border);
         ChatScroll.ScrollToEnd();
@@ -3453,6 +3515,7 @@ public partial class MainWindow
         {
             using var doc = JsonDocument.Parse(r.Arguments ?? "{}");
             var root = doc.RootElement;
+
             string Get(string name) =>
                 root.TryGetProperty(name, out var v) ? v.ToString() : "";
 
@@ -6937,7 +7000,7 @@ SIZE: 679 bytes
       "Name": "test_qwen",
       "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen",
       "Role": "team",
-      "LastOpened": "2026-08-22T18:12:56.3100314\u002B03:00"
+      "LastOpened": "2026-08-22T18:20:39.2384181\u002B03:00"
     }
   ],
   "AutoApprove": [],
@@ -7121,7 +7184,7 @@ public static class GatewayHost
 
 ------------------------------------------------
 FILE: program\sending and receiving\history.json
-SIZE: 34693 bytes
+SIZE: 43885 bytes
 ------------------------------------------------
 {
   "coder": [
@@ -7334,93 +7397,8 @@ SIZE: 34693 bytes
     },
     {
       "Author": "coder",
-      "Text": "\u26A0 \u0411\u0440\u0430\u0443\u0437\u0435\u0440 \u043D\u0435 \u043E\u0442\u0432\u0435\u0442\u0438\u043B \u0437\u0430 300 \u0441\u0435\u043A\u0443\u043D\u0434.\n\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439: 1.",
+      "Text": "\u041A\u043E\u043D\u0435\u0447\u043D\u043E. \u0414\u043B\u044F \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u00AB\u043A\u0440\u0430\u0441\u0438\u0432\u043E\u0433\u043E\u00BB UI \u043D\u0430 C# \u0431\u0435\u0437 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u044F \u0442\u044F\u0436\u0435\u043B\u044B\u0445 \u0441\u0442\u043E\u0440\u043E\u043D\u043D\u0438\u0445 \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A (\u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0441\u043B\u043E\u0436\u043D\u043E \u043D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u043D\u043E\u0432\u0438\u0447\u043A\u0443) \u043B\u0443\u0447\u0448\u0435 \u0432\u0441\u0435\u0433\u043E \u043F\u043E\u0434\u043E\u0439\u0434\u0435\u0442 **WPF**. \u041E\u043D \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C \u0430\u043F\u043F\u0430\u0440\u0430\u0442\u043D\u043E\u0435 \u0443\u0441\u043A\u043E\u0440\u0435\u043D\u0438\u0435, \u043F\u0440\u043E\u0437\u0440\u0430\u0447\u043D\u043E\u0441\u0442\u044C, \u0442\u0435\u043D\u0438 \u0438 \u0441\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0435 \u0448\u0440\u0438\u0444\u0442\u044B, \u0432 \u043E\u0442\u043B\u0438\u0447\u0438\u0435 \u043E\u0442 \u0441\u0442\u0430\u0440\u043E\u0433\u043E WinForms.\n\n\u041D\u0438\u0436\u0435 \u043F\u0440\u0435\u0434\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u043F\u043E\u043B\u043D\u044B\u0439 \u043A\u043E\u0434 \u0441\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E\u0433\u043E \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430 \u0432 \u0441\u0442\u0438\u043B\u0435 \u00ABGlassmorphism\u00BB (\u0442\u0435\u043C\u043D\u0430\u044F \u0442\u0435\u043C\u0430, \u0430\u043A\u0446\u0435\u043D\u0442\u043D\u044B\u0435 \u0446\u0432\u0435\u0442\u0430), \u0430 \u0442\u0430\u043A\u0436\u0435 \u0431\u0430\u0442\u043D\u0438\u043A \u0434\u043B\u044F \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0430.\n\n### 1. \u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0430 \u043F\u0440\u043E\u0435\u043A\u0442\u0430\n\n\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0430\u043F\u043A\u0443, \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 \u0060BeautifulCalculator\u0060, \u0438 \u043F\u043E\u043C\u0435\u0441\u0442\u0438\u0442\u0435 \u0432 \u043D\u0435\u0435 \u0444\u0430\u0439\u043B \u0060App.xaml.cs\u0060 (\u0438\u043B\u0438 \u043F\u0440\u043E\u0441\u0442\u043E \u0060Program.cs\u0060, \u043D\u043E \u0434\u043B\u044F WPF \u0443\u0434\u043E\u0431\u043D\u0435\u0435 single-file \u043F\u043E\u0434\u0445\u043E\u0434 \u0447\u0435\u0440\u0435\u0437 SDK-style \u043F\u0440\u043E\u0435\u043A\u0442).\n\n\u041E\u0434\u043D\u0430\u043A\u043E, \u0447\u0442\u043E\u0431\u044B \u0432\u0430\u043C \u0431\u044B\u043B\u043E \u043C\u0430\u043A\u0441\u0438\u043C\u0430\u043B\u044C\u043D\u043E \u043F\u0440\u043E\u0441\u0442\u043E \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u044D\u0442\u043E **\u043E\u0434\u043D\u0438\u043C \u0444\u0430\u0439\u043B\u043E\u043C** \u0431\u0435\u0437 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0438 Visual Studio (\u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u043E .NET SDK), \u043C\u044B \u0441\u0434\u0435\u043B\u0430\u0435\u043C \u044D\u0442\u043E \u0447\u0435\u0440\u0435\u0437 \u0060.csproj\u0060 \u0438 \u0060MainWindow.xaml\u0060.\n\n#### \u0428\u0430\u0433 1: \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0060BeautifulCalculator.csproj\u0060\n\u0060\u0060\u0060xml\n\u003CProject Sdk=\u0022Microsoft.NET.Sdk\u0022\u003E\n  \u003CPropertyGroup\u003E\n    \u003COutputType\u003EWinExe\u003C/OutputType\u003E\n    \u003CTargetFramework\u003Enet8.0-windows\u003C/TargetFramework\u003E\n    \u003CUseWPF\u003Etrue\u003C/UseWPF\u003E\n    \u003CImplicitUsings\u003Eenable\u003C/ImplicitUsings\u003E\n    \u003CNullable\u003Eenable\u003C/Nullable\u003E\n    \u003C!-- \u0423\u0431\u0438\u0440\u0430\u0435\u043C \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0443\u044E \u0440\u0430\u043C\u043A\u0443 \u043E\u043A\u043D\u0430 \u0434\u043B\u044F \u043A\u0430\u0441\u0442\u043E\u043C\u043D\u043E\u0433\u043E \u0434\u0438\u0437\u0430\u0439\u043D\u0430 --\u003E\n    \u003CApplicationIcon /\u003E\n  \u003C/PropertyGroup\u003E\n\u003C/Project\u003E\n\u0060\u0060\u0060\n\n#### \u0428\u0430\u0433 2: \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0060MainWindow.xaml\u0060\n\u042D\u0442\u043E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043D\u0430\u0448\u0435\u0433\u043E \u043A\u0440\u0430\u0441\u0438\u0432\u043E\u0433\u043E \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430.\n\n\u0060\u0060\u0060xml\n\u003CWindow x:Class=\u0022BeautifulCalculator.MainWindow\u0022\n        xmlns=\u0022http://schemas.microsoft.com/winfx/2006/xaml/presentation\u0022\n        xmlns:x=\u0022http://schemas.microsoft.com/winfx/2006/xaml\u0022\n        Title=\u0022Calculator\u0022 Height=\u0022600\u0022 Width=\u0022400\u0022\n        WindowStartupLocation=\u0022CenterScreen\u0022\n        ResizeMode=\u0022NoResize\u0022\n        Background=\u0022Transparent\u0022\n        AllowsTransparency=\u0022True\u0022\n        WindowStyle=\u0022None\u0022\n        MouseLeftButtonDown=\u0022Window_MouseLeftButtonDown\u0022\u003E\n\n    \u003CBorder CornerRadius=\u002220\u0022 Background=\u0022#FF1E1E1E\u0022 BorderBrush=\u0022#33FFFFFF\u0022 BorderThickness=\u00221\u0022\u003E\n        \u003CGrid Margin=\u002220\u0022\u003E\n            \u003CGrid.RowDefinitions\u003E\n                \u003CRowDefinition Height=\u0022Auto\u0022/\u003E \u003C!-- Drag Area / Close --\u003E\n                \u003CRowDefinition Height=\u0022*\u0022/\u003E    \u003C!-- Display --\u003E\n                \u003CRowDefinition Height=\u00224*\u0022/\u003E   \u003C!-- Buttons --\u003E\n            \u003C/Grid.RowDefinitions\u003E\n\n            \u003C!-- \u041A\u043D\u043E\u043F\u043A\u0430 \u0437\u0430\u043A\u0440\u044B\u0442\u0438\u044F (\u043A\u0430\u0441\u0442\u043E\u043C\u043D\u0430\u044F) --\u003E\n            \u003CButton Content=\u0022\u2715\u0022 HorizontalAlignment=\u0022Right\u0022 VerticalAlignment=\u0022Top\u0022 \n                    FontSize=\u002216\u0022 Foreground=\u0022#AAAAAA\u0022 Background=\u0022Transparent\u0022 \n                    BorderThickness=\u00220\u0022 Cursor=\u0022Hand\u0022 Click=\u0022CloseButton_Click\u0022/\u003E\n\n            \u003C!-- \u0414\u0438\u0441\u043F\u043B\u0435\u0439 --\u003E\n            \u003CStackPanel Grid.Row=\u00221\u0022 VerticalAlignment=\u0022Bottom\u0022 HorizontalAlignment=\u0022Right\u0022 Margin=\u00220,0,10,20\u0022\u003E\n                \u003CTextBlock x:Name=\u0022HistoryText\u0022 Text=\u0022\u0022 FontSize=\u002224\u0022 Foreground=\u0022#88FFFFFF\u0022 \n                           HorizontalAlignment=\u0022Right\u0022 FontWeight=\u0022Light\u0022/\u003E\n                \u003CTextBlock x:Name=\u0022DisplayText\u0022 Text=\u00220\u0022 FontSize=\u002264\u0022 Foreground=\u0022White\u0022 \n                           HorizontalAlignment=\u0022Right\u0022 FontWeight=\u0022SemiBold\u0022/\u003E\n            \u003C/StackPanel\u003E\n\n            \u003C!-- \u0421\u0435\u0442\u043A\u0430 \u043A\u043D\u043E\u043F\u043E\u043A --\u003E\n            \u003CUniformGrid Grid.Row=\u00222\u0022 Columns=\u00224\u0022 Rows=\u00225\u0022\u003E\n                \u003C!-- \u0420\u044F\u0434 1 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u0022C\u0022 Click=\u0022Clear_Click\u0022 Foreground=\u0022#FF6B6B\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u0022\u002B/-\u0022 Click=\u0022Negate_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u0022%\u0022 Click=\u0022Percent_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource OperatorButton}\u0022 Content=\u0022\u00F7\u0022 Click=\u0022Operator_Click\u0022 Tag=\u0022/\u0022/\u003E\n\n                \u003C!-- \u0420\u044F\u0434 2 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00227\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00228\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00229\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource OperatorButton}\u0022 Content=\u0022\u00D7\u0022 Click=\u0022Operator_Click\u0022 Tag=\u0022*\u0022/\u003E\n\n                \u003C!-- \u0420\u044F\u0434 3 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00224\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00225\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00226\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource OperatorButton}\u0022 Content=\u0022-\u0022 Click=\u0022Operator_Click\u0022 Tag=\u0022-\u0022/\u003E\n\n                \u003C!-- \u0420\u044F\u0434 4 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00221\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00222\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00223\u0022 Click=\u0022Number_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource OperatorButton}\u0022 Content=\u0022\u002B\u0022 Click=\u0022Operator_Click\u0022 Tag=\u0022\u002B\u0022/\u003E\n\n                \u003C!-- \u0420\u044F\u0434 5 --\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u00220\u0022 Click=\u0022Number_Click\u0022 Grid.ColumnSpan=\u00222\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource CalcButton}\u0022 Content=\u0022.\u0022 Click=\u0022Decimal_Click\u0022/\u003E\n                \u003CButton Style=\u0022{StaticResource EqualsButton}\u0022 Content=\u0022=\u0022 Click=\u0022Equals_Click\u0022/\u003E\n            \u003C/UniformGrid\u003E\n        \u003C/Grid\u003E\n    \u003C/Border\u003E\n\n    \u003CWindow.Resources\u003E\n        \u003C!-- \u0411\u0430\u0437\u043E\u0432\u044B\u0439 \u0441\u0442\u0438\u043B\u044C \u043A\u043D\u043E\u043F\u043A\u0438 --\u003E\n        \u003CStyle x:Key=\u0022CalcButton\u0022 TargetType=\u0022Button\u0022\u003E\n            \u003CSetter Property=\u0022FontSize\u0022 Value=\u002224\u0022/\u003E\n            \u003CSetter Property=\u0022FontWeight\u0022 Value=\u0022Medium\u0022/\u003E\n            \u003CSetter Property=\u0022Foreground\u0022 Value=\u0022White\u0022/\u003E\n            \u003CSetter Property=\u0022Background\u0022 Value=\u0022#33FFFFFF\u0022/\u003E\n            \u003CSetter Property=\u0022BorderThickness\u0022 Value=\u00220\u0022/\u003E\n            \u003CSetter Property=\u0022Margin\u0022 Value=\u00224\u0022/\u003E\n            \u003CSetter Property=\u0022Cursor\u0022 Value=\u0022Hand\u0022/\u003E\n            \u003CSetter Property=\u0022Template\u0022\u003E\n                \u003CSetter.Value\u003E\n                    \u003CControlTemplate TargetType=\u0022Button\u0022\u003E\n                        \u003CBorder x:Name=\u0022border\u0022 CornerRadius=\u002212\u0022 Background=\u0022{TemplateBinding Background}\u0022\u003E\n                            \u003CContentPresenter HorizontalAlignment=\u0022Center\u0022 VerticalAlignment=\u0022Center\u0022/\u003E\n                        \u003C/Border\u003E\n                        \u003CControlTemplate.Triggers\u003E\n                            \u003CTrigger Property=\u0022IsMouseOver\u0022 Value=\u0022True\u0022\u003E\n                                \u003CSetter TargetName=\u0022border\u0022 Property=\u0022Background\u0022 Value=\u0022#4DFFFFFF\u0022/\u003E\n                            \u003C/Trigger\u003E\n                            \u003CTrigger Property=\u0022IsPressed\u0022 Value=\u0022True\u0022\u003E\n                                \u003CSetter TargetName=\u0022border\u0022 Property=\u0022Background\u0022 Value=\u0022#66FFFFFF\u0022/\u003E\n                            \u003C/Trigger\u003E\n                        \u003C/ControlTemplate.Triggers\u003E\n                    \u003C/ControlTemplate\u003E\n                \u003C/Setter.Value\u003E\n            \u003C/Setter\u003E\n        \u003C/Style\u003E\n\n        \u003C!-- \u0421\u0442\u0438\u043B\u044C \u043E\u043F\u0435\u0440\u0430\u0442\u043E\u0440\u043E\u0432 (\u043E\u0440\u0430\u043D\u0436\u0435\u0432\u044B\u0439 \u0430\u043A\u0446\u0435\u043D\u0442) --\u003E\n        \u003CStyle x:Key=\u0022OperatorButton\u0022 TargetType=\u0022Button\u0022 BasedOn=\u0022{StaticResource CalcButton}\u0022\u003E\n            \u003CSetter Property=\u0022Background\u0022 Value=\u0022#FFFF9F0A\u0022/\u003E\n            \u003CSetter Property=\u0022Foreground\u0022 Value=\u0022Black\u0022/\u003E\n            \u003CSetter Property=\u0022FontWeight\u0022 Value=\u0022Bold\u0022/\u003E\n            \u003CSetter Property=\u0022Template\u0022\u003E\n                \u003CSetter.Value\u003E\n                    \u003CControlTemplate TargetType=\u0022Button\u0022\u003E\n                        \u003CBorder x:Name=\u0022border\u0022 CornerRadius=\u002212\u0022 Background=\u0022{TemplateBinding Background}\u0022\u003E\n                            \u003CContentPresenter HorizontalAlignment=\u0022Center\u0022 VerticalAlignment=\u0022Center\u0022/\u003E\n                        \u003C/Border\u003E\n                        \u003CControlTemplate.Triggers\u003E\n                            \u003CTrigger Property=\u0022IsMouseOver\u0022 Value=\u0022True\u0022\u003E\n                                \u003CSetter TargetName=\u0022border\u0022 Property=\u0022Background\u0022 Value=\u0022#FFCC7A00\u0022/\u003E\n                            \u003C/Trigger\u003E\n                        \u003C/ControlTemplate.Triggers\u003E\n                    \u003C/ControlTemplate\u003E\n                \u003C/Setter.Value\u003E\n            \u003C/Setter\u003E\n        \u003C/Style\u003E\n\n        \u003C!-- \u0421\u0442\u0438\u043B\u044C \u043A\u043D\u043E\u043F\u043A\u0438 \u0440\u0430\u0432\u0435\u043D\u0441\u0442\u0432\u0430 --\u003E\n        \u003CStyle x:Key=\u0022EqualsButton\u0022 TargetType=\u0022Button\u0022 BasedOn=\u0022{StaticResource OperatorButton}\u0022\u003E\n            \u003CSetter Property=\u0022Background\u0022 Value=\u0022#FF32D74B\u0022/\u003E\n            \u003CSetter Property=\u0022Template\u0022\u003E\n                \u003CSetter.Value\u003E\n                    \u003CControlTemplate TargetType=\u0022Button\u0022\u003E\n                        \u003CBorder x:Name=\u0022border\u0022 CornerRadius=\u002212\u0022 Background=\u0022{TemplateBinding Background}\u0022\u003E\n                            \u003CContentPresenter HorizontalAlignment=\u0022Center\u0022 VerticalAlignment=\u0022Center\u0022/\u003E\n                        \u003C/Border\u003E\n                        \u003CControlTemplate.Triggers\u003E\n                            \u003CTrigger Property=\u0022IsMouseOver\u0022 Value=\u0022True\u0022\u003E\n                                \u003CSetter TargetName=\u0022border\u0022 Property=\u0022Background\u0022 Value=\u0022#FF28B83E\u0022/\u003E\n                            \u003C/Trigger\u003E\n                        \u003C/ControlTemplate.Triggers\u003E\n                    \u003C/ControlTemplate\u003E\n                \u003C/Setter.Value\u003E\n            \u003C/Setter\u003E\n        \u003C/Style\u003E\n    \u003C/Window.Resources\u003E\n\u003C/Window\u003E\n\u0060\u0060\u0060\n\n#### \u0428\u0430\u0433 3: \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0060MainWindow.xaml.cs\u0060\n\u041B\u043E\u0433\u0438\u043A\u0430 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430.\n\n\u0060\u0060\u0060csharp\nusing System.Windows;\nusing System.Windows.Controls;\nusing System.Windows.Input;\n\nnamespace BeautifulCalculator;\n\npublic partial class MainWindow : Window\n{\n    private double _currentValue = 0;\n    private double _previousValue = 0;\n    private string _currentOperator = \u0022\u0022;\n    private bool _isNewEntry = true;\n    private bool _hasDecimal = false;\n\n    public MainWindow()\n    {\n        InitializeComponent();\n    }\n\n    // \u041F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u043E\u043A\u043D\u0430 \u0437\u0430 \u043B\u044E\u0431\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C\n    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) =\u003E DragMove();\n    \n    private void CloseButton_Click(object sender, RoutedEventArgs e) =\u003E Close();\n\n    private void Number_Click(object sender, RoutedEventArgs e)\n    {\n        if (sender is not Button btn) return;\n        \n        if (_isNewEntry)\n        {\n            DisplayText.Text = btn.Content.ToString();\n            _isNewEntry = false;\n            _hasDecimal = false;\n        }\n        else\n        {\n            if (DisplayText.Text == \u00220\u0022) DisplayText.Text = \u0022\u0022;\n            DisplayText.Text \u002B= btn.Content;\n        }\n    }\n\n    private void Decimal_Click(object sender, RoutedEventArgs e)\n    {\n        if (!_hasDecimal \u0026\u0026 !_isNewEntry)\n        {\n            DisplayText.Text \u002B= \u0022.\u0022;\n            _hasDecimal = true;\n        }\n        else if (_isNewEntry)\n        {\n            DisplayText.Text = \u00220.\u0022;\n            _isNewEntry = false;\n            _hasDecimal = true;\n        }\n    }\n\n    private void Operator_Click(object sender, RoutedEventArgs e)\n    {\n        if (sender is not Button btn) return;\n\n        if (!_isNewEntry \u0026\u0026 !string.IsNullOrEmpty(_currentOperator))\n        {\n            Calculate();\n        }\n        else\n        {\n            _previousValue = double.Parse(DisplayText.Text);\n        }\n\n        _currentOperator = btn.Tag?.ToString() ?? \u0022\u0022;\n        HistoryText.Text = $\u0022{_previousValue} {btn.Content}\u0022;\n        _isNewEntry = true;\n    }\n\n    private void Equals_Click(object sender, RoutedEventArgs e)\n    {\n        if (!string.IsNullOrEmpty(_currentOperator))\n        {\n            Calculate();\n            _currentOperator = \u0022\u0022;\n            HistoryText.Text = \u0022\u0022;\n        }\n    }\n\n    private void Clear_Click(object sender, RoutedEventArgs e)\n    {\n        DisplayText.Text = \u00220\u0022;\n        HistoryText.Text = \u0022\u0022;\n        _currentValue = 0;\n        _previousValue = 0;\n        _currentOperator = \u0022\u0022;\n        _isNewEntry = true;\n        _hasDecimal = false;\n    }\n\n    private void Negate_Click(object sender, RoutedEventArgs e)\n    {\n        if (double.TryParse(DisplayText.Text, out double val))\n        {\n            DisplayText.Text = (-val).ToString();\n        }\n    }\n\n    private void Percent_Click(object sender, RoutedEventArgs e)\n    {\n        if (double.TryParse(DisplayText.Text, out double val))\n        {\n            DisplayText.Text = (val / 100).ToString();\n            _isNewEntry = true;\n        }\n    }\n\n    private void Calculate()\n    {\n        if (!double.TryParse(DisplayText.Text, out _currentValue)) return;\n\n        double result = _currentOperator switch\n        {\n            \u0022\u002B\u0022 =\u003E _previousValue \u002B _currentValue,\n            \u0022-\u0022 =\u003E _previousValue - _currentValue,\n            \u0022*\u0022 =\u003E _previousValue * _currentValue,\n            \u0022/\u0022 =\u003E _currentValue != 0 ? _previousValue / _currentValue : 0,\n            _ =\u003E _currentValue\n        };\n\n        // \u0424\u043E\u0440\u043C\u0430\u0442\u0438\u0440\u0443\u0435\u043C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442, \u0443\u0431\u0438\u0440\u0430\u044F \u043B\u0438\u0448\u043D\u0438\u0435 \u043D\u0443\u043B\u0438\n        DisplayText.Text = result.ToString(\u0022G15\u0022); \n        _previousValue = result;\n        _isNewEntry = true;\n        _hasDecimal = result != Math.Floor(result);\n    }\n}\n\u0060\u0060\u0060\n\n---\n\n### 2. \u0411\u0430\u0442\u043D\u0438\u043A \u0434\u043B\u044F \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0430 (\u0060build_and_run.bat\u0060)\n\n\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u044D\u0442\u043E\u0442 \u0444\u0430\u0439\u043B \u0432 \u0442\u043E\u0439 \u0436\u0435 \u043F\u0430\u043F\u043A\u0435. \u041E\u043D \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442 \u043D\u0430\u043B\u0438\u0447\u0438\u0435 .NET SDK, \u0441\u043E\u0431\u0435\u0440\u0435\u0442 \u043F\u0440\u043E\u0435\u043A\u0442 \u0432 Release-\u0440\u0435\u0436\u0438\u043C\u0435 (\u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0439) \u0438 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442 \u0435\u0433\u043E.\n\n\u0060\u0060\u0060batch\n@echo off\nchcp 65001 \u003Enul\ntitle Beautiful Calculator Builder\n\necho ==========================================\necho   \u0421\u0431\u043E\u0440\u043A\u0430 Beautiful Calculator (WPF)\necho ==========================================\necho.\n\n:: \u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u043D\u0430\u043B\u0438\u0447\u0438\u044F dotnet\nwhere dotnet \u003Enul 2\u003Enul\nif %ERRORLEVEL% NEQ 0 (\n    echo [\u041E\u0428\u0418\u0411\u041A\u0410] .NET SDK \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D!\n    echo \u041F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 .NET 8 SDK: https://dotnet.microsoft.com/download/dotnet/8.0\n    pause\n    exit /b 1\n)\n\necho [1/3] \u041E\u0447\u0438\u0441\u0442\u043A\u0430 \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0445 \u0430\u0440\u0442\u0435\u0444\u0430\u043A\u0442\u043E\u0432...\ndotnet clean -v q \u003Enul 2\u003E\u00261\n\necho [2/3] \u0421\u0431\u043E\u0440\u043A\u0430 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 (Release)...\ndotnet build -c Release --nologo -v q\nif %ERRORLEVEL% NEQ 0 (\n    echo.\n    echo [\u041E\u0428\u0418\u0411\u041A\u0410] \u0421\u0431\u043E\u0440\u043A\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u0430\u0441\u044C. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043A\u043E\u0434 \u0432\u044B\u0448\u0435.\n    pause\n    exit /b 1\n)\n\necho [3/3] \u0417\u0430\u043F\u0443\u0441\u043A \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u044F...\necho ==========================================\necho.\n\n:: \u0417\u0430\u043F\u0443\u0441\u043A \u0441\u043E\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E exe\nstart \u0022\u0022 \u0022bin\\Release\\net8.0-windows\\BeautifulCalculator.exe\u0022\n\nexit /b 0\n\u0060\u0060\u0060\n\n### \u041A\u0430\u043A \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C:\n1.  \u0423\u0431\u0435\u0434\u0438\u0442\u0435\u0441\u044C, \u0447\u0442\u043E \u0443 \u0432\u0430\u0441 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D **.NET 8 SDK** (\u0438\u043B\u0438 \u043D\u043E\u0432\u0435\u0435).\n2.  \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0430\u043F\u043A\u0443, \u043F\u043E\u043B\u043E\u0436\u0438\u0442\u0435 \u0432 \u043D\u0435\u0451 3 \u0444\u0430\u0439\u043B\u0430: \u0060BeautifulCalculator.csproj\u0060, \u0060MainWindow.xaml\u0060, \u0060MainWindow.xaml.cs\u0060.\n3.  \u041F\u043E\u043B\u043E\u0436\u0438\u0442\u0435 \u0442\u0443\u0434\u0430 \u0436\u0435 \u0060build_and_run.bat\u0060.\n4.  \u0414\u0432\u0430\u0436\u0434\u044B \u043A\u043B\u0438\u043A\u043D\u0438\u0442\u0435 \u043F\u043E \u0431\u0430\u0442\u043D\u0438\u043A\u0443.\n\n### \u041E\u0441\u043E\u0431\u0435\u043D\u043D\u043E\u0441\u0442\u0438 \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438:\n*   **Custom Window Chrome:** \u0423\u0431\u0440\u0430\u043D\u044B \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0435 \u0440\u0430\u043C\u043A\u0438 Windows (\u0060WindowStyle=\u0022None\u0022\u0060, \u0060AllowsTransparency=\u0022True\u0022\u0060), \u0447\u0442\u043E \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0441\u0434\u0435\u043B\u0430\u0442\u044C \u0441\u043A\u0440\u0443\u0433\u043B\u0435\u043D\u043D\u044B\u0435 \u0443\u0433\u043B\u044B \u0438 \u0442\u0435\u043C\u043D\u044B\u0439 \u0444\u043E\u043D \u0434\u043E \u0441\u0430\u043C\u044B\u0445 \u043A\u0440\u0430\u0435\u0432.\n*   **MVVM-Lite:** \u041B\u043E\u0433\u0438\u043A\u0430 \u043E\u0442\u0434\u0435\u043B\u0435\u043D\u0430 \u043E\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438, \u043D\u043E \u0434\u043B\u044F \u043F\u0440\u043E\u0441\u0442\u043E\u0442\u044B \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u044B code-behind \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u0438 \u0432\u043C\u0435\u0441\u0442\u043E \u043F\u043E\u043B\u043D\u043E\u0446\u0435\u043D\u043D\u043E\u0433\u043E \u0431\u0438\u043D\u0434\u0438\u043D\u0433\u0430, \u0447\u0442\u043E\u0431\u044B \u043D\u0435 \u0443\u0441\u043B\u043E\u0436\u043D\u044F\u0442\u044C \u043A\u043E\u0434 \u0434\u043B\u044F \u043E\u0434\u043D\u043E\u0433\u043E \u0444\u0430\u0439\u043B\u0430.\n*   **\u0421\u0442\u0438\u043B\u0438:** \u0412\u0441\u0435 \u043A\u043D\u043E\u043F\u043A\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0442 \u0060ControlTemplate\u0060 \u0441 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u0430\u043C\u0438 \u0434\u043B\u044F \u0430\u043D\u0438\u043C\u0430\u0446\u0438\u0438 \u043D\u0430\u0432\u0435\u0434\u0435\u043D\u0438\u044F \u0438 \u043D\u0430\u0436\u0430\u0442\u0438\u044F. \u0426\u0432\u0435\u0442\u0430 \u043F\u043E\u0434\u043E\u0431\u0440\u0430\u043D\u044B \u0432 \u043F\u0430\u043B\u0438\u0442\u0440\u0435 Dark Mode (Dark Gray \u002B Orange/Green accents).\n*   **\u0411\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u044C \u0434\u0435\u043B\u0435\u043D\u0438\u044F:** \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u0434\u0435\u043B\u0435\u043D\u0438\u044F \u043D\u0430 \u043D\u043E\u043B\u044C.\n*   **\u0424\u043E\u0440\u043C\u0430\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435:** \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435 \u0060\u0022G15\u0022\u0060 \u043F\u0440\u0435\u0434\u043E\u0442\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u043F\u043E\u044F\u0432\u043B\u0435\u043D\u0438\u0435 \u0430\u0440\u0442\u0435\u0444\u0430\u043A\u0442\u043E\u0432 \u043F\u043B\u0430\u0432\u0430\u044E\u0449\u0435\u0439 \u0442\u043E\u0447\u043A\u0438 \u0432\u0440\u043E\u0434\u0435 \u00600.30000000000000004\u0060.",
       "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u042F \u0433\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u043F\u0440\u043E\u0435\u043A\u0442\u0435 \u0060C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen\u0060.\n\n\u041E\u0431\u0440\u0430\u0442\u0438\u0442\u0435 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u0435: \u0441\u0435\u0439\u0447\u0430\u0441 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B (\u0440\u0435\u0436\u0438\u043C \u043E\u0431\u044B\u0447\u043D\u043E\u0433\u043E \u0447\u0430\u0442\u0430). \u0427\u0442\u043E\u0431\u044B \u044F \u043C\u043E\u0433 \u0447\u0438\u0442\u0430\u0442\u044C \u0444\u0430\u0439\u043B\u044B \u0438 \u0432\u043D\u043E\u0441\u0438\u0442\u044C \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F, \u043F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u0430\u043C.\n\n\u0427\u0435\u043C \u043C\u043E\u0433\u0443 \u043F\u043E\u043C\u043E\u0447\u044C?",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u0418\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u0441\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B, \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u044F \u043D\u0435 \u043C\u043E\u0433\u0443 \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u0444\u0430\u0439\u043B\u044B \u043D\u0430\u043F\u0440\u044F\u043C\u0443\u044E. \u041E\u0434\u043D\u0430\u043A\u043E \u044F \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u0438\u043B \u0434\u043B\u044F \u0432\u0430\u0441 \u043F\u043E\u043B\u043D\u044B\u0439 \u043A\u043E\u0434 \u0438 \u0438\u043D\u0441\u0442\u0440\u0443\u043A\u0446\u0438\u0438. \u041A\u0430\u043A \u0442\u043E\u043B\u044C\u043A\u043E \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u0431\u0443\u0434\u0443\u0442 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u044B, \u044F \u0441\u043C\u043E\u0433\u0443 \u0437\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u0438\u0445 \u0432 \u043F\u0440\u043E\u0435\u043A\u0442 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438.\n\n\u0410 \u043F\u043E\u043A\u0430 \u0432\u044B \u043C\u043E\u0436\u0435\u0442\u0435 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u044D\u0442\u0438 \u0444\u0430\u0439\u043B\u044B \u0432\u0440\u0443\u0447\u043D\u0443\u044E \u0438\u043B\u0438 \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B, \u0447\u0442\u043E\u0431\u044B \u044F \u0441\u0434\u0435\u043B\u0430\u043B \u044D\u0442\u043E \u0441\u0430\u043C.\n\n### 1. \u0060Calculator.cs\u0060 (\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u043A\u043E\u0434 \u0441 UI)\n\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u043C WinForms \u0434\u043B\u044F \u043A\u043B\u0430\u0441\u0441\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0438 \u0430\u043A\u043A\u0443\u0440\u0430\u0442\u043D\u043E\u0433\u043E \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430.\n\n\u0060\u0060\u0060csharp\nusing System;\nusing System.Drawing;\nusing System.Windows.Forms;\n\nnamespace Calculator\n{\n    public class MainForm : Form\n    {\n        private TextBox display;\n        private double num1 = 0;\n        private string op = \u0022\u0022;\n        private bool isNewEntry = true;\n\n        public MainForm()\n        {\n            Text = \u0022\u041A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0022;\n            Size = new Size(320, 450);\n            StartPosition = FormStartPosition.CenterScreen;\n            FormBorderStyle = FormBorderStyle.FixedSingle;\n            MaximizeBox = false;\n            BackColor = Color.FromArgb(45, 45, 48);\n\n            display = new TextBox\n            {\n                Font = new Font(\u0022Segoe UI\u0022, 24),\n                TextAlign = HorizontalAlignment.Right,\n                Size = new Size(280, 60),\n                Location = new Point(12, 12),\n                ReadOnly = true,\n                BackColor = Color.FromArgb(37, 37, 38),\n                ForeColor = Color.White,\n                BorderStyle = BorderStyle.None,\n                Text = \u00220\u0022\n            };\n            Controls.Add(display);\n\n            string[,] buttons = {\n                {\u0022C\u0022, \u0022\u00B1\u0022, \u0022%\u0022, \u0022/\u0022},\n                {\u00227\u0022, \u00228\u0022, \u00229\u0022, \u0022*\u0022},\n                {\u00224\u0022, \u00225\u0022, \u00226\u0022, \u0022-\u0022},\n                {\u00221\u0022, \u00222\u0022, \u00223\u0022, \u0022\u002B\u0022},\n                {\u00220\u0022, \u0022.\u0022, \u0022=\u0022, \u0022=\u0022}\n            };\n\n            for (int r = 0; r \u003C 5; r\u002B\u002B)\n            {\n                for (int c = 0; c \u003C 4; c\u002B\u002B)\n                {\n                    var btn = new Button();\n                    btn.Text = buttons[r, c];\n                    btn.Size = new Size(65, 65);\n                    btn.Location = new Point(12 \u002B c * 70, 85 \u002B r * 70);\n                    btn.FlatStyle = FlatStyle.Flat;\n                    btn.FlatAppearance.BorderSize = 0;\n                    btn.Font = new Font(\u0022Segoe UI\u0022, 16);\n                    btn.Cursor = Cursors.Hand;\n\n                    if (btn.Text == \u0022=\u0022) btn.BackColor = Color.FromArgb(0, 122, 204);\n                    else if (\u0022/*-\u002B%\u0022.Contains(btn.Text)) btn.BackColor = Color.FromArgb(62, 62, 66);\n                    else if (btn.Text == \u0022C\u0022) btn.BackColor = Color.FromArgb(200, 50, 50);\n                    else btn.BackColor = Color.FromArgb(50, 50, 53);\n\n                    btn.ForeColor = Color.White;\n                    btn.Click \u002B= Button_Click;\n                    Controls.Add(btn);\n                }\n            }\n        }\n\n        private void Button_Click(object sender, EventArgs e)\n        {\n            var btn = (Button)sender;\n            string text = btn.Text;\n\n            if (char.IsDigit(text[0]) || text == \u0022.\u0022)\n            {\n                if (isNewEntry) { display.Text = text == \u0022.\u0022 ? \u00220.\u0022 : text; isNewEntry = false; }\n                else if (text != \u0022.\u0022 || !display.Text.Contains(\u0022.\u0022)) display.Text \u002B= text;\n            }\n            else if (text == \u0022C\u0022) { display.Text = \u00220\u0022; num1 = 0; op = \u0022\u0022; isNewEntry = true; }\n            else if (text == \u0022\u00B1\u0022) { display.Text = (double.Parse(display.Text) * -1).ToString(); }\n            else if (text == \u0022%\u0022) { display.Text = (double.Parse(display.Text) / 100).ToString(); }\n            else if (text == \u0022=\u0022)\n            {\n                Calculate();\n                op = \u0022\u0022;\n                isNewEntry = true;\n            }\n            else\n            {\n                if (!isNewEntry \u0026\u0026 op != \u0022\u0022) Calculate();\n                num1 = double.Parse(display.Text);\n                op = text;\n                isNewEntry = true;\n            }\n        }\n\n        private void Calculate()\n        {\n            double num2 = double.Parse(display.Text);\n            switch (op)\n            {\n                case \u0022\u002B\u0022: display.Text = (num1 \u002B num2).ToString(); break;\n                case \u0022-\u0022: display.Text = (num1 - num2).ToString(); break;\n                case \u0022*\u0022: display.Text = (num1 * num2).ToString(); break;\n                case \u0022/\u0022: display.Text = num2 != 0 ? (num1 / num2).ToString() : \u0022\u041E\u0448\u0438\u0431\u043A\u0430\u0022; break;\n            }\n        }\n    }\n\n    static class Program\n    {\n        [STAThread]\n        static void Main()\n        {\n            Application.EnableVisualStyles();\n            Application.Run(new MainForm());\n        }\n    }\n}\n\u0060\u0060\u0060\n\n### 2. \u0060build_and_run.bat\u0060 (\u0421\u0431\u043E\u0440\u043A\u0430 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A)\n\u042D\u0442\u043E\u0442 \u0441\u043A\u0440\u0438\u043F\u0442 \u043D\u0430\u0439\u0434\u0435\u0442 \u043A\u043E\u043C\u043F\u0438\u043B\u044F\u0442\u043E\u0440 C# \u0432 \u0441\u0438\u0441\u0442\u0435\u043C\u0435, \u0441\u043E\u0431\u0435\u0440\u0435\u0442 \u043F\u0440\u043E\u0435\u043A\u0442 \u0438 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442 \u0435\u0433\u043E.\n\n\u0060\u0060\u0060batch\n@echo off\nchcp 65001 \u003Enul\necho \u041F\u043E\u0438\u0441\u043A \u043A\u043E\u043C\u043F\u0438\u043B\u044F\u0442\u043E\u0440\u0430 C#...\n\nset CSC=\nfor /f \u0022delims=\u0022 %%i in (\u0027dir /b /s \u0022%ProgramFiles%\\dotnet\\sdk\\*\\Roslyn\\bincore\\csc.dll\u0022 2^\u003Enul\u0027) do set CSC=%%i\nif \u0022%CSC%\u0022==\u0022\u0022 (\n    for /f \u0022delims=\u0022 %%i in (\u0027dir /b /s \u0022%ProgramFiles(x86)%\\MSBuild\\*\\Bin\\Roslyn\\csc.exe\u0022 2^\u003Enul\u0027) do set CSC=%%i\n)\n\nif \u0022%CSC%\u0022==\u0022\u0022 (\n    echo \u041E\u0448\u0438\u0431\u043A\u0430: \u041A\u043E\u043C\u043F\u0438\u043B\u044F\u0442\u043E\u0440 C# \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D. \u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 .NET SDK \u0438\u043B\u0438 Visual Studio Build Tools.\n    pause\n    exit /b 1\n)\n\necho \u041A\u043E\u043C\u043F\u0438\u043B\u044F\u0446\u0438\u044F...\nif exist \u0022%ProgramFiles%\\dotnet\\dotnet.exe\u0022 (\n    dotnet \u0022%CSC%\u0022 /target:winexe /out:Calculator.exe Calculator.cs\n) else (\n    \u0022%CSC%\u0022 /target:winexe /out:Calculator.exe Calculator.cs\n)\n\nif %errorlevel% neq 0 (\n    echo \u041E\u0448\u0438\u0431\u043A\u0430 \u043A\u043E\u043C\u043F\u0438\u043B\u044F\u0446\u0438\u0438!\n    pause\n    exit /b 1\n)\n\necho \u0417\u0430\u043F\u0443\u0441\u043A \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430...\nstart Calculator.exe\n\u0060\u0060\u0060\n\n**\u0427\u0442\u043E \u0434\u0435\u043B\u0430\u0442\u044C \u0434\u0430\u043B\u044C\u0448\u0435:**\n1. \u0412\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B, \u043D\u0430\u043F\u0438\u0441\u0430\u0432 \u00AB\u0432\u043A\u043B\u044E\u0447\u0438 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B\u00BB \u0438\u043B\u0438 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0432 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0432 GUI \u2014 \u044F \u0441\u043E\u0437\u0434\u0430\u043C \u044D\u0442\u0438 \u0444\u0430\u0439\u043B\u044B \u0432 \u043A\u043E\u0440\u043D\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u0060test_qwen\u0060.\n2. \u041B\u0438\u0431\u043E \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0435 \u043A\u043E\u0434 \u0432\u044B\u0448\u0435 \u0432 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0435 \u0444\u0430\u0439\u043B\u044B \u0432\u0440\u0443\u0447\u043D\u0443\u044E \u0438 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 \u0060build_and_run.bat\u0060.",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u043F\u0440\u0438\u0432\u0435\u0442",
-      "Bg": "#0f3460"
-    },
-    {
-      "Author": "coder",
-      "Text": "\u041F\u0440\u0438\u0432\u0435\u0442! \u042F \u0433\u043E\u0442\u043E\u0432 \u043A \u0440\u0430\u0431\u043E\u0442\u0435 \u0432 \u043F\u0440\u043E\u0435\u043A\u0442\u0435 \u0060C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\test_qwen\u0060.\n\n\u041E\u0431\u0440\u0430\u0442\u0438 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u0435: \u0441\u0435\u0439\u0447\u0430\u0441 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B (\u0440\u0435\u0436\u0438\u043C \u043E\u0431\u044B\u0447\u043D\u043E\u0433\u043E \u0447\u0430\u0442\u0430). \u0427\u0442\u043E\u0431\u044B \u044F \u043C\u043E\u0433 \u0447\u0438\u0442\u0430\u0442\u044C \u0444\u0430\u0439\u043B\u044B \u0438 \u0432\u043D\u043E\u0441\u0438\u0442\u044C \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F, \u043F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u0430\u043A\u0442\u0438\u0432\u0438\u0440\u0443\u0439 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u0430\u043C. \u041F\u043E\u0441\u043B\u0435 \u044D\u0442\u043E\u0433\u043E \u0441\u043A\u0430\u0436\u0438, \u0441 \u0447\u0435\u0433\u043E \u043D\u0430\u0447\u0430\u0442\u044C \u0438\u043B\u0438 \u043A\u0430\u043A\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443 \u0440\u0435\u0448\u0438\u0442\u044C.",
-      "Bg": "#16213e"
-    },
-    {
-      "Author": "\u0422\u044B",
-      "Text": "\u0421\u043E\u0437\u0434\u0430\u0439 \u043C\u043D\u0435 \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440 \u043D\u0430 C# \u0441 \u043A\u0440\u0430\u0441\u0438\u0432\u044B\u043C UI. \u041D\u0435 \u0437\u0430\u0431\u0443\u0434\u044C \u043F\u0440\u043E \u0431\u0430\u0442\u043D\u0438\u043A \u0441\u043E \u0441\u0431\u043E\u0440\u043A\u043E\u0439 \u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u043E\u043C",
-      "Bg": "#0f3460"
     }
   ]
 }

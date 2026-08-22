@@ -67,6 +67,7 @@ public static class GatewayHost
                 var settings = st.GetProjectSettings(root);
                 session.StepLimit = settings.MaxSteps ?? 8;
             }
+
             session.Messages.Add(new JsonObject
             {
                 ["role"] = "user",
@@ -152,7 +153,8 @@ public static class GatewayHost
             var req = JsonSerializer.Deserialize<SendRequest>(body, JsonOpts.Ci);
             if (req == null || string.IsNullOrEmpty(req.Role))
                 return Results.BadRequest(new { error = "role is required" });
-            var result = await st.SendToBrowserAndWait(req.Role, req.Text, req.Think, 300000, ctx.RequestAborted, st.NextReqId());
+            // без таймаута: ждём ответ, отмену или закрытие приложения
+            var result = await st.SendToBrowserAndWait(req.Role, req.Text, req.Think, Timeout.Infinite, ctx.RequestAborted, st.NextReqId());
             if (!result.ok)
                 return Results.BadRequest(new { error = result.text });
             return Results.Ok(new { role = req.Role, response = result.text });

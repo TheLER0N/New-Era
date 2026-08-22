@@ -31,9 +31,11 @@ internal sealed partial class GatewayState
     public ConcurrentDictionary<string, string> LastAiText = new();
     public ConcurrentDictionary<string, string> LastExtDiag = new();
     public ConcurrentDictionary<string, AgentSession> AgentSessions = new();
-    // Привязка ответа к запросу: ожидаемый id на роль + флаг «инструкция уже послана».
+    // Привязка ответа к запросу: ожидаемый id на роль.
     public ConcurrentDictionary<string, string> ExpectedReqId = new();
-    public ConcurrentDictionary<string, bool> InstructionSent = new();
+    // Буфер осиротевших ответов: ответ пришёл, когда никто не ждал.
+    // Храним последний такой ответ на роль, чтобы подхватить его в ожидании.
+    public ConcurrentDictionary<string, (string reqId, string text)> OrphanResponses = new();
     private int _reqCounter;
     public string NextReqId() => Interlocked.Increment(ref _reqCounter).ToString();
     public object AutoLock = new();
@@ -151,6 +153,8 @@ internal sealed partial class GatewayState
             AgentSessions.TryRemove(key, out _);
             AgentLog($"[LOOP] роль={role} старая сессия подтверждения сброшена");
         }
+        // хвост прошлой задачи не должен попасть в новый цикл
+        OrphanResponses.TryRemove(role, out _);
         var cts = CancellationTokenSource.CreateLinkedTokenSource(httpAbort);
         RoleLoopCts[role] = cts;
         return cts;
@@ -206,28 +210,9 @@ internal sealed partial class GatewayState
             var text = parts.Length > 2 ? parts[2] : (parts.Length > 1 ? parts[1] : "");
             HandleAiMessage(chatId, reqId, text);
         }
-        else if (msg == "SENDFAIL")
-        {
-            // Повтор только для роли, которая реально ждёт ответ (есть в PendingResponses),
-            // и только ОДНОМУ первому живому клиенту — иначе каждый лишний сокет
-            // продублировал бы сообщение в Qwen.
-            foreach (var kv in LastTypePayload)
-            {
-                if (!PendingResponses.ContainsKey(kv.Key)) continue;
-                foreach (var client in Clients)
-                {
-                    if (client.State != WebSocketState.Open) continue;
-                    try
-                    {
-                        await client.SendAsync(new ArraySegment<byte>(kv.Value),
-                            WebSocketMessageType.Text, true, CancellationToken.None);
-                        AgentLog($"[RESEND] роль={kv.Key} промпт отправлен повторно после SENDFAIL");
-                        break;
-                    }
-                    catch { }
-                }
-            }
-        }
+        // SENDFAIL больше не обрабатываем: повторная отправка промпта плодила
+        // дубли сообщений в Qwen и несколько ответов на один запрос.
+        // Единственный повтор — внутри браузерной панели при SENDRES:NOT_SENT.
         else if (msg.StartsWith("DIAG:"))
         {
             var parts = msg.Substring(5).Split('|', 2);
@@ -239,8 +224,6 @@ internal sealed partial class GatewayState
         }
         else if (msg.StartsWith("CHATID:"))
         {
-            // новая навигация = новый контекст: инструкцию придётся слать заново
-            InstructionSent.Clear();
             AgentLog($"[CHAT ID]: {msg.Substring(7)}");
         }
         else if (msg.StartsWith("ROLE:"))
@@ -294,6 +277,7 @@ internal sealed partial class GatewayState
         }
 
         LogRole(role, $"[AI]: {text}");
+
         if (PendingResponses.TryGetValue(role, out var tcs))
         {
             tcs.TrySetResult(text);
@@ -302,7 +286,9 @@ internal sealed partial class GatewayState
         }
         else
         {
-            AgentLog($"[AI ORPHAN] роль={role} ответ пришёл, но никто не ждал");
+            // никто не ждал — сохраняем в буфер, ожидание подхватит его по reqId
+            OrphanResponses[role] = (reqId, text);
+            AgentLog($"[AI ORPHAN] роль={role} ответ сохранён в буфер (никто не ждал)");
         }
     }
 
