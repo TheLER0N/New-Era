@@ -78,7 +78,6 @@ class AgentSession
     public string Mode { get; set; } = "edit";
     public bool Think { get; set; }
     public bool AllowTools { get; set; }
-    public string Backend { get; set; } = "browser";
     public string BrowserNextPrompt { get; set; } = "";
     public JsonArray Messages { get; set; } = new();
     public List<string> ToolLog { get; set; } = new();
@@ -243,33 +242,83 @@ internal sealed partial class GatewayState
         return text.Trim();
     }
 
+    // Надёжный парсинг вызова инструмента: ищем первый сбалансированный
+    // JSON-объект {"name":"...","arguments":{...}} где угодно в тексте
+    // (лишний текст, markdown-обёртки). "arguments" может быть объектом
+    // либо JSON-строкой. Возвращаем первый объект, который реально является
+    // известным инструментом.
     public static (string name, JsonObject args)? TryParseTextToolCall(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
-        var candidates = new List<string>();
-        var fence = Regex.Match(text, "```(?:json)?\\s*(\\{[\\s\\S]*?\\})\\s*```");
-        if (fence.Success) candidates.Add(fence.Groups[1].Value);
-        candidates.Add(text.Trim());
-
-        foreach (var c in candidates)
+        foreach (var candidate in ExtractJsonObjects(text))
         {
-            try
-            {
-                var node = JsonNode.Parse(c) as JsonObject;
-                if (node == null) continue;
-                var name = node["name"]?.GetValue<string>();
-                if (string.IsNullOrEmpty(name) || !IsKnownTool(name)) continue;
-                var args = node["arguments"] as JsonObject;
-                if (args == null)
-                {
-                    var argsStr = node["arguments"]?.GetValue<string>();
-                    args = argsStr != null ? JsonNode.Parse(argsStr) as JsonObject : null;
-                }
-                return (name, args ?? new JsonObject());
-            }
-            catch { }
+            var parsed = TryParseToolObject(candidate);
+            if (parsed != null) return parsed;
         }
         return null;
+    }
+
+    private static (string name, JsonObject args)? TryParseToolObject(string candidate)
+    {
+        try
+        {
+            var node = JsonNode.Parse(candidate) as JsonObject;
+            if (node == null) return null;
+
+            var name = GetStr(node, "name");
+            if (string.IsNullOrEmpty(name) || !IsKnownTool(name)) return null;
+
+            var args = node["arguments"] as JsonObject;
+            if (args == null)
+            {
+                var argsStr = node["arguments"]?.GetValue<string>();
+                if (!string.IsNullOrWhiteSpace(argsStr))
+                    args = JsonNode.Parse(argsStr) as JsonObject;
+            }
+            return (name, args ?? new JsonObject());
+        }
+        catch { return null; }
+    }
+
+    // Все сбалансированные объекты {...} в порядке появления.
+    private static IEnumerable<string> ExtractJsonObjects(string text)
+    {
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '{') continue;
+            int end = FindJsonObjectEnd(text, i);
+            if (end < 0) continue;
+            yield return text.Substring(i, end - i + 1);
+            i = end; // вложенные объекты уже внутри — пропускаем
+        }
+    }
+
+    // Индекс закрывающей '}' для объекта, начинающегося в start.
+    // Учитывает строки и экранирование, чтобы скобки внутри строк не сбивали счёт.
+    private static int FindJsonObjectEnd(string text, int start)
+    {
+        int depth = 0;
+        bool inString = false;
+        bool escaped = false;
+        for (int i = start; i < text.Length; i++)
+        {
+            char ch = text[i];
+            if (inString)
+            {
+                if (escaped) escaped = false;
+                else if (ch == '\\') escaped = true;
+                else if (ch == '"') inString = false;
+                continue;
+            }
+            if (ch == '"') inString = true;
+            else if (ch == '{') depth++;
+            else if (ch == '}')
+            {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+        return -1;
     }
 
     public static string GetStr(JsonObject args, string key, string def = "")

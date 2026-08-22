@@ -36,7 +36,6 @@ public static class GatewayHost
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://localhost:51234");
         var app = builder.Build();
-
         var st = new GatewayState();
 
         app.MapPost("/agent-run", async (HttpContext ctx) =>
@@ -61,8 +60,7 @@ public static class GatewayHost
                 Root = root,
                 Mode = mode,
                 Think = req.Think,
-                AllowTools = root != null && mode != "chat",
-                Backend = "browser"
+                AllowTools = root != null && mode != "chat"
             };
             if (root != null)
             {
@@ -128,7 +126,6 @@ public static class GatewayHost
         });
 
         app.UseWebSockets();
-
         app.Use(async (context, next) =>
         {
             if (context.Request.Path == "/ws" && context.WebSockets.IsWebSocketRequest)

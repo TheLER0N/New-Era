@@ -1,5 +1,4 @@
 namespace MainApp;
-
 // Бридж WebView2. Ответ привязан к запросу через id (__LERON_REQID__):
 // стрим захватывает свой id в момент перехвата fetch и шлёт его в aiResponse,
 // поэтому хвост старого ответа не может закрыть новый запрос.
@@ -8,7 +7,7 @@ namespace MainApp;
 // через postMessage префиксами SYNC: / SENDRES:, а не через return.
 internal static class BrowserBridge
 {
-internal const string BridgeScript = """
+    internal const string BridgeScript = """
 (function(){
 if (window.__LERON_BRIDGE__) return;
 window.__LERON_BRIDGE__ = true;
@@ -53,6 +52,12 @@ var inner = el.querySelector('[class*="markdown"]') || el.querySelector('[class*
 el.querySelector('[class*="prose"]') || el;
 return (inner.innerText || '').trim();
 }
+// Снапшот последнего ответа ассистента — SendScript вызывает его ПЕРЕД
+// отправкой, чтобы DOM-фолбэк не принял старый ответ за новый.
+window.__LERON_SNAPSHOT__ = function(){
+var els = assistantEls();
+return els.length ? extractText(els[els.length-1]) : '';
+};
 function findStopButton(){
 var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
 for (var i=0;i<btns.length;i++){
@@ -83,15 +88,30 @@ reportAi(window.__LERON_STREAM_TEXT__, window.__LERON_STREAM_ID__);
 }
 function check(){
 if (!window.__LERON_EXPECT__) return;
-if (window.__LERON_STREAMING__) {
 var now = Date.now();
+if (window.__LERON_STREAMING__) {
 var base = window.__LERON_STREAM_TIME__ || window.__LERON_STREAM_START__;
 var idle = now - base;
 var total = now - window.__LERON_STREAM_START__;
 if ((base && idle > 4000) || total > 90000) finishStream();
 return;
 }
-if (window.__LERON_SEEN_STREAM__) return;
+// Стрим был, но закончился/оборвался без репорта (reader умер, done при
+// пустом full и т.п.). Раньше здесь был вечный return — GUI ждал до таймаута.
+// Теперь: есть накопленный текст и 4с тишины — отдаём его; текста нет 15с —
+// снимаем SEEN_STREAM и пускаем в работу DOM-фолбэк по готовому ответу.
+if (window.__LERON_SEEN_STREAM__) {
+if (window.__LERON_STREAM_TEXT__) {
+var last = window.__LERON_STREAM_TIME__ || window.__LERON_STREAM_START__;
+if (last && now - last > 4000) {
+window.__LERON_EXPECT__ = false;
+reportAi(window.__LERON_STREAM_TEXT__, window.__LERON_STREAM_ID__);
+}
+} else if (now - window.__LERON_STREAM_START__ > 15000) {
+window.__LERON_SEEN_STREAM__ = false;
+}
+return;
+}
 if (findStopButton()) return;
 var els = assistantEls();
 if (els.length === 0) return;
@@ -174,15 +194,14 @@ if (hit) post({ action: 'captcha' });
 }, 3000);
 })();
 """;
-
-// Синхронизация модели (3.8 max) и режима мышления ПЕРЕД каждой отправкой.
-// Триггеры ищем ТОЧНЫМИ селекторами из реального HTML Qwen:
-//   модель  — .wms-trigger / .wms-trigger__text (role=button, aria-haspopup=listbox)
-//   мышление — .qwen-thinking-selector .qwen-chat-v2-dropdown-menu-select(-label)
-// Пункты меню после открытия — по тексту (меню рендерится в портале вне триггера).
-// Результат уходит в C# через postMessage('SYNC:...'), т.к. ExecuteScriptAsync
-// не ждёт Promise и вернул бы "{}".
-internal const string SyncUiScript = @"
+    // Синхронизация модели (3.8 max) и режима мышления ПЕРЕД каждой отправкой.
+    // Триггеры ищем ТОЧНЫМИ селекторами из реального HTML Qwen:
+    //   модель  — .wms-trigger / .wms-trigger__text (role=button, aria-haspopup=listbox)
+    //   мышление — .qwen-thinking-selector .qwen-chat-v2-dropdown-menu-select(-label)
+    // Пункты меню после открытия — по тексту (меню рендерится в портале вне триггера).
+    // Результат уходит в C# через postMessage('SYNC:...'), т.к. ExecuteScriptAsync
+    // не ждёт Promise и вернул бы "{}".
+    internal const string SyncUiScript = @"
 (async function() {
 var wantThink = __THINK__;
 function wait(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
@@ -321,10 +340,9 @@ report.push('sync-err:' + safeToken(e && e.message ? e.message : 'unknown'));
 post('SYNC:' + report.join(' '));
 return 'sync-started';
 })();";
-
-// Отправка: сначала ждём окончания старого стрима, ПОТОМ взводим EXPECT и новый REQID.
-// send() вызывается ровно ОДИН раз. Статус уходит в C# через postMessage('SENDRES:...').
-internal const string SendScript = @"
+    // Отправка: сначала ждём окончания старого стрима, ПОТОМ взводим EXPECT и новый REQID.
+    // send() вызывается ровно ОДИН раз. Статус уходит в C# через postMessage('SENDRES:...').
+    internal const string SendScript = @"
 (async function() {
 var text = __TEXT__;
 var reqid = '__REQID__';
@@ -359,6 +377,9 @@ window.__LERON_REQID__ = reqid;
 window.__LERON_EXPECT__ = true;
 window.__LERON_SEEN_STREAM__ = false;
 window.__LERON_STREAM_TEXT__ = '';
+// запоминаем текущий последний ответ ассистента, чтобы DOM-фолбэк
+// не принял его за ответ на новое сообщение
+if (window.__LERON_SNAPSHOT__) { window.__LERON_LAST_AI__ = window.__LERON_SNAPSHOT__(); }
 var input = inputEl();
 if (!input) { done('NO_INPUT'); return 'started'; }
 input.focus();
