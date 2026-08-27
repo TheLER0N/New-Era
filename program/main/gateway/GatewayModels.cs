@@ -285,7 +285,24 @@ internal sealed partial class GatewayState
         catch { }
         return $"{tool}:{fullPath.Replace('\\', '/').Trim('/')}";
     }
-    public static string StripProviderMetadata(string text)
+    public static string NormEcho(string s) =>
+    string.IsNullOrEmpty(s) ? "" : Regex.Replace(s, @"\s+", " ").Trim();
+
+// LERON-FIX-ECHO: эхо отправленного промпта/пользовательского текста не должно попадать в чат.
+public static bool IsEcho(string sent, string text)
+{
+    if (string.IsNullOrEmpty(sent) || string.IsNullOrEmpty(text)) return false;
+    if (sent == text) return true;
+
+    var a = NormEcho(sent);
+    var b = NormEcho(text);
+    if (a.Length < 200 || b.Length < 80) return false;
+
+    int n = Math.Min(160, Math.Min(a.Length, b.Length));
+    return b.StartsWith(a.Substring(0, n), StringComparison.OrdinalIgnoreCase);
+}
+
+public static string StripProviderMetadata(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
         var idx = text.LastIndexOf("<details>", StringComparison.OrdinalIgnoreCase);
@@ -362,35 +379,87 @@ internal sealed partial class GatewayState
     // Проходим посимвольно, отслеживая строку и экранирование, и заменяем
     // управляющие символы ВНУТРИ строк на \n \r \t \u00XX.
     public static string RepairJson(string s)
+{
+    // LERON-FIX-REPAIRJSON: чинит невалидные JSON-экранирования (одинарные обратные слэши в путях),
+    // живые переносы/табы внутри строк.
+    static bool IsHex4(string text, int start)
     {
-        var sb = new StringBuilder(s.Length + 16);
-        bool inString = false, escaped = false;
-        foreach (char ch in s)
+        for (int k = 0; k < 4; k++)
         {
-            if (inString)
-            {
-                if (escaped) { sb.Append(ch); escaped = false; continue; }
-                if (ch == '\\') { sb.Append(ch); escaped = true; continue; }
-                if (ch == '"') { inString = false; sb.Append(ch); continue; }
-                switch (ch)
-                {
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (ch < ' ') sb.Append("\\u").Append(((int)ch).ToString("x4"));
-                        else sb.Append(ch);
-                        break;
-                }
-            }
-            else
-            {
-                if (ch == '"') inString = true;
-                sb.Append(ch);
-            }
+            char c = text[start + k];
+            bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!ok) return false;
         }
-        return sb.ToString();
+        return true;
     }
+
+    var sb = new StringBuilder(s.Length + 16);
+    bool inString = false;
+
+    for (int i = 0; i < s.Length; i++)
+    {
+        char ch = s[i];
+
+        if (!inString)
+        {
+            if (ch == '"') inString = true;
+            sb.Append(ch);
+            continue;
+        }
+
+        if (ch == '\\')
+        {
+            if (i + 1 >= s.Length)
+            {
+                sb.Append(@"\");
+                continue;
+            }
+
+            char next = s[i + 1];
+            bool valid = next == '"' || next == '\\' || next == '/' || next == 'b' || next == 'f' || next == 'n' || next == 'r' || next == 't';
+
+            if (next == 'u')
+                valid = i + 5 < s.Length && IsHex4(s, i + 2);
+
+            if (valid)
+            {
+                sb.Append(ch);
+                sb.Append(next);
+                i++;
+                continue;
+            }
+
+            sb.Append(@"\");
+            if (next == '\n') sb.Append(@"\n");
+            else if (next == '\r') sb.Append(@"\r");
+            else if (next == '\t') sb.Append(@"\t");
+            else if (next < ' ') sb.Append(@"\u").Append(((int)next).ToString("x4"));
+            else sb.Append(next);
+            i++;
+            continue;
+        }
+
+        if (ch == '"')
+        {
+            inString = false;
+            sb.Append(ch);
+            continue;
+        }
+
+        switch (ch)
+        {
+            case '\n': sb.Append(@"\n"); break;
+            case '\r': sb.Append(@"\r"); break;
+            case '\t': sb.Append(@"\t"); break;
+            default:
+                if (ch < ' ') sb.Append(@"\u").Append(((int)ch).ToString("x4"));
+                else sb.Append(ch);
+                break;
+        }
+    }
+
+    return sb.ToString();
+}
     // Сначала честный парс, при неудаче — парс отремонтированной копии.
     private static JsonObject? ParseToolJson(string candidate)
     {

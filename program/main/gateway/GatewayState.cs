@@ -250,7 +250,7 @@ internal sealed partial class GatewayState
         var role = ChatRoleMap.ContainsKey(chatId) ? ChatRoleMap[chatId] : "unknown";
         LastAiText[role] = text;
         AgentLog($"[AI RECV] роль={role} reqid={reqId} текст={Truncate(text, 120)}");
-        if (LastSentText.TryGetValue(role, out var sentEcho) && sentEcho == text)
+        if (LastSentText.TryGetValue(role, out var sentEcho) && IsEcho(sentEcho, text))
         {
             AgentLog($"[{role}] пропущено эхо пользователя");
             return;

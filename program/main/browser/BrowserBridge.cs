@@ -80,6 +80,15 @@ function post(msg){
 if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(msg);
 }
 
+function normEcho(s){ return (s || '').replace(/\s+/g, ' ').trim(); } // LERON-FIX-BRIDGE-ECHO
+function isEcho(s){
+var n = normEcho(s);
+if (!n) return true;
+if (n === normEcho(window.__LERON_LAST_AI__)) return true;
+var u = normEcho(window.__LERON_LAST_USER__);
+if (u.length >= 200 && n.indexOf(u.substring(0, 120)) === 0) return true;
+return false;
+}
 function reportAi(text, id){
 if (!text) return;
 window.__LERON_LAST_AI__ = text;
@@ -131,7 +140,7 @@ if (els.length === 0) return;
 var cur = extractText(els[els.length-1]);
 if (cur !== lastText){ lastText = cur; lastChange = Date.now(); }
 if ((Date.now() - lastChange) < 3500) return;
-if (!cur || cur === window.__LERON_LAST_AI__) return;
+if (!cur || isEcho(cur)) return;
 
 window.__LERON_EXPECT__ = false;
 reportAi(cur, window.__LERON_REQID__);
@@ -423,6 +432,7 @@ var waited = 0;
 while (window.__LERON_STREAMING__ && waited < 15000) { await wait(250); waited += 250; }
 
 window.__LERON_REQID__ = reqid;
+window.__LERON_LAST_USER__ = text;
 window.__LERON_EXPECT__ = true;
 window.__LERON_SEEN_STREAM__ = false;
 window.__LERON_STREAM_TEXT__ = '';
