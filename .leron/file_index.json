@@ -1,0 +1,21 @@
+{
+  "files": {
+    "program/main/App.xaml.cs": { "summary": "Старт приложения: краши, гарантированное завершение процесса." },
+    "program/main/ChromeWindow.cs": { "summary": "Базовое окно: безрамочность, CRT вкл/выкл, переходы между окнами." },
+    "program/main/Theme.cs": { "summary": "Тема: цвета, шрифт, CRT-эффекты и анимации." },
+    "program/main/browser/BrowserBridge.cs": { "summary": "Мост WebView2: перехват стрима Qwen, отправка, синхронизация модели/мышления." },
+    "program/main/browser/BrowserLauncher.cs": { "summary": "Путь конфига и запуск gateway in-process." },
+    "program/main/browser/QwenBrowserPane.xaml.cs": { "summary": "Встроенная браузерная панель Qwen: навигация, WebSocket, капча." },
+    "program/main/chat/MainWindow.xaml.cs": { "summary": "Чат агента: режимы, отправка, история, обработка ответов gateway." },
+    "program/main/chat/MainWindowCards.cs": { "summary": "Карточки чата: планирование, вопросы, подтверждения, итог." },
+    "program/main/chat/MainWindowTools.cs": { "summary": "DTO чата и истории (ChatMessage, AgentRunResponse, HistoryStore)." },
+    "program/main/gateway/GatewayModels.cs": { "summary": "DTO gateway и чистые помощники: парсинг JSON, правила, пути, файл-индекс DTO." },
+    "program/main/gateway/GatewayState.cs": { "summary": "Состояние gateway: конфиг, роли, логи, авто-правила, загрузка/сохранение файл-индекса." },
+    "program/main/gateway/GatewayStateAgent.cs": { "summary": "Цикл агента: инструкция с деревом и описаниями файлов, парсинг инструментов, подтверждения." },
+    "program/main/gateway/GatewayStateExec.cs": { "summary": "Выполнение команд и одна проверка проекта на finish." },
+    "program/main/gateway/GatewayStateTools.cs": { "summary": "Файловые инструменты: read/write/patch/grep и update_file_summaries." },
+    "program/main/hub/ProjectHubWindow.xaml.cs": { "summary": "Хаб проектов: список, открытие, создание, удаление." },
+    "program/main/splash/SplashWindow.xaml.cs": { "summary": "Заставка с CRT-загрузкой и регистрацией пользователя." },
+    "program/sending and receiving/GatewayHost.cs": { "summary": "HTTP-эндпоинты gateway: agent-run, agent-approve, cancel, ws, статус." }
+  }
+}
