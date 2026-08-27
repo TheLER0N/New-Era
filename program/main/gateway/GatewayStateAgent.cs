@@ -187,12 +187,13 @@ internal sealed partial class GatewayState
             {
                 sb.AppendLine("Доступные инструменты:");
                 sb.AppendLine("- read_file (один файл целиком, лимит 20000 символов)");
-                sb.AppendLine("- read_files (до 10 файлов в одном запросе, общий лимит 50000 символов)");
+                sb.AppendLine("- read_files (до 20 файлов в одном запросе, общий лимит 100000 символов)");
                 sb.AppendLine("- list_files");
-                sb.AppendLine("- grep (массив patterns — только когда ищешь место по НЕСКОЛЬКИМ файлам)");
+                sb.AppendLine("- grep (массив patterns; либо findstr/shell — выбирай сам)");
                 sb.AppendLine("- write_file, write_files, patch_file, rename_file, delete_file, create_directory");
-                sb.AppendLine("- run_command (ТОЛЬКО сборка/тесты/компиляция)");
-                sb.AppendLine("- update_file_summaries (пишет краткие описания файлов в .leron/file_index.json; вызывай ПОСЛЕ каждого изменения файла)");
+                sb.AppendLine("- run_command (сборка/тесты/компиляция и служебные команды; shell по умолчанию PowerShell; timeout_ms и max_output выбирай сам)");
+                sb.AppendLine("- Читай и редактируй, когда сам считаешь нужным; несколько файлов — цепочкой patch_file/write_files в одном ответе; не хватает шагов — request_more_steps.");
+sb.AppendLine("- update_file_summaries (пишет краткие описания файлов в .leron/file_index.json; вызывай ПОСЛЕ каждого изменения файла)");
                 sb.AppendLine("- request_user_input, request_more_steps, request_outside_access, finish");
                 sb.AppendLine();
                 sb.AppendLine("ПРАВИЛА ФАЙЛОВ (раунд 5):");
@@ -202,12 +203,12 @@ internal sealed partial class GatewayState
                 sb.AppendLine("- Если заметил ошибку в СВОЁМ же куске (опечатка, сломанный синтаксис, неверное имя) — ОБЯЗАН сразу добавить второй patch_file с исправлением в ТОМ ЖЕ ответе, не откладывая на следующий шаг.");
                 sb.AppendLine();
                 sb.AppendLine("СБОРКА И КОМАНДЫ (раунд 5):");
-                sb.AppendLine("- Сборка проекта запускается ТОЛЬКО автоматически на finish — сам её НЕ запускай.");
+                sb.AppendLine("- Сборка проекта запускается ТОЛЬКО автоматически на finish — автозапуск на finish; при необходимости можешь запустить её сам через run_command.");
                 sb.AppendLine("- run_command без подтверждения пользователя разрешён ТОЛЬКО для команды проверки проекта и тестов (npm test / pytest / dotnet test …); любая другая команда уйдёт на подтверждение.");
                 sb.AppendLine();
                 sb.AppendLine("ЭКОНОМИЯ ЗАПРОСОВ (каждый твой ответ = 1 запрос пользователя):");
                 sb.AppendLine("- Файлы читай ТОЛЬКО read_file/read_files: полное содержимое в UTF-8 за один запрос. Файл до 300–400 строк читай сразу целиком, без grep и без чтения по частям.");
-                sb.AppendLine("- Чтение/разведка через shell (type/cat/more/head/tail/dir/ls/tree/Get-Content/Select-Object) отключены и вернут заглушку.");
+                sb.AppendLine("- Чтение/разведка через shell (type/cat/more/head/tail/dir/ls/tree/Get-Content/Select-Object) разрешены, но read_file/read_files предпочтительнее для экономии запросов.");
                 sb.AppendLine("- Готовые правки отправляй цепочкой в ОДНОМ ответе, finish последним: {\"name\":\"write_file\",\"arguments\":{...}}{\"name\":\"finish\",\"arguments\":{...}} — проверка пройдёт автоматически, без лишнего запроса.");
                 sb.AppendLine("- Переносы строк внутри JSON-строк пиши как \\n, а не настоящими переносами, иначе JSON не распарсится и запрос сгорит.");
                 sb.AppendLine("- Если нужно спросить пользователя — ОДИН request_user_input со всеми вопросами в массиве questions (каждый вопрос: id, text, options 2–4 варианта, allow_custom), пользователь ответит одним сообщением сразу на все.");
@@ -228,7 +229,7 @@ internal sealed partial class GatewayState
         {
             var check = EnsureCheckCommand(s.Root);
             if (!string.IsNullOrWhiteSpace(check))
-                sb.AppendLine($"Команда проверки проекта: {check}. Она выполнится автоматически ОДИН раз на finish — сам её НЕ запускай.");
+                sb.AppendLine($"Команда проверки проекта: {check}. Она выполнится автоматически ОДИН раз на finish — автозапуск на finish; при необходимости можешь запустить её сам через run_command.");
         }
         if (s.Mode == "repair")
         {

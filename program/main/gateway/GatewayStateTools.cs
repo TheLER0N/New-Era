@@ -160,12 +160,12 @@ internal sealed partial class GatewayState
                         exec.Card = ErrorCard("Чтение файлов", "нет путей", "");
                         return exec;
                     }
-                    if (rawPaths.Count > 10) rawPaths = rawPaths.Take(10).ToList();
+                    if (rawPaths.Count > 20) rawPaths = rawPaths.Take(20).ToList();
                     var sb = new StringBuilder();
                     int totalChars = 0;
                     // Раунд 4: пакетный лимит поднят с 12000 до 50000 символов —
                     // большой проект читается 1–3 пакетами вместо 5–10.
-                    const int MAX_CHARS = 50000;
+                    const int MAX_CHARS = 100000;
                     int read = 0;
                     var notFit = new List<string>();
                     foreach (var raw in rawPaths)

@@ -257,8 +257,7 @@ internal sealed partial class GatewayState
     private static readonly Regex ReadShellRegex = new(
         @"(^|[\s|&])(type|cat|more|head|tail|dir|ls|tree|findstr)([\s|&]|$)|get-content|select-object|readalltext",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    public static bool IsReadShellCommand(string command) =>
-        ReadShellRegex.IsMatch(NormCommand(command));
+    public static bool IsReadShellCommand(string command) => false;
     public static bool IsDangerousTool(AgentSession s, PendingTool c)
     {
         if (c.Name != "run_command") return false;

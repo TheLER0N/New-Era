@@ -21,13 +21,14 @@ public partial class MainWindow
     private void AddActionCard(ActionCardDto card)
     {
         var borderColor = "#12404f";
-        if (card.Type == "error") borderColor = "#e94560";
+        if (card.Type == "read") { borderColor = "#1f6f86"; } else if (card.Type == "error") borderColor = "#e94560";
         else if (card.Type == "outside") borderColor = "#e94560";
         else if (card.Type == "repair") borderColor = "#ffb14a";
         else if (card.Type == "summary")
             borderColor = card.Status == "failed" ? "#e94560" : "#00d9ff";
         else if (card.ExitCode.HasValue && card.ExitCode.Value != 0) borderColor = "#e94560";
-        var border = new Border
+        if (card.Type == "patch" && card.OldText != null && card.NewText != null) { var diffBorder = new Border { Background = B("#07141d"), BorderBrush = B("#00d9ff"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Margin = new Thickness(CardLeft, 6, 0, 6) }; var diffSp = new StackPanel(); diffSp.Children.Add(CardText("📝 " + (card.Path ?? "patch"), "#00d9ff", 15, true)); var oldLines = card.OldText.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None); var newLines = card.NewText.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None); for (int i = 0; i < Math.Max(oldLines.Length, newLines.Length); i++) { if (i < oldLines.Length && (i >= newLines.Length || oldLines[i] != newLines[i])) diffSp.Children.Add(CardText("- " + oldLines[i], "#e94560", 13)); if (i < newLines.Length && (i >= oldLines.Length || oldLines[i] != newLines[i])) diffSp.Children.Add(CardText("+ " + newLines[i], "#00d9ff", 13)); } diffBorder.Child = diffSp; ChatScroll.Content = ChatScroll.Content as StackPanel; ((StackPanel)ChatScroll.Content).Children.Add(diffBorder); return; }
+var border = new Border
         {
             Background = B("#07141d"), BorderBrush = B(borderColor),
             BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
@@ -232,7 +233,7 @@ public partial class MainWindow
             ToolTip = "своё число вопросов (1–30)"
         };
 
-        var border = new Border
+var border = new Border
         {
             Background = B("#07141d"), BorderBrush = B("#00d9ff"),
             BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
@@ -347,7 +348,7 @@ public partial class MainWindow
     // и запускает новую сессию с планом, «Готово» просто закрывает карточку.
     private void AddPlanDoneCard(string role, string plan)
     {
-        var border = new Border
+var border = new Border
         {
             Background = B("#07141d"), BorderBrush = B("#00d9ff"),
             BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
@@ -381,7 +382,7 @@ public partial class MainWindow
 
     private void AddApprovalCard(AgentRunResponse r)
     {
-        var border = new Border
+var border = new Border
         {
             Background = B(r.Dangerous ? "#180a10" : "#07141d"),
             BorderBrush = B(r.Dangerous ? "#e94560" : "#12404f"),
@@ -430,7 +431,7 @@ public partial class MainWindow
 
     private void AddMoreStepsCard(AgentRunResponse r)
     {
-        var border = new Border
+var border = new Border
         {
             Background = B("#07141d"), BorderBrush = B("#ffb14a"),
             BorderThickness = new Thickness(1),
@@ -476,7 +477,7 @@ public partial class MainWindow
 
     private void AddUserInputCard(AgentRunResponse r)
     {
-        var border = new Border
+var border = new Border
         {
             Background = B("#07141d"), BorderBrush = B("#12404f"),
             BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
@@ -537,7 +538,7 @@ public partial class MainWindow
 
     private void AddOutsideCard(AgentRunResponse r)
     {
-        var border = new Border
+var border = new Border
         {
             Background = B("#180a10"), BorderBrush = B("#e94560"),
             BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(8),
