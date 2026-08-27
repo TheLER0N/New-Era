@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : GUI
-  GENERATED      : 27.08.2026 21:52:24
+  GENERATED      : 27.08.2026 22:14:32
   PATH           : C:\Users\Пользователь\Desktop\GUI
 ================================================================
 
@@ -6986,7 +6986,7 @@ catch { }
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubCanvas.cs
-SIZE: 20238 bytes
+SIZE: 25283 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -7018,10 +7018,11 @@ _boldBrush = MakeGridBrush(112, "#12404f", 0.5);
 GridFine.Fill = _fineBrush;
 GridBold.Fill = _boldBrush;
 TraceText.Text = $"TRACE 0x{Environment.TickCount & 0xFFFF:X4}";
-WorldCanvas.MouseLeftButtonDown += OnCanvasDown;
-WorldCanvas.MouseMove += OnCanvasMove;
-WorldCanvas.MouseLeftButtonUp += OnCanvasUp;
-WorldCanvas.MouseWheel += OnWheel;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).Background = System.Windows.Media.Brushes.Transparent;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).MouseLeftButtonDown += OnCanvasDown;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).MouseMove += OnCanvasMove;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).MouseLeftButtonUp += OnCanvasUp;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).MouseWheel += OnWheel;
 }
 private static VisualBrush MakeGridBrush(double size, string color, double opacity)
 {
@@ -7077,6 +7078,7 @@ _startWorld = e.GetPosition(WorldCanvas);
 _lastScreen = _downScreen = e.GetPosition(OverlayCanvas);
 _moved = false;
 _dragBaseX = _nodes[idx].X; _dragBaseY = _nodes[idx].Y;
+if (_multi.Count > 1 && _multi.Contains(idx)) { _multiDragNodes = _nodes.Select((n2, i2) => (n2, i2)).Where(t => _multi.Contains(t.Item2) && t.Item2 != idx).Select(t => (t.n2, t.n2.X, t.n2.Y)).ToList(); _multiDragPts = _points.Where(pu => _multiPts.Contains(pu.Data.Id)).Select(pu => (pu, pu.Data.X, pu.Data.Y)).ToList(); _multiDragZns = _zones.Select((zu2, i2) => (zu2, i2)).Where(t => _multiZns.Contains(t.Item2)).Select(t => (t.zu2, t.zu2.Data.X, t.zu2.Data.Y)).ToList(); } else { _multiDragNodes.Clear(); _multiDragPts.Clear(); _multiDragZns.Clear(); }
 e.Handled = true;
 }
 private void OnHubDown(object sender, MouseButtonEventArgs e)
@@ -7167,7 +7169,7 @@ n.X = _dragBaseX + (w.X - _startWorld.X);
 n.Y = _dragBaseY + (w.Y - _startWorld.Y);
 Canvas.SetLeft(n.Card, n.X); Canvas.SetTop(n.Card, n.Y);
 UpdateNodeGeometry(n);
-SetNodePos(n);
+SetNodePos(n); foreach (var (mn, bx, by) in _multiDragNodes) { mn.X = bx + (w.X - _startWorld.X); mn.Y = by + (w.Y - _startWorld.Y); Canvas.SetLeft(mn.Card, mn.X); Canvas.SetTop(mn.Card, mn.Y); UpdateNodeGeometry(mn); SetNodePos(mn); } foreach (var (mpu, bx2, by2) in _multiDragPts) { mpu.Data.X = bx2 + (w.X - _startWorld.X); mpu.Data.Y = by2 + (w.Y - _startWorld.Y); Canvas.SetLeft(mpu.Root, mpu.Data.X - 20); Canvas.SetTop(mpu.Root, mpu.Data.Y - 20); if (mpu.HubLine != null) { mpu.HubLine.X2 = mpu.Data.X; mpu.HubLine.Y2 = mpu.Data.Y; } } foreach (var (mzu, bx3, by3) in _multiDragZns) { mzu.Data.X = bx3 + (w.X - _startWorld.X); mzu.Data.Y = by3 + (w.Y - _startWorld.Y); Canvas.SetLeft(mzu.Root, mzu.Data.X); Canvas.SetTop(mzu.Root, mzu.Data.Y); }
 break;
 case Drag.Hub:
 _hubX = _dragBaseX + (w.X - _startWorld.X);
@@ -7233,7 +7235,7 @@ private void OnCanvasUp(object sender, MouseButtonEventArgs e)
 switch (_drag)
 {
 case Drag.Pan:
-if (!_moved) { _selected = -1; _multi.Clear(); _linkSel = -1; _selectedPointId = null; Render(); }
+if (!_moved) { _selected = -1; _multi.Clear(); _multiPts.Clear(); _multiZns.Clear(); _linkSel = -1; _selectedPointId = null; Render(); }
 else MarkDirty();
 break;
 case Drag.Node:
@@ -7265,7 +7267,7 @@ MarkDirty();
 break;
 case Drag.Marquee:
 EndMarquee();
-ApplyMarqueeSelection();
+ApplyMarqueeSelection(); SelectAllInMarquee();
 break;
 case Drag.MarqueeZone:
 EndMarquee();
@@ -7333,7 +7335,7 @@ private void ApplyZoneStyles()
 {
 for (int i = 0; i < _zones.Count; i++)
 {
-bool sel = i == _selectedZone;
+bool sel = i == _selectedZone || _multiZns.Contains(i);
 var body = (Border)_zones[i].Root.Children[0];
 var header = _zones[i].Header;
 body.BorderBrush = HubArt.B(sel ? "#00d9ff" : "#1f6f86");
@@ -7432,6 +7434,13 @@ if (e.Key == Key.Escape) { box.Text = pu.Data.Name; Keyboard.ClearFocus(); }
 };
 }
 // Раскладка v3: веера вокруг точек; точки и свободные карточки — сеткой в зонах / кольцом у хаба.
+private readonly HashSet<string> _multiPts = new();
+private readonly HashSet<int> _multiZns = new();
+private List<(NodeUi N, double X, double Y)> _multiDragNodes = new();
+private List<(PointUi Pu, double X, double Y)> _multiDragPts = new();
+private List<(ZoneUi Zu, double X, double Y)> _multiDragZns = new();
+private void SelectAllInMarquee(){var r = NormRect(_marqueeStart, _lastScreen);var a = _cam.ToWorld(new Point(r.X, r.Y));var b = _cam.ToWorld(new Point(r.X + r.Width, r.Y + r.Height));var wr = new Rect(Math.Min(a.X,b.X), Math.Min(a.Y,b.Y), Math.Abs(b.X-a.X), Math.Abs(b.Y-a.Y));_multiPts.Clear();_multiZns.Clear();foreach (var pu in _points) if (wr.Contains(new Point(pu.Data.X, pu.Data.Y))) _multiPts.Add(pu.Data.Id);for (int zi = 0; zi < _zones.Count; zi++){var zd = _zones[zi].Data;if (wr.IntersectsWith(new Rect(zd.X, zd.Y, zd.W, zd.H))) _multiZns.Add(zi);}Render();}
+private void DeleteMulti(){foreach (var zi in _multiZns.OrderByDescending(i => i)) DeleteZone(zi);foreach (var pid in _multiPts.ToList()) DeletePoint(pid);foreach (var i in _multi.OrderByDescending(i => i)) DeleteProject(i);_multi.Clear();_multiPts.Clear();_multiZns.Clear();Render();MarkDirty();}
 private void AlignAll()
 {
 foreach (var pu in _points)
@@ -7448,7 +7457,7 @@ n.X = pu.Data.X + r * Math.Cos(a) - 120;
 n.Y = pu.Data.Y + r * Math.Sin(a) - 46;
 Canvas.SetLeft(n.Card, n.X); Canvas.SetTop(n.Card, n.Y);
 UpdateNodeGeometry(n);
-SetNodePos(n);
+SetNodePos(n); foreach (var (mn, bx, by) in _multiDragNodes) { mn.X = bx + (w.X - _startWorld.X); mn.Y = by + (w.Y - _startWorld.Y); Canvas.SetLeft(mn.Card, mn.X); Canvas.SetTop(mn.Card, mn.Y); UpdateNodeGeometry(mn); SetNodePos(mn); } foreach (var (mpu, bx2, by2) in _multiDragPts) { mpu.Data.X = bx2 + (w.X - _startWorld.X); mpu.Data.Y = by2 + (w.Y - _startWorld.Y); Canvas.SetLeft(mpu.Root, mpu.Data.X - 20); Canvas.SetTop(mpu.Root, mpu.Data.Y - 20); if (mpu.HubLine != null) { mpu.HubLine.X2 = mpu.Data.X; mpu.HubLine.Y2 = mpu.Data.Y; } } foreach (var (mzu, bx3, by3) in _multiDragZns) { mzu.Data.X = bx3 + (w.X - _startWorld.X); mzu.Data.Y = by3 + (w.Y - _startWorld.Y); Canvas.SetLeft(mzu.Root, mzu.Data.X); Canvas.SetTop(mzu.Root, mzu.Data.Y); }
 }
 }
 var units = new List<(bool IsPt, PointUi? Pu, NodeUi? Nu, double Cx, double Cy)>();
@@ -7499,7 +7508,7 @@ foreach (var n in _nodes.Where(n => n.Pt == pu.Data))
 n.X += dx; n.Y += dy;
 Canvas.SetLeft(n.Card, n.X); Canvas.SetTop(n.Card, n.Y);
 UpdateNodeGeometry(n);
-SetNodePos(n);
+SetNodePos(n); foreach (var (mn, bx, by) in _multiDragNodes) { mn.X = bx + (w.X - _startWorld.X); mn.Y = by + (w.Y - _startWorld.Y); Canvas.SetLeft(mn.Card, mn.X); Canvas.SetTop(mn.Card, mn.Y); UpdateNodeGeometry(mn); SetNodePos(mn); } foreach (var (mpu, bx2, by2) in _multiDragPts) { mpu.Data.X = bx2 + (w.X - _startWorld.X); mpu.Data.Y = by2 + (w.Y - _startWorld.Y); Canvas.SetLeft(mpu.Root, mpu.Data.X - 20); Canvas.SetTop(mpu.Root, mpu.Data.Y - 20); if (mpu.HubLine != null) { mpu.HubLine.X2 = mpu.Data.X; mpu.HubLine.Y2 = mpu.Data.Y; } } foreach (var (mzu, bx3, by3) in _multiDragZns) { mzu.Data.X = bx3 + (w.X - _startWorld.X); mzu.Data.Y = by3 + (w.Y - _startWorld.Y); Canvas.SetLeft(mzu.Root, mzu.Data.X); Canvas.SetTop(mzu.Root, mzu.Data.Y); }
 }
 }
 else
@@ -7508,7 +7517,7 @@ var n = u.Nu!;
 n.X += dx; n.Y += dy;
 Canvas.SetLeft(n.Card, n.X); Canvas.SetTop(n.Card, n.Y);
 UpdateNodeGeometry(n);
-SetNodePos(n);
+SetNodePos(n); foreach (var (mn, bx, by) in _multiDragNodes) { mn.X = bx + (w.X - _startWorld.X); mn.Y = by + (w.Y - _startWorld.Y); Canvas.SetLeft(mn.Card, mn.X); Canvas.SetTop(mn.Card, mn.Y); UpdateNodeGeometry(mn); SetNodePos(mn); } foreach (var (mpu, bx2, by2) in _multiDragPts) { mpu.Data.X = bx2 + (w.X - _startWorld.X); mpu.Data.Y = by2 + (w.Y - _startWorld.Y); Canvas.SetLeft(mpu.Root, mpu.Data.X - 20); Canvas.SetTop(mpu.Root, mpu.Data.Y - 20); if (mpu.HubLine != null) { mpu.HubLine.X2 = mpu.Data.X; mpu.HubLine.Y2 = mpu.Data.Y; } } foreach (var (mzu, bx3, by3) in _multiDragZns) { mzu.Data.X = bx3 + (w.X - _startWorld.X); mzu.Data.Y = by3 + (w.Y - _startWorld.Y); Canvas.SetLeft(mzu.Root, mzu.Data.X); Canvas.SetTop(mzu.Root, mzu.Data.Y); }
 }
 }
 private void OnWheel(object sender, MouseWheelEventArgs e)
@@ -7702,7 +7711,7 @@ Padding="{TemplateBinding Padding}">
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubWindow.xaml.cs
-SIZE: 17748 bytes
+SIZE: 17963 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -7828,7 +7837,7 @@ return c;
 private void AddPointUi(PointData pd)
 {
 int count = PointCount(pd.Id);
-bool sel = pd.Id == _selectedPointId;
+bool sel = pd.Id == _selectedPointId || _multiPts.Contains(pd.Id);
 var dot = HubArt.PointDot(pd.Name, count, count == 0, sel);
 var pu = new PointUi { Data = pd, Root = dot };
 Canvas.SetLeft(dot, pd.X - 20);
@@ -7915,7 +7924,7 @@ catch { v.StatsLine = "—"; }
 v.TimeLine = FormatRelative(p.LastOpened);
 return v;
 }
-private void Select(int i) { _selected = i; _multi.Clear(); _linkSel = -1; Render(); }
+private void Select(int i) { _selected = i; _multi.Clear(); _multiPts.Clear(); _multiZns.Clear(); _linkSel = -1; Render(); }
 private void MarkDirty() { _saveTimer.Stop(); _saveTimer.Start(); }
 private void LoadLayout()
 {
@@ -8143,6 +8152,7 @@ if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (Modif
 else if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control) { _multi.Clear(); for (int i = 0; i < _projects.Count; i++) _multi.Add(i); if (_projects.Count > 0) _selected = 0; Render(); }
 e.Handled = true; break;
 case Key.Delete:
+if (_multi.Count > 0 || _multiPts.Count > 0 || _multiZns.Count > 0) { DeleteMulti(); e.Handled = true; break; }
 if (_linkSel >= 0) { _pointOf[_linkSel] = null; _linkSel = -1; Render(); MarkDirty(); }
 else if (_selectedPointId != null) DeletePoint(_selectedPointId);
 else if (_selectedZone >= 0) DeleteZone(_selectedZone);
@@ -8153,7 +8163,7 @@ case Key.Escape:
 if (_moveMode) { ExitMoveMode(); Render(); }
 else if (_pointMenu != null) ClosePointMenu();
 else if (_zoneMode) ToggleZoneMode(false);
-else { _selected = -1; _multi.Clear(); _linkSel = -1; _selectedPointId = null; Render(); }
+else { _selected = -1; _multi.Clear(); _multiPts.Clear(); _multiZns.Clear(); _linkSel = -1; _selectedPointId = null; Render(); }
 e.Handled = true; break;
 }
 }
@@ -9019,12 +9029,12 @@ SIZE: 7251 bytes
   },
   "HubGroups": [],
   "HubLayout": {
-    "PanX": 1813.7094301785742,
-    "PanY": 1212.3897301189877,
-    "Zoom": 0.5694531537496971,
+    "PanX": 800.4598376308375,
+    "PanY": 246.81912802987517,
+    "Zoom": 0.859772890858664,
     "Ver": 3,
-    "HubX": 770.2220175924518,
-    "HubY": 488.3073421408298,
+    "HubX": 629.487177861513,
+    "HubY": 439.45723248215677,
     "Nodes": [
       {
         "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\qwen_only_test",
@@ -9040,14 +9050,14 @@ SIZE: 7251 bytes
       },
       {
         "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\JARVIS",
-        "X": 290.5119327578493,
-        "Y": 182.7592569691987,
+        "X": 262.5975843814647,
+        "Y": 200.20572470443898,
         "PointId": "pt-3-51aafc"
       },
       {
         "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\ekzamen",
-        "X": 242.35673613041342,
-        "Y": 681.153204028964,
+        "X": 312.14260707137475,
+        "Y": 706.7413567073163,
         "PointId": "pt-4-c59e50"
       }
     ],

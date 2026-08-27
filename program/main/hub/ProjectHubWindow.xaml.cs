@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -122,7 +122,7 @@ return c;
 private void AddPointUi(PointData pd)
 {
 int count = PointCount(pd.Id);
-bool sel = pd.Id == _selectedPointId;
+bool sel = pd.Id == _selectedPointId || _multiPts.Contains(pd.Id);
 var dot = HubArt.PointDot(pd.Name, count, count == 0, sel);
 var pu = new PointUi { Data = pd, Root = dot };
 Canvas.SetLeft(dot, pd.X - 20);
@@ -209,7 +209,7 @@ catch { v.StatsLine = "—"; }
 v.TimeLine = FormatRelative(p.LastOpened);
 return v;
 }
-private void Select(int i) { _selected = i; _multi.Clear(); _linkSel = -1; Render(); }
+private void Select(int i) { _selected = i; _multi.Clear(); _multiPts.Clear(); _multiZns.Clear(); _linkSel = -1; Render(); }
 private void MarkDirty() { _saveTimer.Stop(); _saveTimer.Start(); }
 private void LoadLayout()
 {
@@ -437,6 +437,7 @@ if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (Modif
 else if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control) { _multi.Clear(); for (int i = 0; i < _projects.Count; i++) _multi.Add(i); if (_projects.Count > 0) _selected = 0; Render(); }
 e.Handled = true; break;
 case Key.Delete:
+if (_multi.Count > 0 || _multiPts.Count > 0 || _multiZns.Count > 0) { DeleteMulti(); e.Handled = true; break; }
 if (_linkSel >= 0) { _pointOf[_linkSel] = null; _linkSel = -1; Render(); MarkDirty(); }
 else if (_selectedPointId != null) DeletePoint(_selectedPointId);
 else if (_selectedZone >= 0) DeleteZone(_selectedZone);
@@ -447,7 +448,7 @@ case Key.Escape:
 if (_moveMode) { ExitMoveMode(); Render(); }
 else if (_pointMenu != null) ClosePointMenu();
 else if (_zoneMode) ToggleZoneMode(false);
-else { _selected = -1; _multi.Clear(); _linkSel = -1; _selectedPointId = null; Render(); }
+else { _selected = -1; _multi.Clear(); _multiPts.Clear(); _multiZns.Clear(); _linkSel = -1; _selectedPointId = null; Render(); }
 e.Handled = true; break;
 }
 }

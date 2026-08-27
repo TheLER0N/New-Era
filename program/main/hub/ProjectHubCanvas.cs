@@ -88,6 +88,7 @@ _startWorld = e.GetPosition(WorldCanvas);
 _lastScreen = _downScreen = e.GetPosition(OverlayCanvas);
 _moved = false;
 _dragBaseX = _nodes[idx].X; _dragBaseY = _nodes[idx].Y;
+if (_multi.Count > 1 && _multi.Contains(idx)) { _multiDragNodes = _nodes.Select((n2, i2) => (n2, i2)).Where(t => _multi.Contains(t.Item2) && t.Item2 != idx).Select(t => (t.n2, t.n2.X, t.n2.Y)).ToList(); _multiDragPts = _points.Where(pu => _multiPts.Contains(pu.Data.Id)).Select(pu => (pu, pu.Data.X, pu.Data.Y)).ToList(); _multiDragZns = _zones.Select((zu2, i2) => (zu2, i2)).Where(t => _multiZns.Contains(t.Item2)).Select(t => (t.zu2, t.zu2.Data.X, t.zu2.Data.Y)).ToList(); } else { _multiDragNodes.Clear(); _multiDragPts.Clear(); _multiDragZns.Clear(); }
 e.Handled = true;
 }
 private void OnHubDown(object sender, MouseButtonEventArgs e)
@@ -175,7 +176,7 @@ break;
 case Drag.Node:
 var n = _nodes[_dragIndex];
 n.X = _dragBaseX + (w.X - _startWorld.X);
-n.Y = _dragBaseY + (w.Y - _startWorld.Y);
+n.Y = _dragBaseY + (w.Y - _startWorld.Y); MoveMulti(w.X - _startWorld.X, w.Y - _startWorld.Y);
 Canvas.SetLeft(n.Card, n.X); Canvas.SetTop(n.Card, n.Y);
 UpdateNodeGeometry(n);
 SetNodePos(n);
@@ -244,7 +245,7 @@ private void OnCanvasUp(object sender, MouseButtonEventArgs e)
 switch (_drag)
 {
 case Drag.Pan:
-if (!_moved) { _selected = -1; _multi.Clear(); _linkSel = -1; _selectedPointId = null; Render(); }
+if (!_moved) { _selected = -1; _multi.Clear(); _multiPts.Clear(); _multiZns.Clear(); _linkSel = -1; _selectedPointId = null; Render(); }
 else MarkDirty();
 break;
 case Drag.Node:
@@ -276,7 +277,7 @@ MarkDirty();
 break;
 case Drag.Marquee:
 EndMarquee();
-ApplyMarqueeSelection();
+ApplyMarqueeSelection(); SelectAllInMarquee();
 break;
 case Drag.MarqueeZone:
 EndMarquee();
@@ -344,7 +345,7 @@ private void ApplyZoneStyles()
 {
 for (int i = 0; i < _zones.Count; i++)
 {
-bool sel = i == _selectedZone;
+bool sel = i == _selectedZone || _multiZns.Contains(i);
 var body = (Border)_zones[i].Root.Children[0];
 var header = _zones[i].Header;
 body.BorderBrush = HubArt.B(sel ? "#00d9ff" : "#1f6f86");
@@ -443,6 +444,14 @@ if (e.Key == Key.Escape) { box.Text = pu.Data.Name; Keyboard.ClearFocus(); }
 };
 }
 // Раскладка v3: веера вокруг точек; точки и свободные карточки — сеткой в зонах / кольцом у хаба.
+private readonly HashSet<string> _multiPts = new();
+private readonly HashSet<int> _multiZns = new();
+private List<(NodeUi N, double X, double Y)> _multiDragNodes = new();
+private List<(PointUi Pu, double X, double Y)> _multiDragPts = new();
+private List<(ZoneUi Zu, double X, double Y)> _multiDragZns = new();
+private void MoveMulti(double gdx, double gdy){foreach (var (mn, bx, by) in _multiDragNodes) { mn.X = bx + gdx; mn.Y = by + gdy; Canvas.SetLeft(mn.Card, mn.X); Canvas.SetTop(mn.Card, mn.Y); UpdateNodeGeometry(mn); SetNodePos(mn); } foreach (var (mpu, bx2, by2) in _multiDragPts) { mpu.Data.X = bx2 + gdx; mpu.Data.Y = by2 + gdy; Canvas.SetLeft(mpu.Root, mpu.Data.X - 20); Canvas.SetTop(mpu.Root, mpu.Data.Y - 20); if (mpu.HubLine != null) { mpu.HubLine.X2 = mpu.Data.X; mpu.HubLine.Y2 = mpu.Data.Y; } } foreach (var (mzu, bx3, by3) in _multiDragZns) { mzu.Data.X = bx3 + gdx; mzu.Data.Y = by3 + gdy; Canvas.SetLeft(mzu.Root, mzu.Data.X); Canvas.SetTop(mzu.Root, mzu.Data.Y); } }
+private void SelectAllInMarquee(){var r = NormRect(_marqueeStart, _lastScreen);var a = _cam.ToWorld(new Point(r.X, r.Y));var b = _cam.ToWorld(new Point(r.X + r.Width, r.Y + r.Height));var wr = new Rect(Math.Min(a.X,b.X), Math.Min(a.Y,b.Y), Math.Abs(b.X-a.X), Math.Abs(b.Y-a.Y));_multiPts.Clear();_multiZns.Clear();foreach (var pu in _points) if (wr.Contains(new Point(pu.Data.X, pu.Data.Y))) _multiPts.Add(pu.Data.Id);for (int zi = 0; zi < _zones.Count; zi++){var zd = _zones[zi].Data;if (wr.IntersectsWith(new Rect(zd.X, zd.Y, zd.W, zd.H))) _multiZns.Add(zi);}Render();}
+private void DeleteMulti(){foreach (var zi in _multiZns.OrderByDescending(i => i)) DeleteZone(zi);foreach (var pid in _multiPts.ToList()) DeletePoint(pid);foreach (var i in _multi.OrderByDescending(i => i)) DeleteProject(i);_multi.Clear();_multiPts.Clear();_multiZns.Clear();Render();MarkDirty();}
 private void AlignAll()
 {
 foreach (var pu in _points)
