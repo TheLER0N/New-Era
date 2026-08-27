@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -28,10 +28,11 @@ _boldBrush = MakeGridBrush(112, "#12404f", 0.5);
 GridFine.Fill = _fineBrush;
 GridBold.Fill = _boldBrush;
 TraceText.Text = $"TRACE 0x{Environment.TickCount & 0xFFFF:X4}";
-WorldCanvas.MouseLeftButtonDown += OnCanvasDown;
-WorldCanvas.MouseMove += OnCanvasMove;
-WorldCanvas.MouseLeftButtonUp += OnCanvasUp;
-WorldCanvas.MouseWheel += OnWheel;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).Background = System.Windows.Media.Brushes.Transparent;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).MouseLeftButtonDown += OnCanvasDown;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).MouseMove += OnCanvasMove;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).MouseLeftButtonUp += OnCanvasUp;
+((System.Windows.Controls.Grid)WorldCanvas.Parent).MouseWheel += OnWheel;
 }
 private static VisualBrush MakeGridBrush(double size, string color, double opacity)
 {
@@ -364,7 +365,7 @@ private void AddZoneUi(ZoneData z)
 var root = new Grid { Width = z.W, Height = z.H };
 Canvas.SetLeft(root, z.X); Canvas.SetTop(root, z.Y);
 Panel.SetZIndex(root, 0);
-var body = new Border { CornerRadius = new CornerRadius(8), BorderBrush = HubArt.B("#1f6f86"), BorderThickness = new Thickness(1), Background = HubArt.B("#141f6f86"), IsHitTestVisible = false };
+var body = new Border { CornerRadius = new CornerRadius(8), BorderBrush = HubArt.B("#1f6f86"), BorderThickness = new Thickness(1), Background = HubArt.B("#141f6f86") };
 var header = new Border
 {
 Height = 24, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
@@ -384,6 +385,7 @@ WorldCanvas.Children.Add(root);
 var zu = new ZoneUi { Data = z, Root = root, Header = header, Title = title };
 _zones.Add(zu);
 header.MouseLeftButtonDown += (_, e) => OnZoneDown(_zones.IndexOf(zu), e);
+body.MouseLeftButtonDown += (_, e) => OnZoneDown(_zones.IndexOf(zu), e);
 header.MouseLeftButtonUp += (_, e) => { if (e.ClickCount == 2) StartRename(zu); };
 handle.MouseLeftButtonDown += (_, e) => OnZoneResizeDown(_zones.IndexOf(zu), e);
 }

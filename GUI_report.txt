@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : GUI
-  GENERATED      : 27.08.2026 21:35:58
+  GENERATED      : 27.08.2026 21:52:24
   PATH           : C:\Users\Пользователь\Desktop\GUI
 ================================================================
 
@@ -6986,7 +6986,7 @@ catch { }
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubCanvas.cs
-SIZE: 20193 bytes
+SIZE: 20238 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -7354,7 +7354,7 @@ private void AddZoneUi(ZoneData z)
 var root = new Grid { Width = z.W, Height = z.H };
 Canvas.SetLeft(root, z.X); Canvas.SetTop(root, z.Y);
 Panel.SetZIndex(root, 0);
-var body = new Border { CornerRadius = new CornerRadius(8), BorderBrush = HubArt.B("#1f6f86"), BorderThickness = new Thickness(1), Background = HubArt.B("#141f6f86"), IsHitTestVisible = false };
+var body = new Border { CornerRadius = new CornerRadius(8), BorderBrush = HubArt.B("#1f6f86"), BorderThickness = new Thickness(1), Background = HubArt.B("#141f6f86") };
 var header = new Border
 {
 Height = 24, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
@@ -7374,6 +7374,7 @@ WorldCanvas.Children.Add(root);
 var zu = new ZoneUi { Data = z, Root = root, Header = header, Title = title };
 _zones.Add(zu);
 header.MouseLeftButtonDown += (_, e) => OnZoneDown(_zones.IndexOf(zu), e);
+body.MouseLeftButtonDown += (_, e) => OnZoneDown(_zones.IndexOf(zu), e);
 header.MouseLeftButtonUp += (_, e) => { if (e.ClickCount == 2) StartRename(zu); };
 handle.MouseLeftButtonDown += (_, e) => OnZoneResizeDown(_zones.IndexOf(zu), e);
 }
@@ -8927,7 +8928,7 @@ public static class UserProfile
 
 ------------------------------------------------
 FILE: program\sending and receiving\config.json
-SIZE: 7250 bytes
+SIZE: 7251 bytes
 ------------------------------------------------
 {
   "Roles": {
@@ -9018,8 +9019,8 @@ SIZE: 7250 bytes
   },
   "HubGroups": [],
   "HubLayout": {
-    "PanX": 1033.7094301785742,
-    "PanY": 515.3897301189878,
+    "PanX": 1813.7094301785742,
+    "PanY": 1212.3897301189877,
     "Zoom": 0.5694531537496971,
     "Ver": 3,
     "HubX": 770.2220175924518,
