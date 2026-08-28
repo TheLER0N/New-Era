@@ -1,4 +1,4 @@
-<local:ChromeWindow x:Class="MainApp.MainWindow"
+﻿<local:ChromeWindow x:Class="MainApp.MainWindow"
 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 xmlns:local="clr-namespace:MainApp"
@@ -214,7 +214,6 @@ MaxHeight="160"
 VerticalScrollBarVisibility="Auto"
 CaretBrush="#00d9ff"
 SelectionBrush="#12404f"
-IsEnabled="False"
 KeyDown="OnInputKeyDown"/>
 <TextBlock x:Name="InputPlaceholder"
 Text="Введите сообщение..."

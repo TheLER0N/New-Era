@@ -413,9 +413,9 @@ return dt.Value.ToString("dd.MM.yyyy");
 }
 private void OnKeyDown(object sender, KeyEventArgs e)
 {
+if (System.Windows.Input.Keyboard.FocusedElement is System.Windows.Controls.TextBox) return;
 switch (e.Key)
-{
-case Key.Up: Select(Math.Max(0, _selected - 1)); e.Handled = true; break;
+{ case Key.Up: Select(Math.Max(0, _selected - 1)); e.Handled = true; break;
 case Key.Down: Select(Math.Min(_projects.Count - 1, _selected + 1)); e.Handled = true; break;
 case Key.Left: Select(Math.Max(0, _selected - 1)); e.Handled = true; break;
 case Key.Right: Select(Math.Min(_projects.Count - 1, _selected + 1)); e.Handled = true; break;

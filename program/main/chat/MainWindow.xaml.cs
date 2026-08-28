@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -257,14 +257,10 @@ return g;
     {
         if (_selectedRole == null) return;
         var bound = _boundRoles.Contains(_selectedRole);
-        InputBox.IsEnabled = bound;
-        SendBtn.IsEnabled = bound;
+        InputBox.IsEnabled = true;
+        SendBtn.IsEnabled = true;
         var user = string.IsNullOrWhiteSpace(UserProfile.Nick) ? "гость" : UserProfile.Nick;
-        if (!bound)
-        {
-            RoleStatus.Text = $"👤 {user} · роль \"{_selectedRole}\" не закреплена за чатом. Открой чат Qwen и закрепи роль.";
-            return;
-        }
+        if (!bound) { RoleStatus.Text = "Роль не закреплена — писать всё равно можно."; }
         var speed = _think ? "🧠 мышление" : "⚡ быстро";
         var proj = _projectPath != null ? $" · 📁 {_projectStatus}" : "";
         RoleStatus.Text = $"👤 {user} · роль: {_selectedRole} · {ModeLabel()} · {speed}{proj}";
@@ -290,9 +286,9 @@ return g;
     private void OnMainWindowKeyDown(object sender, KeyEventArgs e)
     {
         if (Keyboard.Modifiers != ModifierKeys.Control) return;
-        switch (e.Key)
-        {
-            case Key.D1: case Key.NumPad1: SetMode("chat"); e.Handled = true; break;
+        if (System.Windows.Input.Keyboard.FocusedElement is System.Windows.Controls.TextBox) return;
+switch (e.Key)
+{ case Key.D1: case Key.NumPad1: SetMode("chat"); e.Handled = true; break;
             case Key.D2: case Key.NumPad2: SetMode("plan"); e.Handled = true; break;
             case Key.D3: case Key.NumPad3: SetMode("edit"); e.Handled = true; break;
             case Key.D4: case Key.NumPad4: SetMode("auto"); e.Handled = true; break;

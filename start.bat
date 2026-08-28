@@ -1,7 +1,7 @@
-@echo off
+﻿@echo off
 chcp 65001 >nul 2>&1
 set "ROOT=%~dp0"
-set "EXE=%ROOT%program\main\bin\Debug\net10.0-windows\LeronCli.exe"
+set "EXE=%ROOT%GUI result\LeronCli.exe"
 echo.
 echo ================================================================
 echo   LERON CLI

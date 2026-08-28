@@ -16,4 +16,9 @@
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
     <Compile Include="..\sending and receiving\GatewayHost.cs" Link="GatewayHost.cs" />
   </ItemGroup>
+  <PropertyGroup>
+    <OutputPath>$(MSBuildProjectDirectory)\..\..\GUI result\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
 </Project>
