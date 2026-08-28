@@ -280,8 +280,8 @@ EndMarquee();
 ApplyMarqueeSelection(); SelectAllInMarquee();
 break;
 case Drag.MarqueeZone:
-EndMarquee();
 CreateZoneFromRect();
+EndMarquee();
 ToggleZoneMode(false);
 break;
 }
@@ -319,7 +319,12 @@ Render();
 }
 private void CreateZoneFromRect()
 {
-Render();
+var r = NormRect(_marqueeStart, _lastScreen);
+if (r.Width < 20 || r.Height < 20) return;
+var a = _cam.ToWorld(new Point(r.X, r.Y));
+var b = _cam.ToWorld(new Point(r.X + r.Width, r.Y + r.Height));
+_zoneDatas.Add(new ZoneData { Id = Guid.NewGuid().ToString(), Name = "ZONE " + (_zoneDatas.Count + 1), X = Math.Min(a.X, b.X), Y = Math.Min(a.Y, b.Y), W = Math.Abs(b.X - a.X), H = Math.Abs(b.Y - a.Y) });
+RebuildAll();
 MarkDirty();
 }
 private void OnZoneHotkey()
@@ -334,7 +339,7 @@ _zoneDatas.Add(new ZoneData { Id = Guid.NewGuid().ToString(), Name = "ZONE " + (
 RebuildAll();
 MarkDirty();
 }
-private void OnZoneButtonClick(object sender, RoutedEventArgs e) => OnZoneHotkey();
+private void OnZoneButtonClick(object sender, RoutedEventArgs e) => ToggleZoneMode(!_zoneMode);
 private void ToggleZoneMode(bool on)
 {
 _zoneMode = on;
@@ -380,22 +385,7 @@ close.Click += (_, _) => DeleteZone(_zoneDatas.IndexOf(z));
 var hs = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
 hs.Children.Add(title); hs.Children.Add(close);
 header.Child = hs;
-root.Background = System.Windows.Media.Brushes.Transparent;
-root.PreviewMouseLeftButtonDown += (s2, e2) => { _selectedZone = _zoneDatas.IndexOf(z); RebuildAll(); e2.Handled = true; };
-root.PreviewMouseLeftButtonDown += (s2, e2) => { if (e2.ClickCount == 2) { e2.Handled = true;
-var i2 = _zoneDatas.IndexOf(z);
-if (i2 < 0) return;
-var zd = _zoneDatas[i2];
-var tb = new System.Windows.Controls.TextBox { Width = 220 };
-foreach (var f2 in zd.GetType().GetFields()) if (f2.FieldType == typeof(string)) { tb.Text = (string)(f2.GetValue(zd) ?? ""); break; }
-var ok = new System.Windows.Controls.Button { Content = "OK", IsDefault = true, Width = 90, Margin = new System.Windows.Thickness(0,8,0,0) };
-var win = new System.Windows.Window { Title = "Метка зоны", Width = 260, Height = 120, WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner, Owner = System.Windows.Window.GetWindow(root) };
-ok.Click += (s3, e3) => { win.DialogResult = true; };
-var sp = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(12) };
-sp.Children.Add(tb); sp.Children.Add(ok);
-win.Content = sp;
-if (win.ShowDialog() == true) { foreach (var f2 in zd.GetType().GetFields()) if (f2.FieldType == typeof(string)) { f2.SetValue(zd, tb.Text); break; } RebuildAll(); MarkDirty(); } }
-};
+
 var handle = new Rectangle { Width = 10, Height = 10, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 3, 3), Fill = HubArt.B("#07141d"), Stroke = HubArt.B("#1f6f86"), StrokeThickness = 1, Cursor = Cursors.SizeNWSE };
 root.Children.Add(body); root.Children.Add(header); root.Children.Add(handle);
 WorldCanvas.Children.Add(root);

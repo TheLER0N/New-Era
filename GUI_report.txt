@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : GUI
-  GENERATED      : 28.08.2026 17:57:27
+  GENERATED      : 28.08.2026 18:06:14
   PATH           : C:\Users\Пользователь\Desktop\GUI
 ================================================================
 
@@ -7080,7 +7080,7 @@ catch { }
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubCanvas.cs
-SIZE: 24426 bytes
+SIZE: 23537 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -7364,8 +7364,8 @@ EndMarquee();
 ApplyMarqueeSelection(); SelectAllInMarquee();
 break;
 case Drag.MarqueeZone:
-EndMarquee();
 CreateZoneFromRect();
+EndMarquee();
 ToggleZoneMode(false);
 break;
 }
@@ -7403,7 +7403,12 @@ Render();
 }
 private void CreateZoneFromRect()
 {
-Render();
+var r = NormRect(_marqueeStart, _lastScreen);
+if (r.Width < 20 || r.Height < 20) return;
+var a = _cam.ToWorld(new Point(r.X, r.Y));
+var b = _cam.ToWorld(new Point(r.X + r.Width, r.Y + r.Height));
+_zoneDatas.Add(new ZoneData { Id = Guid.NewGuid().ToString(), Name = "ZONE " + (_zoneDatas.Count + 1), X = Math.Min(a.X, b.X), Y = Math.Min(a.Y, b.Y), W = Math.Abs(b.X - a.X), H = Math.Abs(b.Y - a.Y) });
+RebuildAll();
 MarkDirty();
 }
 private void OnZoneHotkey()
@@ -7418,7 +7423,7 @@ _zoneDatas.Add(new ZoneData { Id = Guid.NewGuid().ToString(), Name = "ZONE " + (
 RebuildAll();
 MarkDirty();
 }
-private void OnZoneButtonClick(object sender, RoutedEventArgs e) => OnZoneHotkey();
+private void OnZoneButtonClick(object sender, RoutedEventArgs e) => ToggleZoneMode(!_zoneMode);
 private void ToggleZoneMode(bool on)
 {
 _zoneMode = on;
@@ -7464,22 +7469,7 @@ close.Click += (_, _) => DeleteZone(_zoneDatas.IndexOf(z));
 var hs = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
 hs.Children.Add(title); hs.Children.Add(close);
 header.Child = hs;
-root.Background = System.Windows.Media.Brushes.Transparent;
-root.PreviewMouseLeftButtonDown += (s2, e2) => { _selectedZone = _zoneDatas.IndexOf(z); RebuildAll(); e2.Handled = true; };
-root.PreviewMouseLeftButtonDown += (s2, e2) => { if (e2.ClickCount == 2) { e2.Handled = true;
-var i2 = _zoneDatas.IndexOf(z);
-if (i2 < 0) return;
-var zd = _zoneDatas[i2];
-var tb = new System.Windows.Controls.TextBox { Width = 220 };
-foreach (var f2 in zd.GetType().GetFields()) if (f2.FieldType == typeof(string)) { tb.Text = (string)(f2.GetValue(zd) ?? ""); break; }
-var ok = new System.Windows.Controls.Button { Content = "OK", IsDefault = true, Width = 90, Margin = new System.Windows.Thickness(0,8,0,0) };
-var win = new System.Windows.Window { Title = "Метка зоны", Width = 260, Height = 120, WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner, Owner = System.Windows.Window.GetWindow(root) };
-ok.Click += (s3, e3) => { win.DialogResult = true; };
-var sp = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(12) };
-sp.Children.Add(tb); sp.Children.Add(ok);
-win.Content = sp;
-if (win.ShowDialog() == true) { foreach (var f2 in zd.GetType().GetFields()) if (f2.FieldType == typeof(string)) { f2.SetValue(zd, tb.Text); break; } RebuildAll(); MarkDirty(); } }
-};
+
 var handle = new Rectangle { Width = 10, Height = 10, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 3, 3), Fill = HubArt.B("#07141d"), Stroke = HubArt.B("#1f6f86"), StrokeThickness = 1, Cursor = Cursors.SizeNWSE };
 root.Children.Add(body); root.Children.Add(header); root.Children.Add(handle);
 WorldCanvas.Children.Add(root);
@@ -7822,7 +7812,7 @@ Padding="{TemplateBinding Padding}">
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubWindow.xaml.cs
-SIZE: 17963 bytes
+SIZE: 17978 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -8256,7 +8246,7 @@ FooterLeft.Text = "M: кликни точку — карточка прикре�
 }
 e.Handled = true; break;
 case Key.S: OnConfigureClick(this, new RoutedEventArgs()); e.Handled = true; break;
-case Key.Z: OnZoneHotkey(); e.Handled = true; break;
+case Key.Z: ToggleZoneMode(!_zoneMode); e.Handled = true; break;
 case Key.F: FitAll(); e.Handled = true; break;
 case Key.A:
 if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)) AlignAll();
@@ -9049,7 +9039,7 @@ public static class UserProfile
 
 ------------------------------------------------
 FILE: program\sending and receiving\config.json
-SIZE: 8410 bytes
+SIZE: 9638 bytes
 ------------------------------------------------
 {
   "Roles": {
@@ -9155,8 +9145,8 @@ SIZE: 8410 bytes
   },
   "HubGroups": [],
   "HubLayout": {
-    "PanX": 827.9658354980269,
-    "PanY": 244.26554159697645,
+    "PanX": 735.4858354980271,
+    "PanY": 81.35054159697643,
     "Zoom": 0.8436041162994342,
     "Ver": 3,
     "HubX": 412.608165380624,
@@ -9170,8 +9160,8 @@ SIZE: 8410 bytes
       },
       {
         "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\qwen_test",
-        "X": 910.7335970361041,
-        "Y": 825.6967027832102,
+        "X": 427.0944206535394,
+        "Y": 728.4947114514202,
         "PointId": "pt-2-89223d"
       },
       {
@@ -9193,7 +9183,56 @@ SIZE: 8410 bytes
         "PointId": "pt-6b0af9e2"
       }
     ],
-    "Zones": [],
+    "Zones": [
+      {
+        "Id": "a9bcf5e2-014a-4325-918b-4c21cb08f99f",
+        "Name": "ZONE 1",
+        "X": 886.7335970361041,
+        "Y": 785.6967027832102,
+        "W": 288,
+        "H": 156
+      },
+      {
+        "Id": "b1ee8d0e-13dc-4804-b570-e80954fc3b06",
+        "Name": "ZONE 2",
+        "X": 403.0944206535394,
+        "Y": 688.4947114514202,
+        "W": 288,
+        "H": 156
+      },
+      {
+        "Id": "1a60a1bb-b296-4a96-8e07-fbcd9f53e7e8",
+        "Name": "ZONE 3",
+        "X": 403.0944206535394,
+        "Y": 688.4947114514202,
+        "W": 288,
+        "H": 156
+      },
+      {
+        "Id": "468eeaba-4d0e-4324-b7f2-21a2fd358226",
+        "Name": "ZONE 4",
+        "X": 403.0944206535394,
+        "Y": 688.4947114514202,
+        "W": 288,
+        "H": 156
+      },
+      {
+        "Id": "20caaf0a-2b25-4f71-baf1-fa2093098caf",
+        "Name": "ZONE 5",
+        "X": 403.0944206535394,
+        "Y": 688.4947114514202,
+        "W": 288,
+        "H": 156
+      },
+      {
+        "Id": "cbf60a00-7da5-4f01-ab5d-415ad0d87e5c",
+        "Name": "ZONE 6",
+        "X": 403.0944206535394,
+        "Y": 688.4947114514202,
+        "W": 288,
+        "H": 156
+      }
+    ],
     "Points": [
       {
         "Id": "pt-1-0bbfb8",

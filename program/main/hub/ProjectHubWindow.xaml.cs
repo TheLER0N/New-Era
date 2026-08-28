@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -430,7 +430,7 @@ FooterLeft.Text = "M: кликни точку — карточка прикре�
 }
 e.Handled = true; break;
 case Key.S: OnConfigureClick(this, new RoutedEventArgs()); e.Handled = true; break;
-case Key.Z: OnZoneHotkey(); e.Handled = true; break;
+case Key.Z: ToggleZoneMode(!_zoneMode); e.Handled = true; break;
 case Key.F: FitAll(); e.Handled = true; break;
 case Key.A:
 if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)) AlignAll();
