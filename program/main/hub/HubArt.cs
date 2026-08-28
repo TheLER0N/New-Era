@@ -38,7 +38,7 @@ Fill = B("#07141d")
 };
 if (empty) ring.StrokeDashArray = new DoubleCollection { 3, 3 };
 inner.Children.Add(ring);
-if (selected) inner.Children.Add(new Ellipse { Width = 52, Height = 52, Stroke = B("#00d9ff"), StrokeThickness = 1, Opacity = 0.4 });
+if (selected) 
 inner.Children.Add(new TextBlock
 {
 Text = empty ? "+" : "×" + count,

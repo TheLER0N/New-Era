@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 namespace MainApp;
 public class NodePos { public string Path { get; set; } = ""; public double X { get; set; } public double Y { get; set; } public string? PointId { get; set; } }
-public class ZoneData { public string Id { get; set; } = ""; public string Name { get; set; } = ""; public double X { get; set; } public double Y { get; set; } public double W { get; set; } public double H { get; set; } }
+public class ZoneData { public string Color = ""; public string Id { get; set; } = ""; public string Name { get; set; } = ""; public double X { get; set; } public double Y { get; set; } public double W { get; set; } public double H { get; set; } }
 public class PointData { public string Id { get; set; } = ""; public string Name { get; set; } = ""; public double X { get; set; } public double Y { get; set; } }
 public class HubLayout
 {

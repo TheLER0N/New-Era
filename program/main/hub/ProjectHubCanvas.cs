@@ -346,15 +346,18 @@ _zoneMode = on;
 WorldCanvas.Cursor = on ? Cursors.Cross : Cursors.Arrow;
 ZoneBtn.BorderBrush = HubArt.B(on ? "#00d9ff" : "#12404f");
 }
-private void ApplyZoneStyles()
+private ContextMenu ZoneMenu(ZoneUi zu){var m = new ContextMenu();var ren = new MenuItem { Header = "Переименовать" };ren.Click += (_, _) => StartRename(zu);m.Items.Add(ren);var col = new MenuItem { Header = "Цвет зоны" };foreach (var cc in new[] { "#1f6f86", "#00d9ff", "#7ee787", "#ffa657", "#ff7b72", "#d2a8ff" }){var hex = cc;var mi = new MenuItem { Header = (hex == "#1f6f86" ? "классический " : "") + hex };mi.Click += (_, _) => { zu.Data.Color = hex; RebuildAll(); MarkDirty(); };col.Items.Add(mi);}m.Items.Add(col);var del = new MenuItem { Header = "Удалить зону" };del.Click += (_, _) => DeleteZone(_zoneDatas.IndexOf(zu.Data));m.Items.Add(del);return m;}
+private ContextMenu PointMenu(PointData pd){var m = new ContextMenu();var ren = new MenuItem { Header = "переименовать" };ren.Click += (_, _) => RenamePoint(pd);m.Items.Add(ren);var at = new MenuItem { Header = "прикрепить проект" };at.Click += (_, _) => AttachNewProject(pd.Id);m.Items.Add(at);var del = new MenuItem { Header = "удалить точку" };del.Click += (_, _) => DeletePoint(pd.Id);m.Items.Add(del);return m;}
+private void RenamePoint(PointData pd){var tb = new TextBox { Text = pd.Name, Width = 220 };var ok = new Button { Content = "OK", IsDefault = true, Width = 90, Margin = new Thickness(0,8,0,0) };var win = new Window { Title = "Имя точки", Width = 260, Height = 120, WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = this };ok.Click += (s3, e3) => { win.DialogResult = true; };var sp = new StackPanel { Margin = new Thickness(12) };sp.Children.Add(tb); sp.Children.Add(ok);win.Content = sp;if (win.ShowDialog() == true && !string.IsNullOrWhiteSpace(tb.Text)) { pd.Name = tb.Text.Trim(); RebuildAll(); MarkDirty(); }}
+private ContextMenu NodeMenu(int i){var m = new ContextMenu();var del = new MenuItem { Header = "убрать из хаба" };del.Click += (_, _) => DeleteProject(i);m.Items.Add(del);return m;}private void ApplyZoneStyles()
 {
 for (int i = 0; i < _zones.Count; i++)
 {
 bool sel = i == _selectedZone || _multiZns.Contains(i);
 var body = (Border)_zones[i].Root.Children[0];
 var header = _zones[i].Header;
-body.BorderBrush = HubArt.B(sel ? "#00d9ff" : "#1f6f86");
-header.Background = HubArt.B(sel ? "#12404f" : "#0d2433");
+var zc = string.IsNullOrEmpty(_zones[i].Data.Color) ? "#1f6f86" : _zones[i].Data.Color; body.BorderBrush = HubArt.B(sel ? "#00d9ff" : zc);
+header.Background = HubArt.B(sel ? "#12404f" : "#33" + zc.Replace("#", ""));
 header.BorderBrush = HubArt.B(sel ? "#00d9ff" : "#1f6f86");
 }
 }
@@ -395,6 +398,7 @@ header.MouseLeftButtonDown += (_, e) => OnZoneDown(_zones.IndexOf(zu), e);
 body.MouseLeftButtonDown += (_, e) => OnZoneDown(_zones.IndexOf(zu), e);
 header.MouseLeftButtonUp += (_, e) => { if (e.ClickCount == 2) StartRename(zu); };
 handle.MouseLeftButtonDown += (_, e) => OnZoneResizeDown(_zones.IndexOf(zu), e);
+root.ContextMenu = ZoneMenu(zu); ApplyZoneStyles();
 }
 private void StartRename(ZoneUi zu)
 {

@@ -137,6 +137,7 @@ pu.HubLine = hl;
 }
 WorldCanvas.Children.Add(dot);
 _points.Add(pu);
+pu.Root.ContextMenu = PointMenu(pu.Data);
 int pi = _points.Count - 1;
 dot.MouseLeftButtonDown += (_, e) => OnPointDown(pi, e);
 dot.MouseLeftButtonUp += (_, e) => { if (e.ClickCount == 2) StartPointRename(pu); };
@@ -152,6 +153,7 @@ Canvas.SetLeft(card, x);
 Canvas.SetTop(card, y);
 int idx = i;
 card.MouseLeftButtonDown += (_, e) => OnNodeDown(idx, e);
+card.ContextMenu = NodeMenu(idx);
 var n = new NodeUi { P = p, Card = card, X = x, Y = y };
 string? pid = i < _pointOf.Count ? _pointOf[i] : null;
 if (pid != null)

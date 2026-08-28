@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : GUI
-  GENERATED      : 28.08.2026 18:10:06
+  GENERATED      : 28.08.2026 18:31:59
   PATH           : C:\Users\Пользователь\Desktop\GUI
 ================================================================
 
@@ -6902,7 +6902,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\hub\HubArt.cs
-SIZE: 3965 bytes
+SIZE: 3846 bytes
 ------------------------------------------------
 using System.Windows;
 using System.Windows.Controls;
@@ -6944,7 +6944,7 @@ Fill = B("#07141d")
 };
 if (empty) ring.StrokeDashArray = new DoubleCollection { 3, 3 };
 inner.Children.Add(ring);
-if (selected) inner.Children.Add(new Ellipse { Width = 52, Height = 52, Stroke = B("#00d9ff"), StrokeThickness = 1, Opacity = 0.4 });
+if (selected) 
 inner.Children.Add(new TextBlock
 {
 Text = empty ? "+" : "×" + count,
@@ -7080,7 +7080,7 @@ catch { }
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubCanvas.cs
-SIZE: 23537 bytes
+SIZE: 25413 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -7430,15 +7430,16 @@ _zoneMode = on;
 WorldCanvas.Cursor = on ? Cursors.Cross : Cursors.Arrow;
 ZoneBtn.BorderBrush = HubArt.B(on ? "#00d9ff" : "#12404f");
 }
-private void ApplyZoneStyles()
+private ContextMenu ZoneMenu(ZoneUi zu){var m = new ContextMenu();var ren = new MenuItem { Header = "Переименовать" };ren.Click += (_, _) => StartRename(zu);m.Items.Add(ren);var col = new MenuItem { Header = "Цвет зоны" };foreach (var cc in new[] { "#1f6f86", "#00d9ff", "#7ee787", "#ffa657", "#ff7b72", "#d2a8ff" }){var hex = cc;var mi = new MenuItem { Header = (hex == "#1f6f86" ? "классический " : "") + hex };mi.Click += (_, _) => { zu.Data.Color = hex; RebuildAll(); MarkDirty(); };col.Items.Add(mi);}m.Items.Add(col);var del = new MenuItem { Header = "Удалить зону" };del.Click += (_, _) => DeleteZone(_zoneDatas.IndexOf(zu.Data));m.Items.Add(del);return m;}
+private ContextMenu PointMenu(PointData pd){var m = new ContextMenu();var at = new MenuItem { Header = "прикрепить проект" };at.Click += (_, _) => AttachNewProject(pd.Id);m.Items.Add(at);var del = new MenuItem { Header = "удалить точку" };del.Click += (_, _) => DeletePoint(pd.Id);m.Items.Add(del);return m;}private void ApplyZoneStyles()
 {
 for (int i = 0; i < _zones.Count; i++)
 {
 bool sel = i == _selectedZone || _multiZns.Contains(i);
 var body = (Border)_zones[i].Root.Children[0];
 var header = _zones[i].Header;
-body.BorderBrush = HubArt.B(sel ? "#00d9ff" : "#1f6f86");
-header.Background = HubArt.B(sel ? "#12404f" : "#0d2433");
+var zc = string.IsNullOrEmpty(_zones[i].Data.Color) ? "#1f6f86" : _zones[i].Data.Color; body.BorderBrush = HubArt.B(sel ? "#00d9ff" : zc);
+header.Background = HubArt.B(sel ? "#12404f" : "#33" + zc.Replace("#", ""));
 header.BorderBrush = HubArt.B(sel ? "#00d9ff" : "#1f6f86");
 }
 }
@@ -7479,6 +7480,7 @@ header.MouseLeftButtonDown += (_, e) => OnZoneDown(_zones.IndexOf(zu), e);
 body.MouseLeftButtonDown += (_, e) => OnZoneDown(_zones.IndexOf(zu), e);
 header.MouseLeftButtonUp += (_, e) => { if (e.ClickCount == 2) StartRename(zu); };
 handle.MouseLeftButtonDown += (_, e) => OnZoneResizeDown(_zones.IndexOf(zu), e);
+root.ContextMenu = ZoneMenu(zu); ApplyZoneStyles();
 }
 private void StartRename(ZoneUi zu)
 {
@@ -7540,7 +7542,8 @@ private List<(NodeUi N, double X, double Y)> _multiDragNodes = new();
 private List<(PointUi Pu, double X, double Y)> _multiDragPts = new();
 private List<(ZoneUi Zu, double X, double Y)> _multiDragZns = new();
 private void MoveMulti(double gdx, double gdy){foreach (var (mn, bx, by) in _multiDragNodes) { mn.X = bx + gdx; mn.Y = by + gdy; Canvas.SetLeft(mn.Card, mn.X); Canvas.SetTop(mn.Card, mn.Y); UpdateNodeGeometry(mn); SetNodePos(mn); } foreach (var (mpu, bx2, by2) in _multiDragPts) { mpu.Data.X = bx2 + gdx; mpu.Data.Y = by2 + gdy; Canvas.SetLeft(mpu.Root, mpu.Data.X - 20); Canvas.SetTop(mpu.Root, mpu.Data.Y - 20); if (mpu.HubLine != null) { mpu.HubLine.X2 = mpu.Data.X; mpu.HubLine.Y2 = mpu.Data.Y; } } foreach (var (mzu, bx3, by3) in _multiDragZns) { mzu.Data.X = bx3 + gdx; mzu.Data.Y = by3 + gdy; Canvas.SetLeft(mzu.Root, mzu.Data.X); Canvas.SetTop(mzu.Root, mzu.Data.Y); } }
-private void SelectAllInMarquee(){var r = NormRect(_marqueeStart, _lastScreen);var a = _cam.ToWorld(new Point(r.X, r.Y));var b = _cam.ToWorld(new Point(r.X + r.Width, r.Y + r.Height));var wr = new Rect(Math.Min(a.X,b.X), Math.Min(a.Y,b.Y), Math.Abs(b.X-a.X), Math.Abs(b.Y-a.Y));_multiPts.Clear();_multiZns.Clear();foreach (var pu in _points) if (wr.Contains(new Point(pu.Data.X, pu.Data.Y))) _multiPts.Add(pu.Data.Id);for (int zi = 0; zi < _zones.Count; zi++){var zd = _zones[zi].Data;if (wr.IntersectsWith(new Rect(zd.X, zd.Y, zd.W, zd.H))) _multiZns.Add(zi);}Render();}
+private void HideEmptyHint(){Dispatcher.BeginInvoke(new Action(() => {var tb = FindEmptyHint(this);if (tb != null && tb.Parent is FrameworkElement p1 && p1.Parent is FrameworkElement p2) p2.Visibility = Visibility.Collapsed;}));}
+private static TextBlock? FindEmptyHint(DependencyObject o){foreach (var ch in LogicalTreeHelper.GetChildren(o)){if (ch is TextBlock t && (t.Text ?? "").Contains("Больше проектов нет")) return t;if (ch is DependencyObject d){var r = FindEmptyHint(d);if (r != null) return r;}}return null;}private void SelectAllInMarquee(){var r = NormRect(_marqueeStart, _lastScreen);var a = _cam.ToWorld(new Point(r.X, r.Y));var b = _cam.ToWorld(new Point(r.X + r.Width, r.Y + r.Height));var wr = new Rect(Math.Min(a.X,b.X), Math.Min(a.Y,b.Y), Math.Abs(b.X-a.X), Math.Abs(b.Y-a.Y));_multi.Clear();_multiPts.Clear();_multiZns.Clear();for (int ni = 0; ni < _nodes.Count; ni++){var nn = _nodes[ni];if (wr.Contains(new Point(nn.X + 120, nn.Y + 46))) _multi.Add(ni);}foreach (var pu in _points) if (wr.Contains(new Point(pu.Data.X, pu.Data.Y))) _multiPts.Add(pu.Data.Id);for (int zi = 0; zi < _zones.Count; zi++){var zd = _zones[zi].Data;if (wr.IntersectsWith(new Rect(zd.X, zd.Y, zd.W, zd.H))) _multiZns.Add(zi);}Render();}
 private void DeleteMulti(){foreach (var zi in _multiZns.OrderByDescending(i => i)) DeleteZone(zi);foreach (var pid in _multiPts.ToList()) DeletePoint(pid);foreach (var i in _multi.OrderByDescending(i => i)) DeleteProject(i);_multi.Clear();_multiPts.Clear();_multiZns.Clear();Render();MarkDirty();}
 private void AlignAll()
 {
@@ -7812,7 +7815,7 @@ Padding="{TemplateBinding Padding}">
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubWindow.xaml.cs
-SIZE: 17978 bytes
+SIZE: 17994 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -7892,7 +7895,7 @@ _selected = _projects.IndexOf(last);
 }
 }
 private void Render()
-{
+{HideEmptyHint();
 ClosePointMenu();
 CountText.Text = _projects.Count.ToString();
 EmptyState.Visibility = _projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -9039,7 +9042,7 @@ public static class UserProfile
 
 ------------------------------------------------
 FILE: program\sending and receiving\config.json
-SIZE: 5297 bytes
+SIZE: 7040 bytes
 ------------------------------------------------
 {
   "Roles": {
@@ -9049,7 +9052,20 @@ SIZE: 5297 bytes
     }
   },
   "RetryAttempts": 3,
-  "Projects": [],
+  "Projects": [
+    {
+      "Name": "JARVIS",
+      "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\JARVIS",
+      "Role": "team",
+      "LastOpened": "2026-08-28T18:14:53.2312658\u002B03:00"
+    },
+    {
+      "Name": "GUI_test",
+      "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\GUI_test",
+      "Role": "team",
+      "LastOpened": "2026-08-28T18:23:56.5985378\u002B03:00"
+    }
+  ],
   "AutoApprove": [
     "create_directory:.",
     "run_command:cd calculator \u0026\u0026 csc /target:winexe /out:calculator.exe program.cs",
@@ -9114,15 +9130,58 @@ SIZE: 5297 bytes
   },
   "HubGroups": [],
   "HubLayout": {
-    "PanX": 813.4087108227312,
-    "PanY": 174.7031228365231,
-    "Zoom": 0.9701447337443493,
+    "PanX": 817.1734381464064,
+    "PanY": -40.75762133098789,
+    "Zoom": 1.1154001400077245,
     "Ver": 3,
-    "HubX": 430.38901745351234,
-    "HubY": 458.19912188221826,
-    "Nodes": [],
-    "Zones": [],
-    "Points": []
+    "HubX": 464.4045605494729,
+    "HubY": 410.7835163545158,
+    "Nodes": [
+      {
+        "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\JARVIS",
+        "X": -276.01143969330326,
+        "Y": 502.5545608015253,
+        "PointId": "pt-d2f4f531"
+      },
+      {
+        "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\GUI_test",
+        "X": 1156.596980458535,
+        "Y": 487.544459783923,
+        "PointId": "pt-f2b64e80"
+      }
+    ],
+    "Zones": [
+      {
+        "Id": "a0c8091d-bcef-4d37-bb9b-44795460bdb8",
+        "Name": "ZONE 1",
+        "X": -425.94439775088614,
+        "Y": 386.32673222494014,
+        "W": 622.6641036698256,
+        "H": 337.71612402431225
+      },
+      {
+        "Id": "d1e41251-17ed-408d-afa5-c53a24c46139",
+        "Name": "ZONE 2",
+        "X": 747.5628586256511,
+        "Y": 484.38964732953997,
+        "W": 660.7078654465182,
+        "H": 408.32286909587
+      }
+    ],
+    "Points": [
+      {
+        "Id": "pt-d2f4f531",
+        "Name": "POINT 1",
+        "X": 96.75666930018977,
+        "Y": 597.5680256410325
+      },
+      {
+        "Id": "pt-f2b64e80",
+        "Name": "POINT 2",
+        "X": 799.8426078697139,
+        "Y": 519.9939593147207
+      }
+    ]
   }
 }
 
