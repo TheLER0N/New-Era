@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -11,17 +11,18 @@ public static class BrowserLauncher
 {
     public static string? GetConfigPath()
     {
-        var candidates = new[]
+        var dir = AppContext.BaseDirectory;
+        for (int i = 0; i < 8 && !string.IsNullOrEmpty(dir); i++)
         {
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "sending and receiving", "config.json")),
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "sending and receiving", "config.json")),
-            Path.Combine(AppContext.BaseDirectory, "config.json")
-        };
-        foreach (var p in candidates)
-        {
-            try { if (File.Exists(p)) return p; } catch { }
+            if (Directory.Exists(Path.Combine(dir, "sending and receiving")) || Directory.Exists(Path.Combine(dir, "program")))
+            {
+                var sr = Path.Combine(dir, "sending and receiving");
+                Directory.CreateDirectory(sr);
+                return Path.Combine(sr, "config.json");
+            }
+            dir = Path.GetDirectoryName(dir);
         }
-        return null;
+        return Path.Combine(AppContext.BaseDirectory, "config.json");
     }
 }
 

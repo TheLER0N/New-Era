@@ -22,7 +22,7 @@ public static HubLayout Load()
 try
 {
 var path = BrowserLauncher.GetConfigPath();
-if (path == null) return new HubLayout();
+if (path == null || !File.Exists(path)) return new HubLayout();
 var node = JsonNode.Parse(File.ReadAllText(path));
 var l = node?["HubLayout"];
 if (l == null) return new HubLayout();
@@ -36,8 +36,10 @@ try
 {
 var path = BrowserLauncher.GetConfigPath();
 if (path == null) return;
-var node = JsonNode.Parse(File.ReadAllText(path))?.AsObject();
-if (node == null) return;
+JsonObject node;
+try { node = JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject(); }
+catch { node = new JsonObject(); }
+System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
 node["HubLayout"] = JsonSerializer.SerializeToNode(layout);
 File.WriteAllText(path, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 }

@@ -421,8 +421,7 @@ MarkDirty();
 box.LostKeyboardFocus += (_, _) => Commit();
 box.KeyDown += (_, e) =>
 {
-e.Handled = true;
-if (e.Key == Key.Enter) Keyboard.ClearFocus();
+if (e.Key == Key.Enter) { e.Handled = true; Keyboard.ClearFocus(); }
 if (e.Key == Key.Escape) { box.Text = zu.Data.Name; Keyboard.ClearFocus(); }
 };
 }
@@ -448,8 +447,7 @@ MarkDirty();
 box.LostKeyboardFocus += (_, _) => Commit();
 box.KeyDown += (_, e) =>
 {
-e.Handled = true;
-if (e.Key == Key.Enter) Keyboard.ClearFocus();
+if (e.Key == Key.Enter) { e.Handled = true; Keyboard.ClearFocus(); }
 if (e.Key == Key.Escape) { box.Text = pu.Data.Name; Keyboard.ClearFocus(); }
 };
 }

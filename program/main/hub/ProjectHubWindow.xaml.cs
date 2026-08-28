@@ -493,8 +493,10 @@ try
 {
 var path = BrowserLauncher.GetConfigPath();
 if (path == null) return;
-var node = File.ReadAllText(path) is string s ? JsonNode.Parse(s)?.AsObject() : null;
-if (node == null) return;
+JsonObject node;
+try { node = JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject(); }
+catch { node = new JsonObject(); }
+System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
 node["Projects"] = System.Text.Json.JsonSerializer.SerializeToNode(projects);
 File.WriteAllText(path, node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
 }

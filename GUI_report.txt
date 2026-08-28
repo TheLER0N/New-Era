@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : GUI
-  GENERATED      : 28.08.2026 19:14:51
+  GENERATED      : 28.08.2026 19:38:22
   PATH           : C:\Users\Пользователь\Desktop\GUI
 ================================================================
 
@@ -11477,7 +11477,7 @@ return 'started';
 
 ------------------------------------------------
 FILE: program\main\browser\BrowserLauncher.cs
-SIZE: 1906 bytes
+SIZE: 1959 bytes
 ------------------------------------------------
 using System;
 using System.IO;
@@ -11492,17 +11492,18 @@ public static class BrowserLauncher
 {
     public static string? GetConfigPath()
     {
-        var candidates = new[]
+        var dir = AppContext.BaseDirectory;
+        for (int i = 0; i < 8 && !string.IsNullOrEmpty(dir); i++)
         {
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "sending and receiving", "config.json")),
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "sending and receiving", "config.json")),
-            Path.Combine(AppContext.BaseDirectory, "config.json")
-        };
-        foreach (var p in candidates)
-        {
-            try { if (File.Exists(p)) return p; } catch { }
+            if (Directory.Exists(Path.Combine(dir, "sending and receiving")) || Directory.Exists(Path.Combine(dir, "program")))
+            {
+                var sr = Path.Combine(dir, "sending and receiving");
+                Directory.CreateDirectory(sr);
+                return Path.Combine(sr, "config.json");
+            }
+            dir = Path.GetDirectoryName(dir);
         }
-        return null;
+        return Path.Combine(AppContext.BaseDirectory, "config.json");
     }
 }
 
@@ -12508,7 +12509,7 @@ ToolTip="Потяни для изменения ширины браузера"/>
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindow.xaml.cs
-SIZE: 29722 bytes
+SIZE: 29706 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -12559,7 +12560,7 @@ public partial class MainWindow : ChromeWindow
 
     public MainWindow(string? projectPath = null, string? projectName = null)
     {
-        InitializeComponent(); FixChatInput();
+        InitializeComponent();
         var holo = Theme.MakeHoloPlanet(); Grid.SetRow(holo, 1); ChatRootGrid.Children.Insert(0, holo);
 
         _browserPane.MountIn(BrowserPaneHost);
@@ -16924,7 +16925,7 @@ public void PanBy(double dx, double dy) { PanX += dx; PanY += dy; }
 
 ------------------------------------------------
 FILE: program\main\hub\HubLayoutStore.cs
-SIZE: 1965 bytes
+SIZE: 2094 bytes
 ------------------------------------------------
 using System.Collections.Generic;
 using System.IO;
@@ -16950,7 +16951,7 @@ public static HubLayout Load()
 try
 {
 var path = BrowserLauncher.GetConfigPath();
-if (path == null) return new HubLayout();
+if (path == null || !File.Exists(path)) return new HubLayout();
 var node = JsonNode.Parse(File.ReadAllText(path));
 var l = node?["HubLayout"];
 if (l == null) return new HubLayout();
@@ -16964,8 +16965,10 @@ try
 {
 var path = BrowserLauncher.GetConfigPath();
 if (path == null) return;
-var node = JsonNode.Parse(File.ReadAllText(path))?.AsObject();
-if (node == null) return;
+JsonObject node;
+try { node = JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject(); }
+catch { node = new JsonObject(); }
+Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 node["HubLayout"] = JsonSerializer.SerializeToNode(layout);
 File.WriteAllText(path, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 }
@@ -16976,7 +16979,7 @@ catch { }
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubCanvas.cs
-SIZE: 26369 bytes
+SIZE: 26377 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -17401,8 +17404,7 @@ MarkDirty();
 box.LostKeyboardFocus += (_, _) => Commit();
 box.KeyDown += (_, e) =>
 {
-e.Handled = true;
-if (e.Key == Key.Enter) Keyboard.ClearFocus();
+if (e.Key == Key.Enter) { e.Handled = true; Keyboard.ClearFocus(); }
 if (e.Key == Key.Escape) { box.Text = zu.Data.Name; Keyboard.ClearFocus(); }
 };
 }
@@ -17428,8 +17430,7 @@ MarkDirty();
 box.LostKeyboardFocus += (_, _) => Commit();
 box.KeyDown += (_, e) =>
 {
-e.Handled = true;
-if (e.Key == Key.Enter) Keyboard.ClearFocus();
+if (e.Key == Key.Enter) { e.Handled = true; Keyboard.ClearFocus(); }
 if (e.Key == Key.Escape) { box.Text = pu.Data.Name; Keyboard.ClearFocus(); }
 };
 }
@@ -17713,7 +17714,7 @@ Padding="{TemplateBinding Padding}">
 
 ------------------------------------------------
 FILE: program\main\hub\ProjectHubWindow.xaml.cs
-SIZE: 18163 bytes
+SIZE: 18247 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -18210,8 +18211,10 @@ try
 {
 var path = BrowserLauncher.GetConfigPath();
 if (path == null) return;
-var node = File.ReadAllText(path) is string s ? JsonNode.Parse(s)?.AsObject() : null;
-if (node == null) return;
+JsonObject node;
+try { node = JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject(); }
+catch { node = new JsonObject(); }
+Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 node["Projects"] = System.Text.Json.JsonSerializer.SerializeToNode(projects);
 File.WriteAllText(path, node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
 }
