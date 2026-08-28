@@ -368,14 +368,22 @@ button, [class*='btn'], [role='button'] { border-color: var(--border) !important
 
     private async Task ListenWebSocket()
     {
-        var buffer = new byte[4096];
-        try
+    var buffer = new byte[4096];
+    using var ms = new MemoryStream();
+    try
+    {
+        while (_ws != null && _ws.State == WebSocketState.Open)
         {
-            while (_ws != null && _ws.State == WebSocketState.Open)
+            var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+            if (result.MessageType == WebSocketMessageType.Close) break;
+            
+            ms.Write(buffer, 0, result.Count);
+            
+            if (result.EndOfMessage)
             {
-                var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-                if (result.MessageType == WebSocketMessageType.Close) break;
-                var msg = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                var msg = Encoding.UTF8.GetString(ms.ToArray());
+                ms.SetLength(0);
+                
                 if (msg.StartsWith("TYPE:"))
                 {
                     var parts = msg[5..].Split('|');
@@ -394,11 +402,12 @@ button, [class*='btn'], [role='button'] { border-color: var(--border) !important
                 }
             }
         }
-        catch { }
-        finally
-        {
-            _wsConnected = false;
-        }
+    }
+    catch { }
+    finally
+    {
+        _wsConnected = false;
+    }
     }
 
     private async Task SyncQwenUi()
