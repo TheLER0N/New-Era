@@ -76,7 +76,7 @@ _selected = _projects.IndexOf(last);
 }
 }
 private void Render()
-{
+{HideEmptyHint();
 ClosePointMenu();
 CountText.Text = _projects.Count.ToString();
 EmptyState.Visibility = _projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
