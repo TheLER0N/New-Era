@@ -310,14 +310,19 @@ public partial class SplashWindow : ChromeWindow
 
             _stage = Stage.AskAbout;
 
-            Print("> расскажи о себе в паре слов: ");
+            Print("> опиши себя одной строкой (роль/кто ты) [Enter — пропустить]: ");
         }
         else if (_stage == Stage.AskAbout)
         {
+            // Пустой ввод = пропустить описание (сохраняем пустую строку).
             UserProfile.Save(_nick, text);
 
-            Print("  ✓ профиль сохранён");
+            if (string.IsNullOrWhiteSpace(text))
+                Print("  ✓ профиль сохранён (описание пропущено)");
+            else
+                Print("  ✓ профиль сохранён: " + text);
 
+            InputBox.Clear();
             InputLine.Visibility = Visibility.Collapsed;
 
             SessionUser.Text = _nick;
@@ -331,16 +336,32 @@ public partial class SplashWindow : ChromeWindow
     {
         _stage = Stage.Greet;
 
-        TypeLine($"LERON GUI приветствует пользователя {UserProfile.Nick}!", () =>
+        TypeLine($"> LERON GUI приветствует пользователя {UserProfile.Nick}!", () =>
         {
-            _stage = Stage.Loading;
-
-            DrawBar();
-            _barTimer.Start();
-
-            if (_ready)
-                OnBrowserReady(_readyOk);
+            // Вторая строка приветствия — описание профиля, если оно есть.
+            if (!string.IsNullOrWhiteSpace(UserProfile.Description))
+            {
+                TypeLine($"> профиль: {UserProfile.Description}", () =>
+                {
+                    EnterLoadingStage();
+                });
+            }
+            else
+            {
+                EnterLoadingStage();
+            }
         });
+    }
+
+    private void EnterLoadingStage()
+    {
+        _stage = Stage.Loading;
+
+        DrawBar();
+        _barTimer.Start();
+
+        if (_ready)
+            OnBrowserReady(_readyOk);
     }
 
     private void OnBrowserReady(bool ok)
@@ -475,63 +496,5 @@ public partial class SplashWindow : ChromeWindow
 
         TermText.Text = _printed;
         TermScroll.ScrollToEnd();
-    }
-}
-
-public static class UserProfile
-{
-    public static string Nick = "";
-    public static string About = "";
-
-    public static bool Exists()
-    {
-        try
-        {
-            var path = BrowserLauncher.GetConfigPath();
-
-            if (path == null)
-                return false;
-
-            var node = JsonNode.Parse(File.ReadAllText(path));
-
-            var p = node?["UserProfile"];
-
-            Nick = p?["Nick"]?.GetValue<string>() ?? "";
-            About = p?["About"]?.GetValue<string>() ?? "";
-
-            return !string.IsNullOrWhiteSpace(Nick);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    public static void Save(string nick, string about)
-    {
-        Nick = nick;
-        About = about;
-
-        try
-        {
-            var path = BrowserLauncher.GetConfigPath();
-
-            if (path == null)
-                return;
-
-            var node = JsonNode.Parse(File.ReadAllText(path))?.AsObject();
-
-            if (node == null)
-                return;
-
-            node["UserProfile"] = new JsonObject
-            {
-                ["Nick"] = nick,
-                ["About"] = about
-            };
-
-            File.WriteAllText(path, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        }
-        catch { }
     }
 }
