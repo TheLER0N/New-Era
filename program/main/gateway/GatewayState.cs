@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -247,7 +247,7 @@ internal sealed partial class GatewayState
     }
     public void HandleAiMessage(string chatId, string reqId, string text)
     {
-        var role = ChatRoleMap.ContainsKey(chatId) ? ChatRoleMap[chatId] : "unknown";
+        LastBrowserChatId = chatId; var role = ChatRoleMap.ContainsKey(chatId) ? ChatRoleMap[chatId] : "unknown";
         LastAiText[role] = text;
         AgentLog($"[AI RECV] роль={role} reqid={reqId} текст={Truncate(text, 120)}");
         if (LastSentText.TryGetValue(role, out var sentEcho) && IsEcho(sentEcho, text))

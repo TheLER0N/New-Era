@@ -47,7 +47,7 @@ public partial class MainWindow : ChromeWindow
 
     public MainWindow(string? projectPath = null, string? projectName = null)
     {
-        InitializeComponent();
+        InitializeComponent(); LoadBoundRolesFromConfig();
         var holo = Theme.MakeHoloPlanet(); Grid.SetRow(holo, 1); ChatRootGrid.Children.Insert(0, holo);
 
         _browserPane.MountIn(BrowserPaneHost);
@@ -253,7 +253,21 @@ return g;
         }
     }
 
-    private void ApplyRoleSelection()
+    
+private void LoadBoundRolesFromConfig()
+{
+    _boundRoles.Clear();
+    try {
+        var path = BrowserLauncher.GetConfigPath();
+        if (path == null || !File.Exists(path)) return;
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        if (doc.RootElement.TryGetProperty("Roles", out var roles))
+            foreach (var r in roles.EnumerateObject())
+                if (r.Value.TryGetProperty("ChatId", out var cid) && !string.IsNullOrEmpty(cid.GetString()))
+                    _boundRoles.Add(r.Name);
+    } catch {}
+}
+private void ApplyRoleSelection()
     {
         if (_selectedRole == null) return;
         var bound = _boundRoles.Contains(_selectedRole);

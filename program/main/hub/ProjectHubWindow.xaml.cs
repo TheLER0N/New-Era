@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using Hub;
 namespace MainApp;
 public partial class ProjectHubWindow : ChromeWindow
 {
@@ -74,6 +75,12 @@ if (_projects.Count > 0)
 var last = _projects.OrderByDescending(p => p.LastOpened ?? DateTime.MinValue).First();
 _selected = _projects.IndexOf(last);
 }
+}
+private void Settings_Click(object sender, RoutedEventArgs e)
+{
+var win = new HubSettingsWindow();
+win.Owner = this;
+win.ShowDialog();
 }
 private void Render()
 {HideEmptyHint();

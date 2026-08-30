@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
@@ -167,7 +167,7 @@ internal sealed partial class GatewayState
             sb.AppendLine($"Корень проекта: {s.Root}");
             sb.AppendLine();
             sb.AppendLine("=== СТРУКТУРА ПРОЕКТА ===");
-            sb.AppendLine(GetProjectTree(s.Root, 300));
+            sb.AppendLine(GetProjectTree(s.Root, 1000));
             // Раунд 3: после дерева — краткие описания файлов из .leron/file_index.json.
             var indexPrompt = GetFileIndexPrompt(s);
             if (!string.IsNullOrEmpty(indexPrompt))
@@ -181,22 +181,48 @@ internal sealed partial class GatewayState
             if (s.Mode == "plan")
             {
                 sb.AppendLine("Режим: планирование. Разрешены только read_file, read_files, list_files, grep, request_user_input, finish.");
+sb.AppendLine();
+sb.AppendLine("=== РЕЖИМ РАЗМЫШЛЕНИЯ (раунд 3) ===");
+sb.AppendLine("Включай размышление (think: true) ТОЛЬКО для:");
+sb.AppendLine("  - Составление плана работы");
+sb.AppendLine("  - Написание кода (write_file, patch_file)");
+sb.AppendLine("  - Сложные решения архитектуры");
+sb.AppendLine("НЕ включай размышление (think: false) для:");
+sb.AppendLine("  - Чтение файлов (read_file, read_files)");
+sb.AppendLine("  - Поиск (grep, list_files)");
+sb.AppendLine("  - Ответы на вопросы пользователя");
+sb.AppendLine("  - Простые действия (rename_file, delete_file)");
+sb.AppendLine("Это ускоряет работу — размышление только когда действительно нужно.");
+            sb.AppendLine("- Читай и редактируй, когда сам считаешь нужным; НЕСКОЛЬКО инструментов в ОДНОМ ответе — цепочкой JSON-объектов подряд в одном сообщении. Это экономит запросы.");
+sb.AppendLine("В режиме планирования задавай вопросы ТОЛЬКО через request_user_input — GUI покажет карточку и пользователь ответит пакетом.");
                 sb.AppendLine($"ты в режиме планирования: прочитай файлы, затем задай {s.PlanRounds} раундов уточняющих вопросов. В каждом раунде ОДИН request_user_input с массивом questions из {s.PlanMin}–{s.PlanMax} вопросов формата {{\"id\":\"q1\",\"text\":\"текст вопроса\",\"options\":[\"вариант1\",\"вариант2\"],\"allow_custom\":true}} (options — 2–4 варианта; все вопросы раунда приходят одной карточкой и пользователь отвечает одним сообщением). Пример: {{\"name\":\"request_user_input\",\"arguments\":{{\"questions\":[{{\"id\":\"q1\",\"text\":\"Какой режим игры нужен?\",\"options\":[\"Локальный\",\"Сетевой\"],\"allow_custom\":true}}]}}}}. После ответов всех раундов составь нумерованный план работ и вызови finish с планом в summary.");
             }
             else
             {
                 sb.AppendLine("Доступные инструменты:");
-                sb.AppendLine("- read_file (один файл целиком, лимит 20000 символов)");
-                sb.AppendLine("- read_files (до 20 файлов в одном запросе, общий лимит 100000 символов)");
+                sb.AppendLine("- read_file (один файл целиком, лимит 100000 символов; вывод с номерами строк)");
+                sb.AppendLine("- read_files (без лимита файлов, общий лимит 200000 символов; невлезшие — списком, дочитай следующим запросом)");
                 sb.AppendLine("- list_files");
                 sb.AppendLine("- grep (массив patterns; либо findstr/shell — выбирай сам)");
+sb.AppendLine("  ГАЙДЛАЙН ПОИСКА: не знаешь файл → читай через read_file; знаешь структуру → grep с массивом паттернов (все за 1 запрос); grep не нашёл → read_file для детального изучения.");
                 sb.AppendLine("- write_file, write_files, patch_file, rename_file, delete_file, create_directory");
                 sb.AppendLine("- run_command (сборка/тесты/компиляция и служебные команды; shell по умолчанию PowerShell; timeout_ms и max_output выбирай сам)");
-                sb.AppendLine("- Читай и редактируй, когда сам считаешь нужным; несколько файлов — цепочкой patch_file/write_files в одном ответе; не хватает шагов — request_more_steps.");
+            sb.AppendLine("- Читай и редактируй, когда сам считаешь нужным; НЕСКОЛЬКО инструментов в ОДНОМ ответе — цепочкой JSON-объектов подряд в одном сообщении. Это экономит запросы.");
 sb.AppendLine("- update_file_summaries (пишет краткие описания файлов в .leron/file_index.json; вызывай ПОСЛЕ каждого изменения файла)");
-                sb.AppendLine("- request_user_input, request_more_steps, request_outside_access, finish");
+sb.AppendLine("- file_read_exact (точное чтение строк: {path, start_line, end_line} → возвращает строки с номерами, без лимита размера)");
+sb.AppendLine("- file_write_full (полная перезапись файла: {path, content})");
+sb.AppendLine("- file_write_lines (замена строк по номерам: {path, start_line, end_line, content} → заменяет строки N..M на content)");
+sb.AppendLine("- file_insert (вставка перед строкой: {path, line_number, content})");
+sb.AppendLine("- file_append (дозапись в конец файла: {path, content})");
+sb.AppendLine("  Формат индекса: { \"files\": { \"путь/к/файлу\": { \"summary\": \"1-2 предложения что делает\", \"mtime\": timestamp, \"size\": bytes } } }");
+sb.AppendLine("  Вызывай update_file_summaries массивом: [{\"path\": \"path\", \"summary\": \"description\"}, ...]");
+sb.AppendLine("ВАЖНО: Если файл в индексе помечен '⚠ изменён после описания' — ОБЯЗАТЕЛЬНО перечитай его через read_file ПЕРЕД любой правкой, чтобы не сломать свежий код.");
+                sb.AppendLine("- request_user_input (ПАКЕТ вопросов: 5–20 вопросов одной карточкой, массив questions[] с id/type/text/options/allow_custom; пользователь отвечает одним сообщением на все сразу)");
+sb.AppendLine("- request_more_steps (если не хватает шагов; варианты +10/+20/Стоп)");
+sb.AppendLine("- request_outside_access, finish");
                 sb.AppendLine();
                 sb.AppendLine("ПРАВИЛА ФАЙЛОВ (раунд 5):");
+                sb.AppendLine("- Длинные файлы (100+ строк) правь через file_read_exact → file_write_lines по номерам строк. Не цитируй текст для поиска — используй номера строк, это никогда не ломается.");
                 sb.AppendLine("- Новые и короткие файлы (до 100 строк) создавай/пиши через write_file.");
                 sb.AppendLine("- Длинные файлы (100+ строк) изменяй ТОЛЬКО через patch_file (замена куска строк); write_file поверх длинного файла запрещён.");
                 sb.AppendLine("- Файл пустой или короче 100 строк — можно write_file целиком.");
@@ -209,7 +235,7 @@ sb.AppendLine("- update_file_summaries (пишет краткие описани
                 sb.AppendLine("ЭКОНОМИЯ ЗАПРОСОВ (каждый твой ответ = 1 запрос пользователя):");
                 sb.AppendLine("- Файлы читай ТОЛЬКО read_file/read_files: полное содержимое в UTF-8 за один запрос. Файл до 300–400 строк читай сразу целиком, без grep и без чтения по частям.");
                 sb.AppendLine("- Чтение/разведка через shell (type/cat/more/head/tail/dir/ls/tree/Get-Content/Select-Object) разрешены, но read_file/read_files предпочтительнее для экономии запросов.");
-                sb.AppendLine("- Готовые правки отправляй цепочкой в ОДНОМ ответе, finish последним: {\"name\":\"write_file\",\"arguments\":{...}}{\"name\":\"finish\",\"arguments\":{...}} — проверка пройдёт автоматически, без лишнего запроса.");
+            sb.AppendLine("- Читай и редактируй, когда сам считаешь нужным; НЕСКОЛЬКО инструментов в ОДНОМ ответе — цепочкой JSON-объектов подряд в одном сообщении. Это экономит запросы.");
                 sb.AppendLine("- Переносы строк внутри JSON-строк пиши как \\n, а не настоящими переносами, иначе JSON не распарсится и запрос сгорит.");
                 sb.AppendLine("- Если нужно спросить пользователя — ОДИН request_user_input со всеми вопросами в массиве questions (каждый вопрос: id, text, options 2–4 варианта, allow_custom), пользователь ответит одним сообщением сразу на все.");
                 sb.AppendLine("- После каждого изменения файла вызови update_file_summaries: {\"name\":\"update_file_summaries\",\"arguments\":{\"summaries\":[{\"path\":\"относительный/путь.cs\",\"summary\":\"краткое описание\"}]}}, чтобы следующий промт показывал свежее описание.");
@@ -222,7 +248,11 @@ sb.AppendLine("- update_file_summaries (пишет краткие описани
         sb.AppendLine();
         sb.AppendLine($"Текущий лимит шагов: {s.StepLimit}. Использовано: {s.StepUsed}.");
         sb.AppendLine("Каждый шаг = один запрос к ИИ. Делай запросы ёмкими: читай сразу несколько файлов через read_files, пиши несколько через write_files, ищи несколько паттернов через grep.");
-        sb.AppendLine("Если шагов не хватает, вызови request_more_steps.");
+        sb.AppendLine("Если шагов не хватает, вызови request_more_steps с аргументом add: 10 или 20. Пользователь увидит карточку «+10 / +20 / Стоп».");
+sb.AppendLine();
+sb.AppendLine("Режим размышления переключается пользователем через Ctrl+6 или кнопку в шапке чата.");
+sb.AppendLine("Если пользователь включил размышление глобально — оно будет на всех шагах.");
+sb.AppendLine("Если выключил — нигде не будет. Твоё решение think: true/false применяется только когда тумблер в авто-режиме.");
         sb.AppendLine("Если нужно выйти за пределы проекта, вызови request_outside_access.");
         sb.AppendLine();
         if (s.Root != null)
@@ -376,7 +406,14 @@ sb.AppendLine("- update_file_summaries (пишет краткие описани
                             "request_outside_access, finish. Повтори ответ одним или несколькими корректными JSON-блоками подряд.";
                         continue;
                     }
-                    return Finish(s, StripProviderMetadata(text), "success");
+                    if (s.AllowTools && s.Mode != "chat" && s.Mode != "plan" && s.TextRetries < 2)
+{
+s.TextRetries++;
+AgentLog($"[TEXT-ONLY] роль={s.Role} ответ без инструментов (попытка {s.TextRetries}/2)");
+s.BrowserNextPrompt = "Ты ответил обычным текстом, без вызова инструментов и без finish. План или описание не принимаются как результат. Если задача требует действий — вызови инструменты JSON-блоками подряд в одном сообщении; если работа полностью завершена — вызови {\"name\":\"finish\",\"arguments\":{\"summary\":\"...\"}}.";
+continue;
+}
+return Finish(s, StripProviderMetadata(text), "success");
                 }
                 if (s.AllowTools && s.TextRetries < 2)
                 {
@@ -388,7 +425,14 @@ sb.AppendLine("- update_file_summaries (пишет краткие описани
                         "{\"name\":\"finish\",\"arguments\":{\"summary\":\"...\"}}.";
                     continue;
                 }
-                return Finish(s, StripProviderMetadata(text), "success");
+                if (s.AllowTools && s.Mode != "chat" && s.Mode != "plan" && s.TextRetries < 2)
+{
+s.TextRetries++;
+AgentLog($"[TEXT-ONLY] роль={s.Role} ответ без инструментов (попытка {s.TextRetries}/2)");
+s.BrowserNextPrompt = "Ты ответил обычным текстом, без вызова инструментов и без finish. План или описание не принимаются как результат. Если задача требует действий — вызови инструменты JSON-блоками подряд в одном сообщении; если работа полностью завершена — вызови {\"name\":\"finish\",\"arguments\":{\"summary\":\"...\"}}.";
+continue;
+}
+return Finish(s, StripProviderMetadata(text), "success");
             }
             s.TextRetries = 0;
             // Выполняем все блоки за один шаг
@@ -507,10 +551,12 @@ sb.AppendLine("- update_file_summaries (пишет краткие описани
         string role, string text, bool think, int timeoutMs, CancellationToken abort, string reqId)
     {
         var sem = RoleSendLocks.GetOrAdd(role, _ => new SemaphoreSlim(1, 1));
-        await sem.WaitAsync(abort);
+        if (!await sem.WaitAsync(TimeSpan.FromSeconds(30), abort))
+return (false, "Шлюз занят предыдущим запросом. Повтори через несколько секунд.");
         try
         {
             if (abort.IsCancellationRequested) return (false, "cancelled");
+TryAutoBind(role);
             if (!RoleChatMap.ContainsKey(role))
                 return (false, $"Роль '{role}' не закреплена за чатом. Закрепи роль в Qwen.");
             ExpectedReqId[role] = reqId;
@@ -548,9 +594,13 @@ sb.AppendLine("- update_file_summaries (пишет краткие описани
             foreach (var client in Clients)
             {
                 if (client.State != WebSocketState.Open) continue;
-                await client.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, CancellationToken.None);
-                sent = true;
-                break;
+try
+{
+await client.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, CancellationToken.None);
+sent = true;
+break;
+}
+catch { Clients.Remove(client); }
             }
             if (!sent)
             {
@@ -600,138 +650,98 @@ sb.AppendLine("- update_file_summaries (пишет краткие описани
             LastSentText.TryRemove(role, out _);
             return (false, "cancelled");
         }
-        finally
-        {
-            sem.Release();
-        }
-    }
-    public async Task<object> HandleApproveAsync(AgentSession s, ApproveRequest req, CancellationToken ct)
-    {
-        var loopCts = BeginLoop(s.Role, ct);
-        try
-        {
-            if (s.Pending.Count == 0)
-                return new { status = "final", role = s.Role, response = "В сессии нет действия, ожидающего подтверждения.", resultStatus = "failed", cards = NewCards(s), stepsUsed = s.StepUsed, stepLimit = s.StepLimit };
-            var pt = s.Pending.Peek();
-            if (pt.Name == "request_more_steps")
-            {
-                s.Pending.Dequeue();
-                if (!req.Approve) return Finish(s, "Пользователь остановил работу агента.", "failed");
-                var add = req.Steps > 0 ? req.Steps : GetInt(pt.Args, "count", 10);
-                s.StepLimit += add;
-                s.BrowserNextPrompt = $"Пользователь разрешил дополнительные шаги: +{add}. Продолжай работу.";
-                return await RunBrowserAgentLoopAsync(s, loopCts.Token);
-            }
-            if (pt.Name == "request_user_input")
-            {
-                s.Pending.Dequeue();
-                if (!req.Approve || string.IsNullOrWhiteSpace(req.InputText))
-                    return Finish(s, "Пользователь не дал ответа. Заверши задачу текстом.", "needs_user");
-                var low = req.InputText.ToLowerInvariant();
-                // Раунд 5: ответ на карточку «продолжить чинить?» да/нет.
-                if (s.RepairMode && low.Contains("→ нет"))
-                    return Finish(s, "Пользователь решил остановить ремонт. Задача завершена.", "needs_user");
-                if (s.RepairMode && low.Contains("→ да"))
-                {
-                    s.SameErrorStreak = 0;
-                    s.LastCheckError = "";
-                    s.RepairAttempts = 0;
-                    if (s.StepUsed >= s.StepLimit) s.StepLimit = s.StepUsed + 10;
-                    s.BrowserNextPrompt =
-                        "Пользователь решил продолжить ремонт. Прочитай ошибку, найди причину (read_file/read_files), " +
-                        "сделай минимальный patch_file и вызови finish для повторной проверки.";
-                    return await RunBrowserAgentLoopAsync(s, loopCts.Token);
-                }
-                s.RepairAttempts = 0;
-                // Раунд 2: GUI шлёт все ответы одной строкой-пакетом — ИИ получает их сразу.
-                s.BrowserNextPrompt = $"Ответы пользователя на твои вопросы:\n{req.InputText}";
-                return await RunBrowserAgentLoopAsync(s, loopCts.Token);
-            }
-            if (pt.Name == "request_outside_access")
-            {
-                s.Pending.Dequeue();
-                var path = GetStr(pt.Args, "path", "");
-                var actions = GetStr(pt.Args, "requested_actions", "read");
-                if (!req.Approve)
-                {
-                    s.BrowserNextPrompt = $"Пользователь отказал в выходе за проект: {path}.\nПредложи альтернативу внутри проекта или заверши задачу.";
-                    return await RunBrowserAgentLoopAsync(s, loopCts.Token);
-                }
-                try
-                {
-                    var full = System.IO.Path.GetFullPath(path);
-                    s.OutsideGrants.Add(new OutsideGrant
-                    {
-                        Path = full,
-                        Actions = actions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                            .Select(x => x.ToLowerInvariant()).ToHashSet()
-                    });
-                    s.BrowserNextPrompt = $"Пользователь разрешил выход за проект: {full}\nРазрешённые действия: {actions}\nРаботай только с этим путём и только с этими действиями.";
-                }
-                catch (Exception ex)
-                {
-                    s.BrowserNextPrompt = $"Не удалось выдать доступ: {ex.Message}";
-                }
-                return await RunBrowserAgentLoopAsync(s, loopCts.Token);
-            }
-            s.Pending.Dequeue();
-            if (!req.Approve)
-            {
-                s.ToolLog.Add($"{pt.Name} → отклонено пользователем");
-                AgentLog($"[TOOL] {pt.Name} → отклонено");
-                s.BrowserNextPrompt = "Действие отклонено пользователем. Не повторяй его. Предложи альтернативу или ответь текстом на русском.";
-                return await RunBrowserAgentLoopAsync(s, loopCts.Token);
-            }
-            if (pt.Name == "run_command")
-            {
-                var cmd = NormCommand(GetStr(pt.Args, "command"));
-                if (IsDangerousCommand(cmd)) s.DangerApproved.Add(CommandKey(cmd));
-                else if (s.Mode == "auto" || req.Remember) AddAutoRule(CommandKey(cmd));
-            }
-            else if (IsMutating(pt.Name))
-            {
-                if (s.Mode == "auto" || req.Remember)
-                {
-                    var raw = GetStr(pt.Args, "path");
-                    var resolved = ResolveSessionPath(s, raw, "write");
-                    AddAutoRule(PathRule(pt.Name, resolved ?? raw, s.Root));
-                }
-            }
-            s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, pt);
-            return await RunBrowserAgentLoopAsync(s, loopCts.Token);
-        }
-        finally
-        {
-            EndLoop(s.Role, loopCts);
-        }
-    }
+finally
+{
+sem.Release();
+}
+}
+
     public bool NeedsAsk(AgentSession s, PendingTool c)
     {
-        if (!s.AllowTools) return false;
+        if (c.Name == "finish") return false;
+        if (IsSpecial(c.Name)) return false;
+        if (s.Mode == "yolo") return false;
+        if (IsDangerousTool(s, c)) return true;
+        string rule;
         if (c.Name == "run_command")
         {
-            if (s.Mode is "chat" or "plan") return false;
-            var cmd = NormCommand(GetStr(c.Args, "command"));
-            if (IsDangerousCommand(cmd))
-                return !(s.Mode == "yolo" && s.DangerApproved.Contains(CommandKey(cmd)));
-            if (s.Mode == "yolo") return false;
-            // Раунд 5: без подтверждения — ТОЛЬКО команда проверки проекта и тесты.
-            var check = s.Root == null ? null : EnsureCheckCommand(s.Root);
-            if (!string.IsNullOrWhiteSpace(check) && NormCommand(cmd) == NormCommand(check)) return false;
+            var cmd = GetStr(c.Args, "command");
             if (IsTestCommand(cmd)) return false;
-            return true;
+            rule = CommandKey(cmd);
         }
-        if (IsMutating(c.Name))
+        else
         {
-            if (s.Mode is "chat" or "plan") return false;
-            if (s.Mode == "yolo") return false;
-            if (s.Mode == "repair") return false;
             var raw = GetStr(c.Args, "path");
             var resolved = ResolveSessionPath(s, raw, "write");
-            var rule = PathRule(c.Name, resolved ?? raw, s.Root);
-            if (s.Mode == "auto") return !IsAutoApproved(rule);
-            return true;
+            rule = PathRule(c.Name, resolved ?? raw, s.Root);
         }
-        return false;
+        if (s.Mode == "auto") return !IsAutoApproved(rule);
+        return true;
+    }
+
+    public async Task<object> HandleApproveAsync(AgentSession s, ApproveRequest req, CancellationToken abort)
+    {
+        if (req.Steps > 0)
+        {
+            s.StepLimit += req.Steps;
+            AgentLog($"[STEPS] +{req.Steps} → лимит {s.StepLimit}");
+        }
+        if (s.Pending.Count == 0)
+            return Finish(s, "Нет ожидающих действий.", "failed");
+        var head = s.Pending.Peek();
+        if (!req.Approve)
+        {
+            s.Pending.Dequeue();
+            if (head.Name == "request_outside_access" || IsDangerousTool(s, head))
+                return Finish(s, "Действие отклонено пользователем.", "failed");
+            s.BrowserNextPrompt = $"Действие {head.Name} отклонено пользователем. Предложи альтернативу или вызови finish.";
+        }
+        else
+        {
+            if (req.Remember && !IsSpecial(head.Name))
+            {
+                string rule;
+                if (head.Name == "run_command")
+                    rule = CommandKey(GetStr(head.Args, "command"));
+                else
+                {
+                    var raw = GetStr(head.Args, "path");
+                    var resolved = ResolveSessionPath(s, raw, "write");
+                    rule = PathRule(head.Name, resolved ?? raw, s.Root);
+                }
+                AddAutoRule(rule);
+            }
+            s.Pending.Dequeue();
+            if (head.Name == "request_outside_access")
+            {
+                var path = GetStr(head.Args, "path");
+                var actions = GetStr(head.Args, "requested_actions", "read");
+                var grant = new OutsideGrant { Path = path, Actions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) };
+                foreach (var a in actions.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    grant.Actions.Add(a.Trim());
+                s.OutsideGrants.Add(grant);
+                s.BrowserNextPrompt = "Доступ разрешён пользователем. Продолжай.";
+            }
+            else if (head.Name == "request_user_input")
+            {
+                s.BrowserNextPrompt = !string.IsNullOrEmpty(req.InputText)
+                    ? $"Ответ пользователя: {req.InputText}"
+                    : "Пользователь подтвердил без текста. Продолжай.";
+            }
+            else if (head.Name == "request_more_steps")
+            {
+                s.BrowserNextPrompt = "Шаги добавлены. Продолжай.";
+            }
+            else
+            {
+                s.BrowserNextPrompt = await ExecuteApprovedToolAsync(s, head);
+            }
+        }
+        var loopCts = BeginLoop(s.Role, abort);
+        var result = await RunBrowserAgentLoopAsync(s, loopCts.Token);
+        EndLoop(s.Role, loopCts);
+        return result;
     }
 }
+        // === INSTRUCTION UPDATE ===
+        // Add to BrowserInstruction: "Длинные файлы правь через file_read_exact -> file_write_lines по номерам строк, не цитируй текст."
