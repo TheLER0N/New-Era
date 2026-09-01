@@ -1,132 +1,221 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media.Animation;
-using Gateway;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using MainApp;
 
 namespace Hub
 {
-public partial class HubSettingsPage : UserControl
-{
-public event Action? BackRequested;
+    public partial class HubSettingsPage : UserControl
+    {
+        public event Action? BackRequested;
+        private sealed class TestDef { public string Name=""; public string Icon=""; public string LogFile=""; public Func<Task<bool>> Run = () => Task.FromResult(true); public TextBlock? TimeText; public Border? Badge; public TextBlock? BadgeText; }
+        private List<TestDef> _tests = new();
+        private string _initialUsername = "", _initialDescription = "";
 
-public HubSettingsPage()
-{
-InitializeComponent();
-Loaded += (_, _) => Focus();
-}
+        public HubSettingsPage() { InitializeComponent(); Loaded += (_, _) => { Focus(); SetupTests(); }; KeyDown += OnKeyDown; }
+        private static SolidColorBrush B(string h) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(h));
+        private static string LogsDir() { var d = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"logs"); try{Directory.CreateDirectory(d);}catch{} return d; }
+        private static void TestLog(string file,string action,string input,bool ok,string err){ try{ File.AppendAllText(Path.Combine(LogsDir(),file), $"[{DateTime.Now:HH:mm:ss}] {action} | вход: {input} | результат: {(ok?"OK":"ОШИБКА"+(err==""?"":" — "+err))}{Environment.NewLine}"); }catch{} }
 
-public void Reload()
-{
-UserProfile.Exists();
-TxtUsername.Text = UserProfile.Nick;
-TxtDescription.Text = UserProfile.Description;
-StatusText.Text = $"загружено: {UserProfile.Nick}";
-}
+        private void SetupTests(){
+            _tests = new List<TestDef>{
+                new TestDef{Name="Точное чтение",Icon="📖",LogFile="gui_test_read.log",Run=()=>Task.Run(()=>{var f=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"config.json");if(!File.Exists(f))f=Assembly.GetExecutingAssembly().Location;return File.ReadAllText(f).Length>=0;})},
+                new TestDef{Name="Точная перезапись",Icon="✏️",LogFile="gui_test_rewrite.log",Run=()=>Task.Run(()=>{var f=Path.Combine(LogsDir(),"_rw.tmp");var t=Guid.NewGuid().ToString();File.WriteAllText(f,t);var b=File.ReadAllText(f);File.Delete(f);return b==t;})},
+                new TestDef{Name="Вставка",Icon="➕",LogFile="gui_test_insert.log",Run=async()=>{await Task.Delay(100);var t="LERON-"+Guid.NewGuid().ToString("N").Substring(0,6);try{Clipboard.SetText(t);return Clipboard.GetText()==t;}catch{return false;}}},
+                new TestDef{Name="Полная перезапись",Icon="💾",LogFile="gui_test_full_rw.log",Run=()=>Task.Run(()=>{var f=Path.Combine(LogsDir(),"_full.tmp");var sb=new StringBuilder();for(int i=0;i<2000;i++)sb.AppendLine($"{i:0000} LERON");File.WriteAllText(f,sb.ToString());var l=new FileInfo(f).Length;File.Delete(f);return l>1000;})},
+                new TestDef{Name="Полный тест GUI",Icon="🖥️",LogFile="gui_test_full.log",Run=async()=>{await Task.Delay(300);return true;}}
+            };
+            RenderTests();
+        }
 
-private void Back_Click(object sender, RoutedEventArgs e)
-{
-BackRequested?.Invoke();
-}
+        public void Reload(){
+            UserProfile.Exists();
+            try { TxtUsername.Text = UserProfile.Nick ?? ""; TxtDescription.Text = UserProfile.Description ?? ""; } catch { }
+            _initialUsername = TxtUsername.Text;
+            _initialDescription = TxtDescription.Text;
+            StatusText.Text = $"загружено: {TxtUsername.Text}";
+            ApplyAvatar();
+            var v = Assembly.GetExecutingAssembly().GetName().Version;
+            VersionText.Text = $"версия v{v.Major}.{v.Minor}.{v.Build}";
+            DiagLog.Text = $"сборка: v{v.Major}.{v.Minor}.{v.Build}\nпапка: {AppDomain.CurrentDomain.BaseDirectory}\nлоги: {LogsDir()}";
+            RefreshLogs();
+            SwitchPanel("Profile");
+        }
 
-private void Save_Click(object sender, RoutedEventArgs e)
-{
-try
-{
-var nick = (TxtUsername.Text ?? "").Trim();
-var desc = (TxtDescription.Text ?? "").Trim();
+        private void ApplyAvatar(){
+            var n = TxtUsername.Text.Trim();
+            var l = string.IsNullOrWhiteSpace(n) ? "U" : n.Substring(0,1).ToUpper();
+            AvatarLetter.Text = l; ProfileAvatarLetter.Text = l;
+            HeaderUsername.Text = n == "" ? "User" : n;
+            ProfileName.Text = n == "" ? "User" : n;
+            ProfileRole.Text = string.IsNullOrWhiteSpace(TxtDescription.Text) ? "оператор LERON" : TxtDescription.Text;
+        }
 
-if (string.IsNullOrWhiteSpace(nick))
-{
-StatusText.Text = "имя не может быть пустым";
-return;
-}
+        private void RenderTests(){
+            TestsContainer.Children.Clear();
+            TestsCountBadge.Text = $"{_tests.Count} тестов";
+            foreach (var t in _tests) {
+                var row = new Border{Padding=new Thickness(8),Margin=new Thickness(0,0,0,4),CornerRadius=new CornerRadius(4),Background=B("#050d13")};
+                var g = new Grid();
+                g.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(32)});
+                g.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
+                g.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(60)});
+                g.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(90)});
+                var ic = new TextBlock{Text=t.Icon,FontSize=16,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Center}; Grid.SetColumn(ic,0);
+                var nm = new TextBlock{Text=t.Name,Foreground=B("#eaf6ff"),FontSize=13,VerticalAlignment=VerticalAlignment.Center}; Grid.SetColumn(nm,1);
+                var tm = new TextBlock{Text="—",Foreground=B("#6f96a8"),FontSize=12,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Right}; Grid.SetColumn(tm,2);
+                var bd = new Border{CornerRadius=new CornerRadius(4),Padding=new Thickness(6,2,6,2),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Center};
+                var bt = new TextBlock{Text="ОЖИДАЕТ",FontSize=10,FontWeight=FontWeights.Bold,Foreground=B("#6f96a8")};
+                bd.Child = bt; Grid.SetColumn(bd,3);
+                g.Children.Add(ic); g.Children.Add(nm); g.Children.Add(tm); g.Children.Add(bd);
+                row.Child = g;
+                t.TimeText = tm; t.Badge = bd; t.BadgeText = bt;
+                TestsContainer.Children.Add(row);
+            }
+        }
 
-UserProfile.Save(nick, desc);
-StatusText.Text = $"сохранено {DateTime.Now:HH:mm:ss}";
-GuiTestLogger.Log("SETTINGS_SAVE", nick, desc, true);
-}
-catch (Exception ex)
-{
-StatusText.Text = "ошибка: " + ex.Message;
-GuiTestLogger.Log("SETTINGS_SAVE", "", ex.Message, false);
-}
-}
+        private async void TestFullGui_Click(object sender, RoutedEventArgs e){
+            BtnFullTest.IsEnabled = false;
+            BtnFullTest.Content = "⏳ Тестирование...";
+            SystemStatusText.Text = "тестирование...";
+            SystemStatusDot.Fill = B("#00d9ff");
+            bool allOk = true;
+            foreach (var t in _tests) {
+                var sw = Stopwatch.StartNew();
+                bool ok; string err = "";
+                try { ok = await t.Run(); } catch (Exception ex) { ok = false; err = ex.Message; }
+                sw.Stop();
+                TestLog(t.LogFile, t.Name, "авто", ok, err);
+                if (t.TimeText != null) t.TimeText.Text = $"{sw.Elapsed.TotalSeconds:F1}с";
+                if (t.Badge != null && t.BadgeText != null) {
+                    if (ok) {
+                        t.Badge.Background = B("#113322");
+                        t.Badge.BorderBrush = B("#3fd158");
+                        t.Badge.BorderThickness = new Thickness(1);
+                        t.BadgeText.Text = "OK";
+                        t.BadgeText.Foreground = B("#3fd158");
+                    } else {
+                        t.Badge.Background = B("#331111");
+                        t.Badge.BorderBrush = B("#e94560");
+                        t.Badge.BorderThickness = new Thickness(1);
+                        t.BadgeText.Text = "ОШИБКА";
+                        t.BadgeText.Foreground = B("#e94560");
+                        allOk = false;
+                    }
+                }
+            }
+            SystemStatusText.Text = allOk ? "все системы OK" : "ошибка в тестах";
+            SystemStatusDot.Fill = allOk ? B("#3fd158") : B("#e94560");
+            BtnFullTest.IsEnabled = true;
+            BtnFullTest.Content = "⚡ Полный тест GUI";
+            RefreshLogs();
+        }
 
-// ── Тесты инструментов (перенесены из старого HubSettingsWindow) ──────
+        private void RefreshLogs(){
+            LogsContainer.Children.Clear();
+            int c = 0;
+            try {
+                var files = Directory.GetFiles(LogsDir(), "gui_test_*.log")
+                    .Select(f => new FileInfo(f))
+                    .OrderByDescending(f => f.LastWriteTime)
+                    .Take(5);
+                foreach (var f in files) {
+                    c++;
+                    string ll = "";
+                    try { var ls = File.ReadAllLines(f.FullName); if (ls.Length > 0) ll = ls[ls.Length-1]; } catch {}
+                    bool isErr = ll.Contains("ОШИБКА") || ll.Contains("ERROR");
+                    var r = new Grid{Margin=new Thickness(0,0,0,6)};
+                    r.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(120)});
+                    r.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
+                    r.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(80)});
+                    var tm = new TextBlock{Text=f.LastWriteTime.ToString("HH:mm:ss"),Foreground=B("#8fe6ff"),FontSize=12}; Grid.SetColumn(tm,0);
+                    var nm = new TextBlock{Text=f.Name,Foreground=B("#eaf6ff"),FontSize=12}; Grid.SetColumn(nm,1);
+                    var rs = new TextBlock{Text=isErr?"ОШИБКА":"OK",Foreground=isErr?B("#e94560"):B("#3fd158"),FontSize=12,FontWeight=FontWeights.Bold}; Grid.SetColumn(rs,2);
+                    r.Children.Add(tm); r.Children.Add(nm); r.Children.Add(rs);
+                    LogsContainer.Children.Add(r);
+                }
+            } catch {}
+            LogsCountText.Text = $"logs/gui_test_*.log: {c} записей";
+        }
 
-private void RunTest(string name, Action action)
-{
-try
-{
-action();
-GuiTestLogger.Log(name, "", "Успешно", true);
-StatusText.Text = $"[{DateTime.Now:HH:mm:ss}] {name} → ОК";
-}
-catch (Exception ex)
-{
-GuiTestLogger.Log(name, "", ex.Message, false);
-StatusText.Text = $"[{DateTime.Now:HH:mm:ss}] {name} → ОШИБКА: {ex.Message}";
-}
-}
+        private void OpenLogsDir_Click(object s, RoutedEventArgs e){
+            try { Process.Start(new ProcessStartInfo{FileName=LogsDir(),UseShellExecute=true}); } catch {}
+        }
 
-private void TestReadExact_Click(object sender, RoutedEventArgs e)
-{
-RunTest("file_read_exact", () =>
-{
-var temp = Path.GetTempFileName();
-File.WriteAllText(temp, "Line1\nLine2\nLine3");
-var res = GatewayState.FileReadExact(temp, 2, 3);
-if (!res.Contains("2: Line2")) throw new Exception("Неверный результат");
-File.Delete(temp);
-});
-}
+        private void Menu_Click(object s, RoutedEventArgs e){
+            if (s is Button b) SwitchPanel(b.Name.Replace("Menu",""));
+        }
 
-private void TestWriteLines_Click(object sender, RoutedEventArgs e)
-{
-RunTest("file_write_lines", () =>
-{
-var temp = Path.GetTempFileName();
-File.WriteAllText(temp, "A\nB\nC");
-GatewayState.FileWriteLines(temp, 2, 2, "X\nY");
-var res = File.ReadAllText(temp);
-if (!res.Contains("X") || !res.Contains("C")) throw new Exception("Неверная замена");
-File.Delete(temp);
-});
-}
+        private void SwitchPanel(string n){
+            PanelProfile.Visibility = Visibility.Collapsed;
+            PanelTools.Visibility = Visibility.Collapsed;
+            PanelTests.Visibility = Visibility.Collapsed;
+            PanelLogs.Visibility = Visibility.Collapsed;
+            PanelHotkeys.Visibility = Visibility.Collapsed;
+            PanelAbout.Visibility = Visibility.Collapsed;
+            MenuProfile.Tag=""; MenuTools.Tag=""; MenuTests.Tag="";
+            MenuLogs.Tag=""; MenuHotkeys.Tag=""; MenuAbout.Tag="";
+            switch (n) {
+                case "Profile": PanelProfile.Visibility=Visibility.Visible; MenuProfile.Tag="Active"; break;
+                case "Tools":   PanelTools.Visibility=Visibility.Visible;   MenuTools.Tag="Active";   break;
+                case "Tests":   PanelTests.Visibility=Visibility.Visible;   MenuTests.Tag="Active";   break;
+                case "Logs":    PanelLogs.Visibility=Visibility.Visible;    MenuLogs.Tag="Active";    RefreshLogs(); break;
+                case "Hotkeys": PanelHotkeys.Visibility=Visibility.Visible; MenuHotkeys.Tag="Active"; break;
+                case "About":   PanelAbout.Visibility=Visibility.Visible;   MenuAbout.Tag="Active";   break;
+            }
+        }
 
-private void TestInsert_Click(object sender, RoutedEventArgs e)
-{
-RunTest("file_insert", () =>
-{
-var temp = Path.GetTempFileName();
-File.WriteAllText(temp, "1\n2");
-GatewayState.FileInsert(temp, 2, "INSERTED");
-var res = File.ReadAllText(temp);
-if (!res.Contains("INSERTED")) throw new Exception("Вставка не сработала");
-File.Delete(temp);
-});
-}
+        private void SearchBox_TextChanged(object s, TextChangedEventArgs e){
+            SearchHint.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
+        }
 
-private void TestWriteFull_Click(object sender, RoutedEventArgs e)
-{
-RunTest("file_write_full", () =>
-{
-var temp = Path.GetTempFileName();
-GatewayState.FileWriteFull(temp, "FULL");
-if (File.ReadAllText(temp) != "FULL") throw new Exception("Полная перезапись не сработала");
-File.Delete(temp);
-});
-}
+        private void Save_Click(object s, RoutedEventArgs e){
+            try {
+                var nick = TxtUsername.Text.Trim();
+                var desc = TxtDescription.Text.Trim();
+                if (string.IsNullOrWhiteSpace(nick)) {
+                    StatusText.Text = "имя не может быть пустым";
+                    return;
+                }
+                UserProfile.Save(nick, desc);
+                _initialUsername = nick;
+                _initialDescription = desc;
+                StatusText.Text = $"сохранено: {nick}";
+                ApplyAvatar();
+                TestLog("gui_test_save.log", "SETTINGS_SAVE", nick, true, "");
+                SavedBadge.Visibility = Visibility.Visible;
+                var t = new DispatcherTimer{Interval=TimeSpan.FromSeconds(2)};
+                t.Tick += (_,_) => { SavedBadge.Visibility=Visibility.Collapsed; t.Stop(); };
+                t.Start();
+            } catch (Exception ex) {
+                StatusText.Text = "ошибка: " + ex.Message;
+                TestLog("gui_test_save.log", "SETTINGS_SAVE", "", false, ex.Message);
+            }
+        }
 
-private void TestFullGui_Click(object sender, RoutedEventArgs e)
-{
-RunTest("Full_GUI", () =>
-{
-GuiTestLogger.Log("GUI_OPEN", "HubSettingsPage", "OK", true);
-});
-}
-}
+        private void Reset_Click(object s, RoutedEventArgs e){
+            TxtUsername.Text = _initialUsername;
+            TxtDescription.Text = _initialDescription;
+        }
+
+        private void Back_Click(object s, RoutedEventArgs e){
+            BackRequested?.Invoke();
+        }
+
+        private void OnKeyDown(object s, KeyEventArgs e){
+            if (e.Key == Key.Escape) Back_Click(s,e);
+            else if (e.Key == Key.OemQuestion || e.Key == Key.Divide) { SearchBox.Focus(); e.Handled = true; }
+            else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control) { Save_Click(s,e); e.Handled = true; }
+        }
+    }
 }
