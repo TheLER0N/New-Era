@@ -1,0 +1,622 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using Microsoft.Win32;
+using System.Windows.Shapes;
+
+namespace MainApp.Memory
+{
+    public partial class MemoryPage : UserControl
+    {
+        public event Action? BackRequested;
+        private string _root = "";
+        private string _currentFilter = "all";
+        private string? _selectedId = null;
+        private bool _isEditing = false;
+
+        private static SolidColorBrush B(string h) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(h));
+        private static readonly Dictionary<string, string> CatColors = new Dictionary<string, string>
+        {
+            { "choices", "#00d9ff" }, { "facts", "#3fd158" },
+            { "files", "#ff9f43" },  { "notes", "#ffd166" }
+        };
+
+        public MemoryPage()
+        {
+            InitializeComponent();
+            KeyDown += OnKeyDown;
+        }
+
+        public void Load(string root)
+        {
+            _root = root;
+            try { ProjectNameText.Text = System.IO.Path.GetFileName(root); } catch { }
+            Refresh();
+        }
+
+        public void Refresh()
+        {
+            try
+            {
+                var mem = MemoryStore.Load(_root);
+                var longTerm = mem["long_term"] as JsonArray ?? new JsonArray();
+                var shortTerm = mem["short_term"] as JsonArray ?? new JsonArray();
+
+                // Обновляем счётчики
+                var counts = new Dictionary<string, int> { {"choices",0}, {"facts",0}, {"files",0}, {"notes",0} };
+                foreach (var n in longTerm)
+                {
+                    if (n is JsonObject o)
+                    {
+                        var c = o["cat"]?.ToString();
+                        if (c != null && counts.ContainsKey(c)) counts[c]++;
+                    }
+                }
+                ChoicesCount.Text = $"выборы ({counts["choices"]})";
+                FactsCount.Text = $"факты ({counts["facts"]})";
+                FilesCount.Text = $"файлы ({counts["files"]})";
+                NotesCount.Text = $"заметки ({counts["notes"]})";
+
+                // Долгосрочная память
+                CardsList.Children.Clear();
+                var filtered = longTerm
+                    .OfType<JsonObject>()
+                    .Where(o => _currentFilter == "all" || o["cat"]?.ToString() == _currentFilter)
+                    .ToList();
+
+                if (filtered.Count == 0)
+                {
+                    CardsList.Children.Add(new TextBlock 
+                    { 
+                        Text = _currentFilter == "all" ? "память пуста" : $"нет записей в категории '{_currentFilter}'",
+                        Foreground = B("#7d93a5"), FontSize = 11.5, Margin = new Thickness(0, 10, 0, 0)
+                    });
+                }
+                else
+                {
+                    foreach (var card in filtered.OrderByDescending(o => o["updated"]?.ToString() ?? ""))
+                    {
+                        var id = card["id"]?.ToString() ?? "?";
+                        var cat = card["cat"]?.ToString() ?? "?";
+                        var title = card["title"]?.ToString() ?? "?";
+                        var text = card["text"]?.ToString() ?? "";
+                        var updated = card["updated"]?.ToString() ?? "";
+                        var snippet = text.Length > 80 ? text.Substring(0, 80) + "..." : text;
+                        if (updated.Length > 16) updated = updated.Substring(0, 16).Replace("T", " ");
+                        var catColor = CatColors.ContainsKey(cat) ? CatColors[cat] : "#7d93a5";
+
+                        var border = new Border { Style = (Style)FindResource("Card") };
+                        var grid = new Grid();
+                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                        var dot = new Ellipse { Width = 8, Height = 8, Fill = B(catColor), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 6, 0, 0) };
+                        Grid.SetColumn(dot, 0);
+
+                        var stack = new StackPanel();
+                        stack.Children.Add(new TextBlock { Text = title, Foreground = B("#eaf6ff"), FontSize = 12.5, FontWeight = FontWeights.Bold });
+                        stack.Children.Add(new TextBlock { Text = snippet, Foreground = B("#7d93a5"), FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) });
+                        stack.Children.Add(new TextBlock { Text = $"[{id}] ({cat}) — {updated}", Foreground = B("#4a6070"), FontSize = 9.5, Margin = new Thickness(0, 4, 0, 0) });
+                        Grid.SetColumn(stack, 1);
+
+                        grid.Children.Add(dot);
+                        grid.Children.Add(stack);
+                        border.Child = grid;
+                        border.Tag = id;
+                        border.MouseLeftButtonDown += (s, e) => ShowCardDetail(id);
+                        CardsList.Children.Add(border);
+                    }
+                }
+
+                // Краткосрочная память
+                ShortTermList.Children.Clear();
+                if (shortTerm.Count == 0)
+                {
+                    ShortTermList.Children.Add(new TextBlock 
+                    { 
+                        Text = "краткосрочная память пуста (отправьте запрос в чат)",
+                        Foreground = B("#7d93a5"), FontSize = 11.5
+                    });
+                }
+                else
+                {
+                    for (int i = shortTerm.Count - 1; i >= 0; i--)
+                    {
+                        var entry = shortTerm[i] as JsonObject;
+                        if (entry == null) continue;
+                        var time = entry["time"]?.ToString() ?? "??:??";
+                        var user = entry["user"]?.ToString() ?? "";
+                        var ai = entry["ai"]?.ToString() ?? "";
+
+                        var border = new Border 
+                        { 
+                            Background = B("#0a1620"), BorderBrush = B("#12404f"), BorderThickness = new Thickness(1),
+                            CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 0, 6)
+                        };
+                        var stack = new StackPanel();
+                        stack.Children.Add(new TextBlock { Text = $"[{time}]", Foreground = B("#00d9ff"), FontSize = 10, FontWeight = FontWeights.Bold });
+                        if (!string.IsNullOrWhiteSpace(user))
+                            stack.Children.Add(new TextBlock { Text = $"👤 {user}", Foreground = B("#eaf6ff"), FontSize = 11, Margin = new Thickness(0, 4, 0, 0) });
+                        if (!string.IsNullOrWhiteSpace(ai))
+                            stack.Children.Add(new TextBlock { Text = $"🤖 {ai}", Foreground = B("#7d93a5"), FontSize = 11, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap });
+                        border.Child = stack;
+                        ShortTermList.Children.Add(border);
+                    }
+                }
+
+                StatusText.Text = $"всего: {longTerm.Count} карточек, {shortTerm.Count} краткосрочных";
+                BuildGraph(filtered);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "ошибка: " + ex.Message;
+            }
+        }
+
+        
+    private void BuildGraph(List<JsonObject> cards)
+    {
+        try
+        {
+            GraphCanvas.Children.Clear();
+            if (cards.Count == 0) return;
+
+            // Размеры Canvas
+            double w = GraphCanvas.ActualWidth > 0 ? GraphCanvas.ActualWidth : 800;
+            double h = GraphCanvas.ActualHeight > 0 ? GraphCanvas.ActualHeight : 300;
+            double cx = w / 2, cy = h / 2;
+
+            // Раскладка: 4 сектора по категориям
+            var sectors = new Dictionary<string, double> {
+                { "choices", 0 },    // правый сектор (0°)
+                { "facts", 90 },     // верхний сектор (90°)
+                { "files", 180 },    // левый сектор (180°)
+                { "notes", 270 }     // нижний сектор (270°)
+            };
+
+            var positions = new Dictionary<string, Point>();
+            var catCounters = new Dictionary<string, int>();
+            foreach (var cat in sectors.Keys) catCounters[cat] = 0;
+
+            // Размещаем узлы по спирали в каждом секторе
+            foreach (var card in cards)
+            {
+                var id = card["id"]?.ToString() ?? "?";
+                var cat = card["cat"]?.ToString() ?? "notes";
+                if (!sectors.ContainsKey(cat)) cat = "notes";
+                
+                var links = card["links"] as JsonArray;
+                int linkCount = links?.Count ?? 0;
+                double size = 14 + Math.Min(linkCount * 2, 12); // 14-26px
+                
+                int idx = catCounters[cat]++;
+                double baseAngle = sectors[cat];
+                double angleOffset = idx * 25; // угол между узлами в секторе
+                double radius = 60 + idx * 35; // расстояние от центра
+                
+                double angle = (baseAngle + angleOffset - 45) * Math.PI / 180; // -45 для разброса
+                double x = cx + radius * Math.Cos(angle) - size / 2;
+                double y = cy + radius * Math.Sin(angle) - size / 2;
+                
+                positions[id] = new Point(x + size / 2, y + size / 2);
+                
+                var catColor = CatColors.ContainsKey(cat) ? CatColors[cat] : "#7d93a5";
+                var ellipse = new Ellipse
+                {
+                    Width = size, Height = size,
+                    Fill = B(catColor),
+                    Stroke = B("#12404f"),
+                    StrokeThickness = 2,
+                    Tag = id,
+                    ToolTip = card["title"]?.ToString() ?? id
+                };
+                Canvas.SetLeft(ellipse, x);
+                Canvas.SetTop(ellipse, y);
+                ellipse.MouseLeftButtonDown += (s, e) => ShowCardDetail(id);
+                GraphCanvas.Children.Add(ellipse);
+            }
+
+            // Рисуем линии связей
+            foreach (var card in cards)
+            {
+                var id = card["id"]?.ToString() ?? "";
+                var links = card["links"] as JsonArray;
+                if (links == null || !positions.ContainsKey(id)) continue;
+                
+                foreach (var linkNode in links)
+                {
+                    var linkId = linkNode?.ToString() ?? "";
+                    if (positions.ContainsKey(linkId))
+                    {
+                        var p1 = positions[id];
+                        var p2 = positions[linkId];
+                        var line = new Line
+                        {
+                            X1 = p1.X, Y1 = p1.Y,
+                            X2 = p2.X, Y2 = p2.Y,
+                            Stroke = B("#12404f"),
+                            StrokeThickness = 1.5
+                        };
+                        // Линии рисуем ПЕРЕД узлами, чтобы они были под ними
+                        GraphCanvas.Children.Insert(0, line);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Тихо игнорируем ошибки графа
+        }
+    }
+
+    private void ShowCardDetail(string id)
+        {
+            try
+            {
+                var cards = MemoryStore.Read(_root, new[] { id });
+                if (cards.Count == 0) return;
+                var card = cards[0];
+                var title = card["title"]?.ToString() ?? "";
+                var text = card["text"]?.ToString() ?? "";
+                var links = card["links"] as JsonArray;
+                var linkStr = links != null && links.Count > 0 ? "\n\nСвязи: " + string.Join(", ", links) : "";
+                MessageBox.Show($"{text}{linkStr}", title, MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch { }
+        }
+
+                private void ShowCardDetail(string id)
+        {
+            try
+            {
+                var cards = MemoryStore.Read(_root, new[] { id });
+                if (cards.Count == 0) return;
+                var card = cards[0];
+                
+                _selectedId = id;
+                InspectorTitle.Text = card["title"]?.ToString() ?? "";
+                InspectorId.Text = $"#{id}";
+                InspectorCat.Text = card["cat"]?.ToString() ?? "";
+                InspectorText.Text = card["text"]?.ToString() ?? "";
+                
+                var links = card["links"] as JsonArray;
+                InspectorLinks.Text = links != null && links.Count > 0 ? string.Join(", ", links) : "нет связей";
+                
+                var created = card["created"]?.ToString() ?? "";
+                var updated = card["updated"]?.ToString() ?? "";
+                if (created.Length > 16) created = created.Substring(0, 16).Replace("T", " ");
+                if (updated.Length > 16) updated = updated.Substring(0, 16).Replace("T", " ");
+                InspectorTime.Text = $"создано: {created}\nобновлено: {updated}";
+                
+                var cat = card["cat"]?.ToString() ?? "";
+                var catColor = CatColors.ContainsKey(cat) ? CatColors[cat] : "#7d93a5";
+                InspectorCatBadge.Background = B(catColor + "33");
+                
+                InspectorPanel.Visibility = Visibility.Visible;
+            }
+            catch { }
+        }
+        
+        private void InspectorClose_Click(object sender, RoutedEventArgs e)
+        {
+            InspectorPanel.Visibility = Visibility.Collapsed;
+            _selectedId = null;
+        }
+        
+        private void InspectorEdit_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedId == null) return;
+            try
+            {
+                var cards = MemoryStore.Read(_root, new[] { _selectedId });
+                if (cards.Count == 0) return;
+                var card = cards[0];
+                
+                _isEditing = true;
+                FormTitle.Text = "Редактировать карточку";
+                FormCat.SelectedIndex = _currentFilter switch
+                {
+                    "choices" => 0, "facts" => 1, "files" => 2, "notes" => 3, _ => 0
+                };
+                var cat = card["cat"]?.ToString() ?? "notes";
+                FormCat.SelectedIndex = cat switch { "choices" => 0, "facts" => 1, "files" => 2, "notes" => 3, _ => 3 };
+                FormTitleBox.Text = card["title"]?.ToString() ?? "";
+                FormTextBox.Text = card["text"]?.ToString() ?? "";
+                FormOverlay.Visibility = Visibility.Visible;
+            }
+            catch { }
+        }
+        
+        private void InspectorDelete_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedId == null) return;
+            var result = MessageBox.Show($"Удалить карточку #{_selectedId}?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+            {
+                MemoryStore.Forget(_root, _selectedId);
+                InspectorPanel.Visibility = Visibility.Collapsed;
+                _selectedId = null;
+                Refresh();
+            }
+        }
+        
+        private void BtnAddCard_Click(object sender, RoutedEventArgs e)
+        {
+            _isEditing = false;
+            _selectedId = null;
+            FormTitle.Text = "Добавить карточку";
+            FormCat.SelectedIndex = 0;
+            FormTitleBox.Text = "";
+            FormTextBox.Text = "";
+            FormOverlay.Visibility = Visibility.Visible;
+        }
+        
+        private void FormCancel_Click(object sender, RoutedEventArgs e)
+        {
+            FormOverlay.Visibility = Visibility.Collapsed;
+        }
+        
+        private void FormSave_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var cat = (FormCat.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "notes";
+                var title = FormTitleBox.Text?.Trim() ?? "";
+                var text = FormTextBox.Text?.Trim() ?? "";
+                
+                if (string.IsNullOrWhiteSpace(title))
+                {
+                    MessageBox.Show("Заголовок не может быть пустым", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    MessageBox.Show("Текст не может быть пустым", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                
+                if (_isEditing && _selectedId != null)
+                {
+                    MemoryStore.Upsert(_root, _selectedId, cat, title, text, null);
+                }
+                else
+                {
+                    MemoryStore.Upsert(_root, null, cat, title, text, null);
+                }
+                
+                FormOverlay.Visibility = Visibility.Collapsed;
+                Refresh();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка сохранения: " + ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        
+        private void BtnForgetAll_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show("Удалить ВСЮ память проекта?\n\nЭто действие нельзя отменить.", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result == MessageBoxResult.Yes)
+            {
+                MemoryStore.ForgetAll(_root);
+                InspectorPanel.Visibility = Visibility.Collapsed;
+                _selectedId = null;
+                Refresh();
+            }
+        }
+        
+        private void BtnExport_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.SaveFileDialog
+                {
+                    Filter = "LERON Memory (*.leronmem)|*.leronmem|All files (*.*)|*.*",
+                    FileName = $"{System.IO.Path.GetFileName(_root)}_memory.leronmem",
+                    DefaultExt = ".leronmem"
+                };
+                
+                if (dlg.ShowDialog() == true)
+                {
+                    var mem = MemoryStore.Load(_root);
+                    var export = new JsonObject
+                    {
+                        ["project"] = System.IO.Path.GetFileName(_root),
+                        ["exported"] = DateTime.UtcNow.ToString("o"),
+                        ["memory"] = JsonNode.Parse(mem.ToJsonString())
+                    };
+                    
+                    var opts = new JsonSerializerOptions { WriteIndented = true };
+                    System.IO.File.WriteAllText(dlg.FileName, export.ToJsonString(opts), System.Text.Encoding.UTF8);
+                    StatusText.Text = $"экспортировано: {dlg.FileName}";
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка экспорта: " + ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        
+        private void BtnImport_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Filter = "LERON Memory (*.leronmem)|*.leronmem|All files (*.*)|*.*",
+                    DefaultExt = ".leronmem"
+                };
+                
+                if (dlg.ShowDialog() == true)
+                {
+                    var json = System.IO.File.ReadAllText(dlg.FileName, System.Text.Encoding.UTF8);
+                    var export = JsonNode.Parse(json) as JsonObject;
+                    if (export == null || export["memory"] == null)
+                    {
+                        MessageBox.Show("Неверный формат файла", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+                    
+                    var result = MessageBox.Show($"Импортировать память из:\n{dlg.FileName}\n\nТекущая память будет заменена.", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        var mem = export["memory"] as JsonObject ?? new JsonObject();
+                        MemoryStore.Save(_root, mem);
+                        InspectorPanel.Visibility = Visibility.Collapsed;
+                        _selectedId = null;
+                        Refresh();
+                        StatusText.Text = $"импортировано: {dlg.FileName}";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка импорта: " + ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+    private void Filter_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button b && b.Tag is string tag)
+            {
+                _currentFilter = tag;
+                Refresh();
+            }
+        }
+
+        private void BtnBack_Click(object sender, RoutedEventArgs e)
+        {
+            BackRequested?.Invoke();
+        }
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape) BackRequested?.Invoke();
+        }
+    }
+
+        // === ROUND 6: Management & Export/Import ===
+        private string GetRoot() {
+            try {
+                var field = this.GetType().GetField("_root", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+                if (field != null) return field.GetValue(this) as string;
+                var prop = this.GetType().GetProperty("Root", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                if (prop != null) return prop.GetValue(this) as string;
+                return System.IO.Directory.GetCurrentDirectory();
+            } catch { return System.IO.Directory.GetCurrentDirectory(); }
+        }
+
+        private void SafeRefresh() {
+            try {
+                foreach (var mName in new[] { "RefreshAll", "LoadData", "Refresh", "UpdateGraph", "LoadMemory" }) {
+                    var method = this.GetType().GetMethod(mName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    if (method != null) { method.Invoke(this, null); return; }
+                }
+            } catch {}
+        }
+
+        private void BtnAdd_Click(object sender, RoutedEventArgs e) => OpenEditor(null);
+        private void BtnEdit_Click(object sender, RoutedEventArgs e)
+        {
+            dynamic ctx = null;
+            var lb = FindVisualChild<System.Windows.Controls.ListBox>(this);
+            if (lb?.SelectedItem != null) ctx = lb.SelectedItem;
+            OpenEditor(ctx);
+        }
+        private void BtnDelete_Click(object sender, RoutedEventArgs e)
+        {
+            dynamic ctx = null;
+            var lb = FindVisualChild<System.Windows.Controls.ListBox>(this);
+            if (lb?.SelectedItem != null) ctx = lb.SelectedItem;
+            if (ctx != null) {
+                string id = ctx.Id;
+                MemoryStore.Forget(GetRoot(), id);
+                SafeRefresh();
+            }
+        }
+        private void BtnForgetAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (System.Windows.MessageBox.Show("Удалить ВСЮ память проекта?", "Подтверждение", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            {
+                MemoryStore.ForgetAll(GetRoot());
+                SafeRefresh();
+            }
+        }
+
+        private T FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is T t) return t;
+                var result = FindVisualChild<T>(child);
+                if (result != null) return result;
+            }
+            return null;
+        }
+
+        private void OpenEditor(dynamic existing)
+        {
+            var win = new Window { Title = existing == null ? "Новая карточка" : "Редактировать", Width = 400, Height = 350, WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Window.GetWindow(this) };
+            var panel = new StackPanel { Margin = new Thickness(15) };
+            var cbCat = new System.Windows.Controls.ComboBox { Margin = new Thickness(0,0,0,10) };
+            cbCat.Items.Add("choices"); cbCat.Items.Add("facts"); cbCat.Items.Add("files"); cbCat.Items.Add("notes");
+            try { cbCat.SelectedItem = existing?.Cat ?? "notes"; } catch { cbCat.SelectedItem = "notes"; }
+            var tbTitle = new System.Windows.Controls.TextBox { Margin = new Thickness(0,0,0,10), Text = existing?.Title ?? "" };
+            var tbText = new System.Windows.Controls.TextBox { Margin = new Thickness(0,0,0,10), Text = existing?.Text ?? "", AcceptsReturn = true, Height = 120, TextWrapping = TextWrapping.Wrap };
+            var btnSave = new System.Windows.Controls.Button { Content = "Сохранить", Height = 30 };
+            btnSave.Click += (s, ev) => {
+                string id = existing?.Id;
+                System.Collections.Generic.List<string> links = null;
+                try { links = new System.Collections.Generic.List<string>(existing?.Links); } catch {}
+                MemoryStore.Upsert(GetRoot(), id, cbCat.SelectedItem.ToString(), tbTitle.Text, tbText.Text, links);
+                win.DialogResult = true;
+                win.Close();
+            };
+            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "Категория:" }); panel.Children.Add(cbCat);
+            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "Заголовок:" }); panel.Children.Add(tbTitle);
+            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "Текст:" }); panel.Children.Add(tbText);
+            panel.Children.Add(btnSave);
+            win.Content = panel;
+            if (win.ShowDialog() == true) SafeRefresh();
+        }
+
+        private void BtnExport_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "LERON Memory|*.leronmem", FileName = "memory.leronmem" };
+            if (dlg.ShowDialog() == true)
+            {
+                var mem = MemoryStore.Load(GetRoot());
+                var exportObj = new { project = System.IO.Path.GetFileName(GetRoot()), exported = DateTime.Now, version = 1, data = mem };
+                System.IO.File.WriteAllText(dlg.FileName, System.Text.Json.JsonSerializer.Serialize(exportObj, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            }
+        }
+
+        private void BtnImport_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "LERON Memory|*.leronmem" };
+            if (dlg.ShowDialog() == true)
+            {
+                try {
+                    var json = System.IO.File.ReadAllText(dlg.FileName);
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("version", out var v) && v.GetInt32() == 1 && doc.RootElement.TryGetProperty("data", out var data))
+                    {
+                        System.IO.File.WriteAllText(MemoryStore.Path(GetRoot()), data.GetRawText());
+                        SafeRefresh();
+                        System.Windows.MessageBox.Show("Импорт успешен.");
+                    }
+                    else System.Windows.MessageBox.Show("Неверный формат файла.");
+                } catch (Exception ex) { System.Windows.MessageBox.Show("Ошибка: " + ex.Message); }
+            }
+        }
+}
+

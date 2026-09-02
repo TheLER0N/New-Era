@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : GUI
-  GENERATED      : 02.09.2026 19:37:03
+  GENERATED      : 02.09.2026 20:32:09
   PATH           : C:\Users\Пользователь\Desktop\GUI
 ================================================================
 
@@ -45,6 +45,20 @@ C:\Users\Пользователь\Desktop\GUI
 |   |   \---GuiTestRunner.cs.bak
 |   +---backup_r2_fix_20260902_193532
 |   |   \---GatewayStateTools.cs.bak
+|   +---backup_r3_20260902_194012
+|   |   \---GatewayState.cs.bak
+|   +---backup_r3_20260902_194547
+|   |   +---GatewayState.cs.bak
+|   |   \---GatewayStateAgent.cs.bak
+|   +---backup_r4_20260902_195946
+|   |   +---MainWindow.xaml.bak
+|   |   \---MainWindow.xaml.cs.bak
+|   +---backup_r5_20260902_201131
+|   |   +---MemoryPage.xaml.bak
+|   |   \---MemoryPage.xaml.cs.bak
+|   +---backup_r6_20260902_203006
+|   |   +---MemoryPage.xaml.bak
+|   |   \---MemoryPage.xaml.cs.bak
 |   +---backup_ui_20260902_184454
 |   |   +---HubSettingsPage.xaml.bak
 |   |   \---HubSettingsPage.xaml.cs.bak
@@ -90,6 +104,9 @@ C:\Users\Пользователь\Desktop\GUI
 |   |   |   +---ProjectHubWindow.xaml.cs
 |   |   |   \---ProjectHubWindow.xaml.cs.bak
 |   |   +---MainApp.csproj
+|   |   +---memory
+|   |   |   +---MemoryPage.xaml
+|   |   |   \---MemoryPage.xaml.cs
 |   |   +---roles
 |   |   |   +---RolePickWindow.xaml
 |   |   |   \---RolePickWindow.xaml.cs
@@ -150,7 +167,8 @@ C:\Users\Пользователь\Desktop\GUI
 |       +---agent_20260901.log
 |       +---agent_20260902.log
 |       +---coder_20260828.log
-|       \---coder_20260829.log
+|       +---coder_20260829.log
+|       \---coder_20260902.log
 +---start.bat
 \---инструменты
     +---check.bat
@@ -12510,7 +12528,7 @@ button, [class*='btn'], [role='button'] { border-color: var(--border) !important
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindow.xaml
-SIZE: 13609 bytes
+SIZE: 14078 bytes
 ------------------------------------------------
 <local:ChromeWindow x:Class="MainApp.MainWindow"
 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -12694,6 +12712,7 @@ ClipToBounds="True">
 <Button x:Name="ModeYoloBtn" Content="⚡ агрессивный" Click="OnModeYoloClick" Margin="0,0,6,0" ToolTip="YOLO: обычные действия без подтверждений" FontSize="15"/>
 <Button x:Name="ModeRepairBtn" Content="🔧 ремонт" Click="OnModeRepairClick" Margin="0,0,6,0" ToolTip="Минимальный ремонт одной ошибки" FontSize="15"/>
 <Button x:Name="AutoRepairBtn" Content="🔧 авторемонт: вкл" Click="OnAutoRepairClick" Margin="0,0,6,0" ToolTip="Автоматическая проверка проекта после изменений" FontSize="15"/>
+<Button x:Name="MemoryBtn" Content="🧠 память" Click="OnMemoryClick" Margin="0,0,6,0" ToolTip="Долгосрочная и краткосрочная память проекта" FontSize="15"/>
 <TextBlock Text="│" Foreground="#12404f" Margin="4,0,6,0" VerticalAlignment="Center"/>
 <Button x:Name="ThinkBtn" Content="⚡ быстро" Click="OnThinkClick" Margin="0,0,6,0" ToolTip="Режим ответа ИИ: быстро или с мышление (Ctrl+6)" FontSize="15"/>
 </StackPanel>
@@ -12765,6 +12784,11 @@ ToolTip="Потяни для изменения ширины браузера"/>
 <!-- ПРАВАЯ ПАНЕЛЬ: БРАУЗЕР -->
 <Border Grid.Column="3" x:Name="BrowserPaneHost" BorderBrush="#12404f" BorderThickness="1,0,0,0"/>
 </Grid>
+
+    <!-- Оверлей страницы памяти -->
+    <Border x:Name="MemoryOverlay" Background="#050d13" Visibility="Collapsed" Grid.RowSpan="10">
+        <local:MemoryPage xmlns:local="clr-namespace:MainApp.Memory" x:Name="MemoryPageControl"/>
+    </Border>
 </Grid>
 </Border>
 </local:ChromeWindow>
@@ -12772,7 +12796,7 @@ ToolTip="Потяни для изменения ширины браузера"/>
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindow.xaml.cs
-SIZE: 30282 bytes
+SIZE: 30961 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -12823,7 +12847,8 @@ public partial class MainWindow : ChromeWindow
 
     public MainWindow(string? projectPath = null, string? projectName = null)
     {
-        InitializeComponent(); LoadBoundRolesFromConfig();
+        InitializeComponent();
+        MemoryPageControl.BackRequested += () => { MemoryOverlay.Visibility = Visibility.Collapsed; }; LoadBoundRolesFromConfig();
         var holo = Theme.MakeHoloPlanet(); Grid.SetRow(holo, 1); ChatRootGrid.Children.Insert(0, holo);
 
         _browserPane.MountIn(BrowserPaneHost);
@@ -13503,6 +13528,27 @@ switch (e.Key)
 
     internal void LoadHistoryFromDisk() => _history = HistoryStore.Load();
     internal void SaveHistoryToDisk() => HistoryStore.Save(_history);
+
+    private void OnMemoryClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (MemoryOverlay.Visibility == Visibility.Visible)
+            {
+                MemoryOverlay.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                var root = _projectPath ?? "";
+                if (!string.IsNullOrEmpty(root))
+                {
+                    MemoryPageControl.Load(root);
+                    MemoryOverlay.Visibility = Visibility.Visible;
+                }
+            }
+        }
+        catch { }
+    }
 }
 
 
@@ -14770,7 +14816,7 @@ public string Description { get; set; } = "";
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayState.cs
-SIZE: 23571 bytes
+SIZE: 25809 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Concurrent;
@@ -15311,6 +15357,44 @@ internal sealed partial class GatewayState
     // Блок «КРАТКИЕ ОПИСАНИЯ ФАЙЛОВ» для промпта: описание + отметка свежести.
     // Если файл изменили после записи описания (mtime/size не совпадают) —
     // помечаем, чтобы ИИ перечитал файл перед правкой.
+    
+    /// <summary>Формирует блок памяти для системного промпта (РАУНД 3).</summary>
+    public string GetMemoryPrompt(AgentSession s)
+    {
+        if (string.IsNullOrWhiteSpace(s.Root)) return "";
+        try
+        {
+            var shortTerm = MemoryStore.ShortTerm(s.Root);
+            var (total, byCat) = MemoryStore.Summary(s.Root);
+            var sb = new StringBuilder();
+            sb.AppendLine("=== ПАМЯТЬ ПРОЕКТА ===");
+            if (shortTerm.Count > 0)
+            {
+                sb.AppendLine($"Краткосрочная (последние {shortTerm.Count} запросов, всегда актуальна):");
+                foreach (var entry in shortTerm)
+                {
+                    var time = entry["time"]?.ToString() ?? "??:??";
+                    var user = entry["user"]?.ToString() ?? "";
+                    var ai = entry["ai"]?.ToString() ?? "";
+                    sb.AppendLine($"  [{time}] Пользователь: {user} | ИИ: {ai}");
+                }
+            }
+            else
+            {
+                sb.AppendLine("Краткосрочная: пусто (это первый запрос)");
+            }
+            sb.AppendLine();
+            sb.AppendLine($"Долгосрочная: всего карточек {total} (choices {byCat["choices"]}, facts {byCat["facts"]}, files {byCat["files"]}, notes {byCat["notes"]}).");
+            sb.AppendLine();
+            sb.AppendLine("Правила памяти:");
+            sb.AppendLine("- Перед ответом о прошлых решениях/предпочтениях — memory_search, затем memory_read (читай сколько нужно).");
+            sb.AppendLine("- После содержательного запроса обнови память: memory_write (текст ≤ 3-4 предложения, категорию выбирай сам: choices/facts/files/notes).");
+            sb.AppendLine("- Устарело — обнови по id или memory_forget. Не дублируй file_index.json.");
+            sb.AppendLine();
+            return sb.ToString();
+        }
+        catch { return ""; }
+    }
     public string GetFileIndexPrompt(AgentSession s)
     {
         if (s.Root == null) return "";
@@ -15345,7 +15429,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayStateAgent.cs
-SIZE: 47174 bytes
+SIZE: 48595 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -15368,6 +15452,26 @@ internal sealed partial class GatewayState
     }
     public object Finish(AgentSession s, string text, string resultStatus = "success")
     {
+        // ── РАУНД 3: Автозапись краткосрочной памяти ──────────
+        try
+        {
+            var lastUser = "";
+            var lastMsg = s.Messages.LastOrDefault();
+            if (lastMsg is JsonObject lastObj) {
+                var role = lastObj["role"]?.ToString() ?? "";
+                var txt = lastObj["content"]?.ToString() ?? "";
+                if (role == "user" && !string.IsNullOrWhiteSpace(txt)) lastUser = txt;
+            }
+            if (!string.IsNullOrWhiteSpace(lastUser) && !string.IsNullOrWhiteSpace(text))
+            {
+                var userShort = lastUser.Length > 150 ? lastUser.Substring(0, 150) + "..." : lastUser;
+                var aiShort = text.Length > 250 ? text.Substring(0, 250) + "..." : text;
+                var memChanged = s.ChangedFiles.Take(3).ToList();
+                if (memChanged.Count > 0) aiShort += " · файлы: " + string.Join(", ", memChanged);
+                MemoryStore.PushShort(s.Root ?? "", userShort, aiShort);
+            }
+        }
+        catch { }
         AgentLog($"[FINAL] {Truncate(text, 500)}");
         if (!string.IsNullOrEmpty(s.Role))
             LogRole(s.Role, $"[AGENT]: {Truncate(text, 300)}");
@@ -15523,6 +15627,14 @@ internal sealed partial class GatewayState
             {
                 sb.AppendLine();
                 sb.Append(indexPrompt);
+            }
+
+            // ── РАУНД 3: Блок памяти проекта ──────────────────
+            var memoryPrompt = GetMemoryPrompt(s);
+            if (!string.IsNullOrEmpty(memoryPrompt))
+            {
+                sb.AppendLine();
+                sb.Append(memoryPrompt);
             }
         }
         if (s.AllowTools)
@@ -20825,6 +20937,685 @@ public static class ProjectStore
 
 
 ------------------------------------------------
+FILE: program\main\memory\MemoryPage.xaml
+SIZE: 8293 bytes
+------------------------------------------------
+<UserControl x:Class="MainApp.Memory.MemoryPage"
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+Background="#050d13" FontFamily="Consolas" Focusable="True">
+<UserControl.Resources>
+  <SolidColorBrush x:Key="BgMain" Color="#050d13"/>
+  <SolidColorBrush x:Key="BgPanel" Color="#07141d"/>
+  <SolidColorBrush x:Key="BgCard" Color="#0a1620"/>
+  <SolidColorBrush x:Key="Border" Color="#12404f"/>
+  <SolidColorBrush x:Key="Accent" Color="#00d9ff"/>
+  <SolidColorBrush x:Key="Ok" Color="#3fd158"/>
+  <SolidColorBrush x:Key="Err" Color="#e94560"/>
+  <SolidColorBrush x:Key="TextMain" Color="#eaf6ff"/>
+  <SolidColorBrush x:Key="TextDim" Color="#7d93a5"/>
+
+  <Style x:Key="Card" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource BgCard}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Padding" Value="14"/>
+    <Setter Property="Margin" Value="0,0,0,10"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+  <Style x:Key="FilterBtn" TargetType="Button">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border Background="{TemplateBinding Background}" Padding="10,6" CornerRadius="6">
+            <ContentPresenter HorizontalAlignment="Center"/>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#0d2231"/></Trigger>
+    </Style.Triggers>
+  </Style>
+</UserControl.Resources>
+
+<Grid Background="{StaticResource BgMain}">
+  <Grid.RowDefinitions>
+    <RowDefinition Height="Auto"/>
+    <RowDefinition Height="*"/>
+    <RowDefinition Height="Auto"/>
+  </Grid.RowDefinitions>
+
+  <!-- ШАПКА -->
+  <Border Grid.Row="0" Background="{StaticResource BgPanel}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Width="40" Height="40" CornerRadius="10" BorderBrush="{StaticResource Accent}" BorderThickness="1" Background="#062028" Margin="0,0,12,0">
+        <TextBlock Text="🧠" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Border>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+        <TextBlock Text="ПАМЯТЬ // " Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold" VerticalAlignment="Center"/>
+        <TextBlock x:Name="ProjectNameText" Text="проект" Foreground="{StaticResource TextMain}" FontSize="15" FontWeight="Bold" VerticalAlignment="Center"/>
+      </StackPanel>
+      <Button Grid.Column="2" Content="← назад (Esc)" Click="BtnBack_Click" 
+              Background="Transparent" BorderBrush="{StaticResource Border}" BorderThickness="1" 
+              Foreground="{StaticResource TextMain}" Padding="14,7" Cursor="Hand">
+        <Button.Template>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" 
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Button.Template>
+      </Button>
+    </Grid>
+  </Border>
+
+  <!-- ОСНОВНОЙ КОНТЕНТ -->
+  <Grid Grid.Row="1">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="200"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- ФИЛЬТР -->
+    <Border Grid.Column="0" Background="{StaticResource BgPanel}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0" Padding="12">
+      <StackPanel>
+        <TextBlock Text="КАТЕГОРИИ" Foreground="{StaticResource TextDim}" FontSize="10.5" Margin="0,0,0,10"/>
+        <Button x:Name="FilterAll" Style="{StaticResource FilterBtn}" Click="Filter_Click" Tag="all" Margin="0,0,0,4">
+          <StackPanel Orientation="Horizontal">
+            <Ellipse Width="8" Height="8" Fill="{StaticResource TextDim}" Margin="0,0,8,0"/>
+            <TextBlock Text="Все" Foreground="{StaticResource TextMain}"/>
+          </StackPanel>
+        </Button>
+        <Button x:Name="FilterChoices" Style="{StaticResource FilterBtn}" Click="Filter_Click" Tag="choices" Margin="0,0,0,4">
+          <StackPanel Orientation="Horizontal">
+            <Ellipse Width="8" Height="8" Fill="#00d9ff" Margin="0,0,8,0"/>
+            <TextBlock x:Name="ChoicesCount" Text="выборы (0)" Foreground="{StaticResource TextMain}"/>
+          </StackPanel>
+        </Button>
+        <Button x:Name="FilterFacts" Style="{StaticResource FilterBtn}" Click="Filter_Click" Tag="facts" Margin="0,0,0,4">
+          <StackPanel Orientation="Horizontal">
+            <Ellipse Width="8" Height="8" Fill="#3fd158" Margin="0,0,8,0"/>
+            <TextBlock x:Name="FactsCount" Text="факты (0)" Foreground="{StaticResource TextMain}"/>
+          </StackPanel>
+        </Button>
+        <Button x:Name="FilterFiles" Style="{StaticResource FilterBtn}" Click="Filter_Click" Tag="files" Margin="0,0,0,4">
+          <StackPanel Orientation="Horizontal">
+            <Ellipse Width="8" Height="8" Fill="#ff9f43" Margin="0,0,8,0"/>
+            <TextBlock x:Name="FilesCount" Text="файлы (0)" Foreground="{StaticResource TextMain}"/>
+          </StackPanel>
+        </Button>
+        <Button x:Name="FilterNotes" Style="{StaticResource FilterBtn}" Click="Filter_Click" Tag="notes">
+          <StackPanel Orientation="Horizontal">
+            <Ellipse Width="8" Height="8" Fill="#ffd166" Margin="0,0,8,0"/>
+            <TextBlock x:Name="NotesCount" Text="заметки (0)" Foreground="{StaticResource TextMain}"/>
+          </StackPanel>
+        </Button>
+      </StackPanel>
+    </Border>
+
+    <!-- СПИСОК КАРТОЧЕК -->
+    <!-- ГРАФ СВЯЗЕЙ -->
+    <Grid Grid.Column="1" Margin="0,0,0,12">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="320"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      
+      <Border Grid.Row="0" Background="{StaticResource BgCard}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="10" Margin="0,0,0,12">
+        <Grid>
+          <TextBlock Text="ГРАФ СВЯЗЕЙ" Foreground="{StaticResource Accent}" FontSize="10" FontWeight="Bold" 
+                     HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,8,0,0"/>
+          <Canvas x:Name="GraphCanvas" ClipToBounds="True" Background="Transparent"/>
+        </Grid>
+      </Border>
+
+      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0">
+        <StackPanel>
+          <TextBlock Text="ДОЛГОСРОЧНАЯ ПАМЯТЬ" Foreground="{StaticResource Accent}" FontSize="11" FontWeight="Bold" Margin="0,0,0,12"/>
+          <StackPanel x:Name="CardsList"/>
+          
+          <TextBlock Text="КРАТКОСРОЧНАЯ ПАМЯТЬ" Foreground="{StaticResource Accent}" FontSize="11" FontWeight="Bold" Margin="0,20,0,12"/>
+          <StackPanel x:Name="ShortTermList"/>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </Grid>
+
+  <!-- ФУТЕР -->
+  <Border Grid.Row="2" Background="{StaticResource BgPanel}" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="16,10">
+    <TextBlock x:Name="StatusText" Text="готово" Foreground="{StaticResource TextDim}" FontSize="11.5"/>
+  </Border>
+</Grid>
+</UserControl>
+
+
+------------------------------------------------
+FILE: program\main\memory\MemoryPage.xaml.cs
+SIZE: 22837 bytes
+------------------------------------------------
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using Microsoft.Win32;
+using System.Windows.Shapes;
+
+namespace MainApp.Memory
+{
+    public partial class MemoryPage : UserControl
+    {
+        public event Action? BackRequested;
+        private string _root = "";
+        private string _currentFilter = "all";`n        private string? _selectedId = null;`n        private bool _isEditing = false;
+
+        private static SolidColorBrush B(string h) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(h));
+        private static readonly Dictionary<string, string> CatColors = new Dictionary<string, string>
+        {
+            { "choices", "#00d9ff" }, { "facts", "#3fd158" },
+            { "files", "#ff9f43" },  { "notes", "#ffd166" }
+        };
+
+        public MemoryPage()
+        {
+            InitializeComponent();
+            KeyDown += OnKeyDown;
+        }
+
+        public void Load(string root)
+        {
+            _root = root;
+            try { ProjectNameText.Text = System.IO.Path.GetFileName(root); } catch { }
+            Refresh();
+        }
+
+        public void Refresh()
+        {
+            try
+            {
+                var mem = MemoryStore.Load(_root);
+                var longTerm = mem["long_term"] as JsonArray ?? new JsonArray();
+                var shortTerm = mem["short_term"] as JsonArray ?? new JsonArray();
+
+                // Обновляем счётчики
+                var counts = new Dictionary<string, int> { {"choices",0}, {"facts",0}, {"files",0}, {"notes",0} };
+                foreach (var n in longTerm)
+                {
+                    if (n is JsonObject o)
+                    {
+                        var c = o["cat"]?.ToString();
+                        if (c != null && counts.ContainsKey(c)) counts[c]++;
+                    }
+                }
+                ChoicesCount.Text = $"выборы ({counts["choices"]})";
+                FactsCount.Text = $"факты ({counts["facts"]})";
+                FilesCount.Text = $"файлы ({counts["files"]})";
+                NotesCount.Text = $"заметки ({counts["notes"]})";
+
+                // Долгосрочная память
+                CardsList.Children.Clear();
+                var filtered = longTerm
+                    .OfType<JsonObject>()
+                    .Where(o => _currentFilter == "all" || o["cat"]?.ToString() == _currentFilter)
+                    .ToList();
+
+                if (filtered.Count == 0)
+                {
+                    CardsList.Children.Add(new TextBlock 
+                    { 
+                        Text = _currentFilter == "all" ? "память пуста" : $"нет записей в категории '{_currentFilter}'",
+                        Foreground = B("#7d93a5"), FontSize = 11.5, Margin = new Thickness(0, 10, 0, 0)
+                    });
+                }
+                else
+                {
+                    foreach (var card in filtered.OrderByDescending(o => o["updated"]?.ToString() ?? ""))
+                    {
+                        var id = card["id"]?.ToString() ?? "?";
+                        var cat = card["cat"]?.ToString() ?? "?";
+                        var title = card["title"]?.ToString() ?? "?";
+                        var text = card["text"]?.ToString() ?? "";
+                        var updated = card["updated"]?.ToString() ?? "";
+                        var snippet = text.Length > 80 ? text.Substring(0, 80) + "..." : text;
+                        if (updated.Length > 16) updated = updated.Substring(0, 16).Replace("T", " ");
+                        var catColor = CatColors.ContainsKey(cat) ? CatColors[cat] : "#7d93a5";
+
+                        var border = new Border { Style = (Style)FindResource("Card") };
+                        var grid = new Grid();
+                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                        var dot = new Ellipse { Width = 8, Height = 8, Fill = B(catColor), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 6, 0, 0) };
+                        Grid.SetColumn(dot, 0);
+
+                        var stack = new StackPanel();
+                        stack.Children.Add(new TextBlock { Text = title, Foreground = B("#eaf6ff"), FontSize = 12.5, FontWeight = FontWeights.Bold });
+                        stack.Children.Add(new TextBlock { Text = snippet, Foreground = B("#7d93a5"), FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) });
+                        stack.Children.Add(new TextBlock { Text = $"[{id}] ({cat}) — {updated}", Foreground = B("#4a6070"), FontSize = 9.5, Margin = new Thickness(0, 4, 0, 0) });
+                        Grid.SetColumn(stack, 1);
+
+                        grid.Children.Add(dot);
+                        grid.Children.Add(stack);
+                        border.Child = grid;
+                        border.Tag = id;
+                        border.MouseLeftButtonDown += (s, e) => ShowCardDetail(id);
+                        CardsList.Children.Add(border);
+                    }
+                }
+
+                // Краткосрочная память
+                ShortTermList.Children.Clear();
+                if (shortTerm.Count == 0)
+                {
+                    ShortTermList.Children.Add(new TextBlock 
+                    { 
+                        Text = "краткосрочная память пуста (отправьте запрос в чат)",
+                        Foreground = B("#7d93a5"), FontSize = 11.5
+                    });
+                }
+                else
+                {
+                    for (int i = shortTerm.Count - 1; i >= 0; i--)
+                    {
+                        var entry = shortTerm[i] as JsonObject;
+                        if (entry == null) continue;
+                        var time = entry["time"]?.ToString() ?? "??:??";
+                        var user = entry["user"]?.ToString() ?? "";
+                        var ai = entry["ai"]?.ToString() ?? "";
+
+                        var border = new Border 
+                        { 
+                            Background = B("#0a1620"), BorderBrush = B("#12404f"), BorderThickness = new Thickness(1),
+                            CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 0, 6)
+                        };
+                        var stack = new StackPanel();
+                        stack.Children.Add(new TextBlock { Text = $"[{time}]", Foreground = B("#00d9ff"), FontSize = 10, FontWeight = FontWeights.Bold });
+                        if (!string.IsNullOrWhiteSpace(user))
+                            stack.Children.Add(new TextBlock { Text = $"👤 {user}", Foreground = B("#eaf6ff"), FontSize = 11, Margin = new Thickness(0, 4, 0, 0) });
+                        if (!string.IsNullOrWhiteSpace(ai))
+                            stack.Children.Add(new TextBlock { Text = $"🤖 {ai}", Foreground = B("#7d93a5"), FontSize = 11, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap });
+                        border.Child = stack;
+                        ShortTermList.Children.Add(border);
+                    }
+                }
+
+                StatusText.Text = $"всего: {longTerm.Count} карточек, {shortTerm.Count} краткосрочных";
+                BuildGraph(filtered);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "ошибка: " + ex.Message;
+            }
+        }
+
+        
+    private void BuildGraph(List<JsonObject> cards)
+    {
+        try
+        {
+            GraphCanvas.Children.Clear();
+            if (cards.Count == 0) return;
+
+            // Размеры Canvas
+            double w = GraphCanvas.ActualWidth > 0 ? GraphCanvas.ActualWidth : 800;
+            double h = GraphCanvas.ActualHeight > 0 ? GraphCanvas.ActualHeight : 300;
+            double cx = w / 2, cy = h / 2;
+
+            // Раскладка: 4 сектора по категориям
+            var sectors = new Dictionary<string, double> {
+                { "choices", 0 },    // правый сектор (0°)
+                { "facts", 90 },     // верхний сектор (90°)
+                { "files", 180 },    // левый сектор (180°)
+                { "notes", 270 }     // нижний сектор (270°)
+            };
+
+            var positions = new Dictionary<string, Point>();
+            var catCounters = new Dictionary<string, int>();
+            foreach (var cat in sectors.Keys) catCounters[cat] = 0;
+
+            // Размещаем узлы по спирали в каждом секторе
+            foreach (var card in cards)
+            {
+                var id = card["id"]?.ToString() ?? "?";
+                var cat = card["cat"]?.ToString() ?? "notes";
+                if (!sectors.ContainsKey(cat)) cat = "notes";
+                
+                var links = card["links"] as JsonArray;
+                int linkCount = links?.Count ?? 0;
+                double size = 14 + Math.Min(linkCount * 2, 12); // 14-26px
+                
+                int idx = catCounters[cat]++;
+                double baseAngle = sectors[cat];
+                double angleOffset = idx * 25; // угол между узлами в секторе
+                double radius = 60 + idx * 35; // расстояние от центра
+                
+                double angle = (baseAngle + angleOffset - 45) * Math.PI / 180; // -45 для разброса
+                double x = cx + radius * Math.Cos(angle) - size / 2;
+                double y = cy + radius * Math.Sin(angle) - size / 2;
+                
+                positions[id] = new Point(x + size / 2, y + size / 2);
+                
+                var catColor = CatColors.ContainsKey(cat) ? CatColors[cat] : "#7d93a5";
+                var ellipse = new Ellipse
+                {
+                    Width = size, Height = size,
+                    Fill = B(catColor),
+                    Stroke = B("#12404f"),
+                    StrokeThickness = 2,
+                    Tag = id,
+                    ToolTip = card["title"]?.ToString() ?? id
+                };
+                Canvas.SetLeft(ellipse, x);
+                Canvas.SetTop(ellipse, y);
+                ellipse.MouseLeftButtonDown += (s, e) => ShowCardDetail(id);
+                GraphCanvas.Children.Add(ellipse);
+            }
+
+            // Рисуем линии связей
+            foreach (var card in cards)
+            {
+                var id = card["id"]?.ToString() ?? "";
+                var links = card["links"] as JsonArray;
+                if (links == null || !positions.ContainsKey(id)) continue;
+                
+                foreach (var linkNode in links)
+                {
+                    var linkId = linkNode?.ToString() ?? "";
+                    if (positions.ContainsKey(linkId))
+                    {
+                        var p1 = positions[id];
+                        var p2 = positions[linkId];
+                        var line = new Line
+                        {
+                            X1 = p1.X, Y1 = p1.Y,
+                            X2 = p2.X, Y2 = p2.Y,
+                            Stroke = B("#12404f"),
+                            StrokeThickness = 1.5
+                        };
+                        // Линии рисуем ПЕРЕД узлами, чтобы они были под ними
+                        GraphCanvas.Children.Insert(0, line);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Тихо игнорируем ошибки графа
+        }
+    }
+
+    private void ShowCardDetail(string id)
+        {
+            try
+            {
+                var cards = MemoryStore.Read(_root, new[] { id });
+                if (cards.Count == 0) return;
+                var card = cards[0];
+                var title = card["title"]?.ToString() ?? "";
+                var text = card["text"]?.ToString() ?? "";
+                var links = card["links"] as JsonArray;
+                var linkStr = links != null && links.Count > 0 ? "\n\nСвязи: " + string.Join(", ", links) : "";
+                MessageBox.Show($"{text}{linkStr}", title, MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch { }
+        }
+
+                private void ShowCardDetail(string id)
+        {
+            try
+            {
+                var cards = MemoryStore.Read(_root, new[] { id });
+                if (cards.Count == 0) return;
+                var card = cards[0];
+                
+                _selectedId = id;
+                InspectorTitle.Text = card["title"]?.ToString() ?? "";
+                InspectorId.Text = $"#{id}";
+                InspectorCat.Text = card["cat"]?.ToString() ?? "";
+                InspectorText.Text = card["text"]?.ToString() ?? "";
+                
+                var links = card["links"] as JsonArray;
+                InspectorLinks.Text = links != null && links.Count > 0 ? string.Join(", ", links) : "нет связей";
+                
+                var created = card["created"]?.ToString() ?? "";
+                var updated = card["updated"]?.ToString() ?? "";
+                if (created.Length > 16) created = created.Substring(0, 16).Replace("T", " ");
+                if (updated.Length > 16) updated = updated.Substring(0, 16).Replace("T", " ");
+                InspectorTime.Text = $"создано: {created}\nобновлено: {updated}";
+                
+                var cat = card["cat"]?.ToString() ?? "";
+                var catColor = CatColors.ContainsKey(cat) ? CatColors[cat] : "#7d93a5";
+                InspectorCatBadge.Background = B(catColor + "33");
+                
+                InspectorPanel.Visibility = Visibility.Visible;
+            }
+            catch { }
+        }
+        
+        private void InspectorClose_Click(object sender, RoutedEventArgs e)
+        {
+            InspectorPanel.Visibility = Visibility.Collapsed;
+            _selectedId = null;
+        }
+        
+        private void InspectorEdit_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedId == null) return;
+            try
+            {
+                var cards = MemoryStore.Read(_root, new[] { _selectedId });
+                if (cards.Count == 0) return;
+                var card = cards[0];
+                
+                _isEditing = true;
+                FormTitle.Text = "Редактировать карточку";
+                FormCat.SelectedIndex = _currentFilter switch
+                {
+                    "choices" => 0, "facts" => 1, "files" => 2, "notes" => 3, _ => 0
+                };
+                var cat = card["cat"]?.ToString() ?? "notes";
+                FormCat.SelectedIndex = cat switch { "choices" => 0, "facts" => 1, "files" => 2, "notes" => 3, _ => 3 };
+                FormTitleBox.Text = card["title"]?.ToString() ?? "";
+                FormTextBox.Text = card["text"]?.ToString() ?? "";
+                FormOverlay.Visibility = Visibility.Visible;
+            }
+            catch { }
+        }
+        
+        private void InspectorDelete_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedId == null) return;
+            var result = MessageBox.Show($"Удалить карточку #{_selectedId}?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+            {
+                MemoryStore.Forget(_root, _selectedId);
+                InspectorPanel.Visibility = Visibility.Collapsed;
+                _selectedId = null;
+                Refresh();
+            }
+        }
+        
+        private void BtnAddCard_Click(object sender, RoutedEventArgs e)
+        {
+            _isEditing = false;
+            _selectedId = null;
+            FormTitle.Text = "Добавить карточку";
+            FormCat.SelectedIndex = 0;
+            FormTitleBox.Text = "";
+            FormTextBox.Text = "";
+            FormOverlay.Visibility = Visibility.Visible;
+        }
+        
+        private void FormCancel_Click(object sender, RoutedEventArgs e)
+        {
+            FormOverlay.Visibility = Visibility.Collapsed;
+        }
+        
+        private void FormSave_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var cat = (FormCat.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "notes";
+                var title = FormTitleBox.Text?.Trim() ?? "";
+                var text = FormTextBox.Text?.Trim() ?? "";
+                
+                if (string.IsNullOrWhiteSpace(title))
+                {
+                    MessageBox.Show("Заголовок не может быть пустым", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    MessageBox.Show("Текст не может быть пустым", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                
+                if (_isEditing && _selectedId != null)
+                {
+                    MemoryStore.Upsert(_root, _selectedId, cat, title, text, null);
+                }
+                else
+                {
+                    MemoryStore.Upsert(_root, null, cat, title, text, null);
+                }
+                
+                FormOverlay.Visibility = Visibility.Collapsed;
+                Refresh();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка сохранения: " + ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        
+        private void BtnForgetAll_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show("Удалить ВСЮ память проекта?\n\nЭто действие нельзя отменить.", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result == MessageBoxResult.Yes)
+            {
+                MemoryStore.ForgetAll(_root);
+                InspectorPanel.Visibility = Visibility.Collapsed;
+                _selectedId = null;
+                Refresh();
+            }
+        }
+        
+        private void BtnExport_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.SaveFileDialog
+                {
+                    Filter = "LERON Memory (*.leronmem)|*.leronmem|All files (*.*)|*.*",
+                    FileName = $"{System.IO.Path.GetFileName(_root)}_memory.leronmem",
+                    DefaultExt = ".leronmem"
+                };
+                
+                if (dlg.ShowDialog() == true)
+                {
+                    var mem = MemoryStore.Load(_root);
+                    var export = new JsonObject
+                    {
+                        ["project"] = System.IO.Path.GetFileName(_root),
+                        ["exported"] = DateTime.UtcNow.ToString("o"),
+                        ["memory"] = JsonNode.Parse(mem.ToJsonString())
+                    };
+                    
+                    var opts = new JsonSerializerOptions { WriteIndented = true };
+                    System.IO.File.WriteAllText(dlg.FileName, export.ToJsonString(opts), System.Text.Encoding.UTF8);
+                    StatusText.Text = $"экспортировано: {dlg.FileName}";
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка экспорта: " + ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        
+        private void BtnImport_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Filter = "LERON Memory (*.leronmem)|*.leronmem|All files (*.*)|*.*",
+                    DefaultExt = ".leronmem"
+                };
+                
+                if (dlg.ShowDialog() == true)
+                {
+                    var json = System.IO.File.ReadAllText(dlg.FileName, System.Text.Encoding.UTF8);
+                    var export = JsonNode.Parse(json) as JsonObject;
+                    if (export == null || export["memory"] == null)
+                    {
+                        MessageBox.Show("Неверный формат файла", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+                    
+                    var result = MessageBox.Show($"Импортировать память из:\n{dlg.FileName}\n\nТекущая память будет заменена.", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        var mem = export["memory"] as JsonObject ?? new JsonObject();
+                        MemoryStore.Save(_root, mem);
+                        InspectorPanel.Visibility = Visibility.Collapsed;
+                        _selectedId = null;
+                        Refresh();
+                        StatusText.Text = $"импортировано: {dlg.FileName}";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка импорта: " + ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+    private void Filter_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button b && b.Tag is string tag)
+            {
+                _currentFilter = tag;
+                Refresh();
+            }
+        }
+
+        private void BtnBack_Click(object sender, RoutedEventArgs e)
+        {
+            BackRequested?.Invoke();
+        }
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape) BackRequested?.Invoke();
+        }
+    }
+}
+
+
+------------------------------------------------
 FILE: program\main\roles\RolePickWindow.xaml
 SIZE: 1650 bytes
 ------------------------------------------------
@@ -22096,7 +22887,7 @@ SIZE: 16116 bytes
       "Name": "GUI_test",
       "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\GUI_test",
       "Role": "team",
-      "LastOpened": "2026-09-02T19:36:23.1145854\u002B03:00"
+      "LastOpened": "2026-09-02T20:24:49.4129476\u002B03:00"
     }
   ],
   "HubLayout": {
@@ -22110,7 +22901,7 @@ SIZE: 16116 bytes
       {
         "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\GUI_test",
         "X": 754,
-        "Y": 995.5,
+        "Y": 998.5,
         "PointId": "pt-bba002c4"
       }
     ],
@@ -22197,7 +22988,7 @@ SIZE: 16116 bytes
 
 ------------------------------------------------
 FILE: sending and receiving\history.json
-SIZE: 283531 bytes
+SIZE: 309844 bytes
 ------------------------------------------------
 {
   "proj|c:\\users\\\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\desktop\\gui_test": [
@@ -22382,6 +23173,27 @@ SIZE: 283531 bytes
       "Bg": "#16213e",
       "Time": "20:08",
       "CardsJson": "[{\u0022Type\u0022:\u0022summary\u0022,\u0022Icon\u0022:\u0022\\u2705\u0022,\u0022Title\u0022:\u0022\\u0418\\u0442\\u043E\\u0433\u0022,\u0022Status\u0022:\u0022success\u0022,\u0022Details\u0022:\u00221. \\u0410\\u0440\\u0445\\u0438\\u0442\\u0435\\u043A\\u0442\\u0443\\u0440\\u0430 \\u0438 \\u0441\\u0435\\u0442\\u044C: \\u0420\\u0435\\u0430\\u043B\\u0438\\u0437\\u043E\\u0432\\u0430\\u0442\\u044C UDP Broadcast \\u0434\\u043B\\u044F \\u0430\\u0432\\u0442\\u043E\\u043C\\u0430\\u0442\\u0438\\u0447\\u0435\\u0441\\u043A\\u043E\\u0433\\u043E \\u043E\\u0431\\u043D\\u0430\\u0440\\u0443\\u0436\\u0435\\u043D\\u0438\\u044F \\u043A\\u043B\\u0438\\u0435\\u043D\\u0442\\u043E\\u0432 \\u0432 \\u043B\\u043E\\u043A\\u0430\\u043B\\u044C\\u043D\\u043E\\u0439 \\u0441\\u0435\\u0442\\u0438 (LAN) \\u0438 TCP \\u0434\\u043B\\u044F \\u043D\\u0430\\u0434\\u0435\\u0436\\u043D\\u043E\\u0439 \\u043F\\u0435\\u0440\\u0435\\u0434\\u0430\\u0447\\u0438 \\u0441\\u043E\\u043E\\u0431\\u0449\\u0435\\u043D\\u0438\\u0439, \\u0444\\u0430\\u0439\\u043B\\u043E\\u0432 \\u0438 \\u0441\\u0438\\u043D\\u0445\\u0440\\u043E\\u043D\\u0438\\u0437\\u0430\\u0446\\u0438\\u0438 \\u0441\\u0442\\u0430\\u0442\\u0443\\u0441\\u043E\\u0432. \\u0421\\u043E\\u0437\\u0434\\u0430\\u0442\\u044C \\u0441\\u0435\\u0440\\u0432\\u0438\\u0441\\u044B NetworkService \\u0438 DiscoveryService.\\n2. \\u041C\\u043E\\u0434\\u0435\\u043B\\u0438 \\u0434\\u0430\\u043D\\u043D\\u044B\\u0445: \\u0420\\u0430\\u0441\\u0448\\u0438\\u0440\\u0438\\u0442\\u044C User (PasswordHash, Avatar, Bio, IsOnline, LastSeen). \\u0420\\u0430\\u0441\\u0448\\u0438\\u0440\\u0438\\u0442\\u044C Message (\\u0442\\u0438\\u043F\\u044B \\u0441\\u043E\\u043E\\u0431\\u0449\\u0435\\u043D\\u0438\\u0439, reply, \\u0441\\u0442\\u0430\\u0442\\u0443\\u0441\\u044B \\u0434\\u043E\\u0441\\u0442\\u0430\\u0432\\u043A\\u0438/\\u043F\\u0440\\u043E\\u0447\\u0442\\u0435\\u043D\\u0438\\u044F, \\u0432\\u043B\\u043E\\u0436\\u0435\\u043D\\u0438\\u044F). \\u0414\\u043E\\u0431\\u0430\\u0432\\u0438\\u0442\\u044C \\u043C\\u043E\\u0434\\u0435\\u043B\\u0438 Contact \\u0438 Settings.\\n3. \\u0425\\u0440\\u0430\\u043D\\u0435\\u043D\\u0438\\u0435 \\u0434\\u0430\\u043D\\u043D\\u044B\\u0445: \\u0417\\u0430\\u043C\\u0435\\u043D\\u0438\\u0442\\u044C InMemoryDataService \\u043D\\u0430 \\u043B\\u043E\\u043A\\u0430\\u043B\\u044C\\u043D\\u043E\\u0435 \\u0445\\u0440\\u0430\\u043D\\u0438\\u043B\\u0438\\u0449\\u0435 (SQLite \\u0438\\u043B\\u0438 JSON) \\u0434\\u043B\\u044F \\u0441\\u043E\\u0445\\u0440\\u0430\\u043D\\u0435\\u043D\\u0438\\u044F \\u043F\\u0440\\u043E\\u0444\\u0438\\u043B\\u0435\\u0439, \\u0438\\u0441\\u0442\\u043E\\u0440\\u0438\\u0438 \\u0447\\u0430\\u0442\\u043E\\u0432, \\u043A\\u043E\\u043D\\u0442\\u0430\\u043A\\u0442\\u043E\\u0432 \\u0438 \\u043D\\u0430\\u0441\\u0442\\u0440\\u043E\\u0435\\u043A.\\n4. \\u0410\\u0443\\u0442\\u0435\\u043D\\u0442\\u0438\\u0444\\u0438\\u043A\\u0430\\u0446\\u0438\\u044F: \\u0420\\u0435\\u0430\\u043B\\u0438\\u0437\\u043E\\u0432\\u0430\\u0442\\u044C \\u0441\\u0438\\u0441\\u0442\\u0435\\u043C\\u0443 \\u0440\\u0435\\u0433\\u0438\\u0441\\u0442\\u0440\\u0430\\u0446\\u0438\\u0438 \\u0438 \\u0432\\u0445\\u043E\\u0434\\u0430 \\u0441 \\u0431\\u0435\\u0437\\u043E\\u043F\\u0430\\u0441\\u043D\\u044B\\u043C \\u0445\\u0435\\u0448\\u0438\\u0440\\u043E\\u0432\\u0430\\u043D\\u0438\\u0435\\u043C \\u043F\\u0430\\u0440\\u043E\\u043B\\u0435\\u0439. \\u0421\\u043E\\u0437\\u0434\\u0430\\u0442\\u044C \\u043E\\u0442\\u0434\\u0435\\u043B\\u044C\\u043D\\u044B\\u0435 \\u043E\\u043A\\u043D\\u0430 LoginWindow \\u0438 RegisterWindow \\u0441 ViewModel.\\n5. \\u041E\\u0431\\u043D\\u0430\\u0440\\u0443\\u0436\\u0435\\u043D\\u0438\\u0435 \\u043F\\u043E\\u043B\\u044C\\u0437\\u043E\\u0432\\u0430\\u0442\\u0435\\u043B\\u0435\\u0439: \\u0424\\u043E\\u043D\\u043E\\u0432\\u043E\\u0435 \\u043F\\u0440\\u043E\\u0441\\u043B\\u0443\\u0448\\u0438\\u0432\\u0430\\u043D\\u0438\\u0435 UDP-\\u043F\\u043E\\u0440\\u0442\\u0430 \\u0434\\u043B\\u044F \\u043F\\u043E\\u0438\\u0441\\u043A\\u0430 \\u0434\\u0440\\u0443\\u0433\\u0438\\u0445 \\u0437\\u0430\\u043F\\u0443\\u0449\\u0435\\u043D\\u043D\\u044B\\u0445 \\u043A\\u043E\\u043F\\u0438\\u0439 \\u043F\\u0440\\u0438\\u043B\\u043E\\u0436\\u0435\\u043D\\u0438\\u044F \\u0432 \\u043A\\u043E\\u043B\\u043B\\u0435\\u0434\\u0436\\u0435/\\u0441\\u0435\\u0442\\u0438 \\u0441 \\u043E\\u0442\\u043E\\u0431\\u0440\\u0430\\u0436\\u0435\\u043D\\u0438\\u0435\\u043C \\u0438\\u0445 \\u0432 \\u0441\\u043F\\u0438\\u0441\\u043A\\u0435 \\u0434\\u043E\\u0441\\u0442\\u0443\\u043F\\u043D\\u044B\\u0445 \\u043A\\u043E\\u043D\\u0442\\u0430\\u043A\\u0442\\u043E\\u0432.\\n6. \\u0420\\u0430\\u0441\\u0448\\u0438\\u0440\\u0435\\u043D\\u043D\\u044B\\u0439 \\u0444\\u0443\\u043D\\u043A\\u0446\\u0438\\u043E\\u043D\\u0430\\u043B \\u0447\\u0430\\u0442\\u0430: \\u0414\\u043E\\u0431\\u0430\\u0432\\u0438\\u0442\\u044C \\u043E\\u0442\\u043F\\u0440\\u0430\\u0432\\u043A\\u0443 \\u0444\\u0430\\u0439\\u043B\\u043E\\u0432/\\u043A\\u0430\\u0440\\u0442\\u0438\\u043D\\u043E\\u043A (Drag\\u0026Drop), \\u043F\\u0430\\u043D\\u0435\\u043B\\u044C \\u0441\\u043C\\u0430\\u0439\\u043B\\u0438\\u043A\\u043E\\u0432, \\u0441\\u0442\\u0430\\u0442\\u0443\\u0441\\u044B (online/typing), \\u043E\\u0442\\u0432\\u0435\\u0442\\u044B \\u043D\\u0430 \\u0441\\u043E\\u043E\\u0431\\u0449\\u0435\\u043D\\u0438\\u044F (reply), \\u0440\\u0435\\u0434\\u0430\\u043A\\u0442\\u0438\\u0440\\u043E\\u0432\\u0430\\u043D\\u0438\\u0435 \\u0438 \\u0443\\u0434\\u0430\\u043B\\u0435\\u043D\\u0438\\u0435 \\u0441\\u043E\\u043E\\u0431\\u0449\\u0435\\u043D\\u0438\\u0439.\\n7. \\u0421\\u043E\\u0432\\u0440\\u0435\\u043C\\u0435\\u043D\\u043D\\u044B\\u0439 \\u0434\\u0438\\u0437\\u0430\\u0439\\u043D (Fluent Design): \\u041F\\u043E\\u043B\\u043D\\u043E\\u0441\\u0442\\u044C\\u044E \\u043F\\u0435\\u0440\\u0435\\u0440\\u0430\\u0431\\u043E\\u0442\\u0430\\u0442\\u044C LightTheme.xaml \\u0438 DarkTheme.xaml, \\u0434\\u043E\\u0431\\u0430\\u0432\\u0438\\u0442\\u044C \\u043F\\u043B\\u0430\\u0432\\u043D\\u044B\\u0435 \\u0430\\u043D\\u0438\\u043C\\u0430\\u0446\\u0438\\u0438, \\u0430\\u043A\\u0440\\u0438\\u043B\\u043E\\u0432\\u044B\\u0435 \\u044D\\u0444\\u0444\\u0435\\u043A\\u0442\\u044B, \\u0433\\u0440\\u0430\\u0434\\u0438\\u0435\\u043D\\u0442\\u044B \\u0438 \\u0443\\u043B\\u0443\\u0447\\u0448\\u0435\\u043D\\u043D\\u044B\\u0435 \\u043A\\u0430\\u0441\\u0442\\u043E\\u043C\\u043D\\u044B\\u0435 \\u043A\\u043E\\u043D\\u0442\\u0440\\u043E\\u043B\\u044B.\\n8. \\u041F\\u0440\\u043E\\u0444\\u0438\\u043B\\u0438 \\u043F\\u043E\\u043B\\u044C\\u0437\\u043E\\u0432\\u0430\\u0442\\u0435\\u043B\\u0435\\u0439: \\u0421\\u043E\\u0437\\u0434\\u0430\\u0442\\u044C \\u043E\\u043A\\u043D\\u043E \\u0440\\u0435\\u0434\\u0430\\u043A\\u0442\\u0438\\u0440\\u043E\\u0432\\u0430\\u043D\\u0438\\u044F \\u043F\\u0440\\u043E\\u0444\\u0438\\u043B\\u044F \\u0441 \\u0437\\u0430\\u0433\\u0440\\u0443\\u0437\\u043A\\u043E\\u0439 \\u0430\\u0432\\u0430\\u0442\\u0430\\u0440\\u043A\\u0438, \\u043D\\u0430\\u043F\\u0438\\u0441\\u0430\\u043D\\u0438\\u0435\\u043C \\u0431\\u0438\\u043E, \\u0441\\u043C\\u0435\\u043D\\u043E\\u0439 \\u043F\\u0430\\u0440\\u043E\\u043B\\u044F \\u0438 \\u0432\\u044B\\u0431\\u043E\\u0440\\u043E\\u043C \\u0446\\u0432\\u0435\\u0442\\u043E\\u0432\\u043E\\u0433\\u043E \\u0430\\u043A\\u0446\\u0435\\u043D\\u0442\\u0430.\\n9. \\u041D\\u0430\\u0441\\u0442\\u0440\\u043E\\u0439\\u043A\\u0438 \\u043F\\u0440\\u0438\\u043B\\u043E\\u0436\\u0435\\u043D\\u0438\\u044F: \\u0414\\u043E\\u0431\\u0430\\u0432\\u0438\\u0442\\u044C \\u043E\\u043A\\u043D\\u043E \\u043D\\u0430\\u0441\\u0442\\u0440\\u043E\\u0435\\u043A \\u0434\\u043B\\u044F \\u043F\\u0435\\u0440\\u0435\\u043A\\u043B\\u044E\\u0447\\u0435\\u043D\\u0438\\u044F \\u0442\\u0435\\u043C, \\u043D\\u0430\\u0441\\u0442\\u0440\\u043E\\u0439\\u043A\\u0438 \\u0443\\u0432\\u0435\\u0434\\u043E\\u043C\\u043B\\u0435\\u043D\\u0438\\u0439 \\u0438 \\u0441\\u0435\\u0442\\u0435\\u0432\\u044B\\u0445 \\u043F\\u0430\\u0440\\u0430\\u043C\\u0435\\u0442\\u0440\\u043E\\u0432.\\n10. \\u0420\\u0435\\u0444\\u0430\\u043A\\u0442\\u043E\\u0440\\u0438\\u043D\\u0433 \\u0430\\u0440\\u0445\\u0438\\u0442\\u0435\\u043A\\u0442\\u0443\\u0440\\u044B: \\u0420\\u0430\\u0437\\u0434\\u0435\\u043B\\u0438\\u0442\\u044C MainViewModel \\u043D\\u0430 AuthViewModel, ChatViewModel \\u0438 ContactsViewModel. \\u041E\\u043F\\u0442\\u0438\\u043C\\u0438\\u0437\\u0438\\u0440\\u043E\\u0432\\u0430\\u0442\\u044C MainWindow.xaml \\u043F\\u043E\\u0434 \\u043D\\u043E\\u0432\\u044B\\u0439 \\u0444\\u0443\\u043D\\u043A\\u0446\\u0438\\u043E\\u043D\\u0430\\u043B.\\r\\n\\r\\n\\u0414\\u0435\\u0439\\u0441\\u0442\\u0432\\u0438\\u044F:\\r\\n- read_files \\u2192 \\u043F\\u0440\\u043E\\u0447\\u0438\\u0442\\u0430\\u043D\\u043E 17/17, \\u043D\\u0435 \\u0432\\u043B\\u0435\\u0437\\u043B\\u043E 0\\r\\n\u0022,\u0022Path\u0022:null,\u0022Command\u0022:null,\u0022Shell\u0022:null,\u0022ExitCode\u0022:null,\u0022Count\u0022:null,\u0022Backup\u0022:false,\u0022OldText\u0022:null,\u0022NewText\u0022:null}]"
+    },
+    {
+      "Author": "\u0422\u044B",
+      "Text": "\u0421\u0434\u0435\u043B\u0430\u0439 \u0440\u0430\u0437\u0434\u0435\u043B \u0442\u0440\u0435\u043D\u0438\u0440\u043E\u0432\u043A\u0430 \u0434\u043B\u044F \u0448\u0430\u0445\u043C\u0430\u0442\u043E\u0432",
+      "Bg": "#0f3460",
+      "Time": "20:13",
+      "CardsJson": null
+    },
+    {
+      "Author": "coder",
+      "Text": "\u041F\u043B\u0430\u043D \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438 \u0440\u0430\u0437\u0434\u0435\u043B\u0430 \u0442\u0440\u0435\u043D\u0438\u0440\u043E\u0432\u043A\u0438 \u0434\u043B\u044F \u0448\u0430\u0445\u043C\u0430\u0442:\n\n1. **\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043C\u043E\u0434\u0435\u043B\u0438 \u0448\u0430\u0445\u043C\u0430\u0442** (Models/Chess/):\n   - ChessPosition.cs - \u043F\u043E\u0437\u0438\u0446\u0438\u044F \u043D\u0430 \u0434\u043E\u0441\u043A\u0435\n   - ChessMove.cs - \u0445\u043E\u0434 \u0444\u0438\u0433\u0443\u0440\u044B\n   - ChessPuzzle.cs - \u0448\u0430\u0445\u043C\u0430\u0442\u043D\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430\n   - ChessProgress.cs - \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F\n   - ChessDifficulty.cs - \u0443\u0440\u043E\u0432\u043D\u0438 \u0441\u043B\u043E\u0436\u043D\u043E\u0441\u0442\u0438 (\u043D\u0430\u0447\u0430\u043B\u044C\u043D\u044B\u0439, \u0441\u0440\u0435\u0434\u043D\u0438\u0439, \u043F\u0440\u043E\u0434\u0432\u0438\u043D\u0443\u0442\u044B\u0439)\n\n2. **\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0441\u0435\u0440\u0432\u0438\u0441 \u0448\u0430\u0445\u043C\u0430\u0442** (Services/ChessService.cs):\n   - \u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0438\u0437 \u0440\u0435\u0441\u0443\u0440\u0441\u043E\u0432\n   - \u0412\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u044F \u0445\u043E\u0434\u043E\u0432 \u043F\u043E \u0448\u0430\u0445\u043C\u0430\u0442\u043D\u044B\u043C \u043F\u0440\u0430\u0432\u0438\u043B\u0430\u043C\n   - \u041E\u0442\u0441\u043B\u0435\u0436\u0438\u0432\u0430\u043D\u0438\u0435 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441\u0430\n   - \u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0438 \u0432 AppData\n\n3. **\u0421\u043E\u0437\u0434\u0430\u0442\u044C ViewModel \u0434\u043B\u044F \u0442\u0440\u0435\u043D\u0438\u0440\u043E\u0432\u043A\u0438** (ViewModels/ChessTrainingViewModel.cs):\n   - \u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u0437\u0430\u0434\u0430\u0447\u0435\u0439\n   - \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u0445\u043E\u0434\u043E\u0432 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F\n   - \u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u043F\u0440\u0430\u0432\u0438\u043B\u044C\u043D\u043E\u0441\u0442\u0438 \u0440\u0435\u0448\u0435\u043D\u0438\u044F\n   - \u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043C\u0435\u0436\u0434\u0443 \u0443\u0440\u043E\u0432\u043D\u044F\u043C\u0438 \u0441\u043B\u043E\u0436\u043D\u043E\u0441\u0442\u0438\n   - \u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430 \u0440\u0435\u0448\u0451\u043D\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447\n\n4. **\u0421\u043E\u0437\u0434\u0430\u0442\u044C UserControl \u0434\u043B\u044F \u0448\u0430\u0445\u043C\u0430\u0442\u043D\u043E\u0439 \u0434\u043E\u0441\u043A\u0438** (Controls/ChessBoardControl.xaml):\n   - \u0412\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u043E\u0435 \u043E\u0442\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0434\u043E\u0441\u043A\u0438 8x8\n   - \u041E\u0442\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0444\u0438\u0433\u0443\u0440 \u0441 \u043F\u043E\u043C\u043E\u0449\u044C\u044E Unicode \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432 (\u2654\u2655\u2656\u2657\u2658\u2659)\n   - \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u043A\u043B\u0438\u043A\u043E\u0432 \u0434\u043B\u044F \u0432\u044B\u0431\u043E\u0440\u0430 \u0438 \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0435\u043D\u0438\u044F \u0444\u0438\u0433\u0443\u0440\n   - \u041F\u043E\u0434\u0441\u0432\u0435\u0442\u043A\u0430 \u0432\u043E\u0437\u043C\u043E\u0436\u043D\u044B\u0445 \u0445\u043E\u0434\u043E\u0432\n   - \u0410\u043D\u0438\u043C\u0430\u0446\u0438\u0438 \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0435\u043D\u0438\u044F\n\n5. **\u0421\u043E\u0437\u0434\u0430\u0442\u044C View \u0434\u043B\u044F \u0440\u0430\u0437\u0434\u0435\u043B\u0430 \u0442\u0440\u0435\u043D\u0438\u0440\u043E\u0432\u043A\u0438** (Views/ChessTrainingView.xaml):\n   - \u0428\u0430\u0445\u043C\u0430\u0442\u043D\u0430\u044F \u0434\u043E\u0441\u043A\u0430\n   - \u0418\u043D\u0444\u043E\u0440\u043C\u0430\u0446\u0438\u044F \u043E \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u0437\u0430\u0434\u0430\u0447\u0435\n   - \u0412\u044B\u0431\u043E\u0440 \u0443\u0440\u043E\u0432\u043D\u044F \u0441\u043B\u043E\u0436\u043D\u043E\u0441\u0442\u0438\n   - \u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430 (\u0440\u0435\u0448\u0435\u043D\u043E \u0437\u0430\u0434\u0430\u0447, \u043F\u0440\u043E\u0446\u0435\u043D\u0442 \u0443\u0441\u043F\u0435\u0445\u0430)\n   - \u041A\u043D\u043E\u043F\u043A\u0438 \u0443\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u044F (\u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430, \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0430, \u0441\u0431\u0440\u043E\u0441)\n\n6. **\u0418\u043D\u0442\u0435\u0433\u0440\u0430\u0446\u0438\u044F \u0432 \u0433\u043B\u0430\u0432\u043D\u043E\u0435 \u043E\u043A\u043D\u043E**:\n   - \u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043D\u043E\u0432\u0443\u044E \u0432\u043A\u043B\u0430\u0434\u043A\u0443 \u0022\u0422\u0440\u0435\u043D\u0438\u0440\u043E\u0432\u043A\u0430\u0022 \u0432 MainWindow.xaml\n   - \u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C MainViewModel \u0434\u043B\u044F \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u043A\u0438 \u043F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F \u043C\u0435\u0436\u0434\u0443 \u0447\u0430\u0442\u043E\u043C \u0438 \u0442\u0440\u0435\u043D\u0438\u0440\u043E\u0432\u043A\u043E\u0439\n   - \u041D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u043D\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u044E \u043C\u0435\u0436\u0434\u0443 \u0440\u0430\u0437\u0434\u0435\u043B\u0430\u043C\u0438\n\n7. **\u041F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u0438\u0442\u044C \u0432\u0441\u0442\u0440\u043E\u0435\u043D\u043D\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438**:\n   - \u0421\u043E\u0437\u0434\u0430\u0442\u044C JSON \u0444\u0430\u0439\u043B \u0441 \u0448\u0430\u0445\u043C\u0430\u0442\u043D\u044B\u043C\u0438 \u0437\u0430\u0434\u0430\u0447\u0430\u043C\u0438 (\u043C\u0430\u0442 \u0432 1-3 \u0445\u043E\u0434\u0430, \u0442\u0430\u043A\u0442\u0438\u043A\u0430, \u044D\u043D\u0434\u0448\u043F\u0438\u043B\u044C)\n   - \u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0430: FEN \u043F\u043E\u0437\u0438\u0446\u0438\u044F, \u043F\u0440\u0430\u0432\u0438\u043B\u044C\u043D\u044B\u0439 \u0445\u043E\u0434, \u0443\u0440\u043E\u0432\u0435\u043D\u044C \u0441\u043B\u043E\u0436\u043D\u043E\u0441\u0442\u0438, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435\n\n8. **\u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C AppData**:\n   - \u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043F\u043E\u043B\u0435 \u0434\u043B\u044F \u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F \u0448\u0430\u0445\u043C\u0430\u0442\u043D\u043E\u0433\u043E \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441\u0430\n   - \u0420\u0435\u0430\u043B\u0438\u0437\u043E\u0432\u0430\u0442\u044C \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u0432 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u0435 \u0445\u0440\u0430\u043D\u0438\u043B\u0438\u0449\u0435\n\n\u041F\u043E\u0441\u043B\u0435 \u0440\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438 \u0431\u0443\u0434\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u043F\u043E\u043B\u043D\u043E\u0444\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0439 \u0440\u0430\u0437\u0434\u0435\u043B \u0442\u0440\u0435\u043D\u0438\u0440\u043E\u0432\u043A\u0438 \u0448\u0430\u0445\u043C\u0430\u0442 \u0441 \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0435\u0439 \u0445\u043E\u0434\u043E\u0432, \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u044B\u043C\u0438 \u0437\u0430\u0434\u0430\u0447\u0430\u043C\u0438 \u0438 \u043E\u0442\u0441\u043B\u0435\u0436\u0438\u0432\u0430\u043D\u0438\u0435\u043C \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441\u0430.",
+      "Bg": "#16213e",
+      "Time": "20:20",
+      "CardsJson": "[{\u0022Type\u0022:\u0022read\u0022,\u0022Icon\u0022:\u0022\\uD83D\\uDCD6\u0022,\u0022Title\u0022:\u0022\\u0427\\u0442\\u0435\\u043D\\u0438\\u0435 \\u0444\\u0430\\u0439\\u043B\\u043E\\u0432 (\\u043F\\u0430\\u043A\\u0435\\u0442)\u0022,\u0022Status\u0022:\u00225 \\u0444\\u0430\\u0439\\u043B\\u043E\\u0432\u0022,\u0022Details\u0022:\u0022=== \\u0444\\u0430\\u0439\\u043B: MainWindow.xaml ===\\n\\u003CWindow x:Class=\\u0022TelegramMessenger.MainWindow\\u0022\\r\\n        xmlns=\\u0022http://schemas.microsoft.com/winfx/2006/xaml/presentation\\u0022\\r\\n        xmlns:x=\\u0022http://schemas.microsoft.com/winfx/2006/xaml\\u0022\\r\\n        xmlns:d=\\u0022http://schemas.microsoft.com/expression/blend/2008\\u0022\\r\\n        xmlns:mc=\\u0022http://schemas.openxmlformats.org/markup-compatibility/2006\\u0022\\r\\n        mc:Ignorable=\\u0022d\\u0022\\r\\n        Title=\\u0022Telegram Messenger\\u0022 Height=\\u0022700\\u0022 Width=\\u00221000\\u0022\\r\\n        Background=\\u0022{DynamicResource BgMainBrush}\\u0022\\r\\n        FontFamily=\\u0022Segoe UI\\u0022\\u003E\\r\\n    \\u003CGrid\\u003E\\r\\n        \\u003CGrid.ColumnDefinitions\\u003E\\r\\n            \\u003CColumnDefinition Width=\\u0022320\\u0022/\\u003E\\r\\n            \\u003CColumnDefinition Width=\\u0022*\\u0022/\\u003E\\r\\n        \\u003C/Grid.ColumnDefinitions\\u003E\\r\\n\\r\\n        \\u003C!-- Left Panel: Chat List --\\u003E\\r\\n        \\u003CBorder Grid.Column=\\u00220\\u0022 Background=\\u0022{DynamicResource BgChatListBrush}\\u0022 \\r\\n                BorderBrush=\\u0022{DynamicResource BorderLightBrush}\\u0022 BorderThickness=\\u00220,0,1,0\\u0022\\u003E\\r\\n            \\u003CDockPanel\\u003E\\r\\n                \\u003C!-- Search Box --\\u003E\\r\\n                \\u003CBorder DockPanel.Dock=\\u0022Top\\u0022 Margin=\\u002210,10,10,6\\u0022 \\r\\n                        Background=\\u0022{DynamicResource BgInputBrush}\\u0022 CornerRadius=\\u002220\\u0022 Padding=\\u002214,8\\u0022\\u003E\\r\\n                    \\u003CTextBox Text=\\u0022{Binding SearchText, UpdateSourceTrigger=PropertyChanged}\\u0022 \\r\\n                             BorderThickness=\\u00220\\u0022 Background=\\u0022Transparent\\u0022 \\r\\n                             FontSize=\\u002214\\u0022 Foreground=\\u0022{DynamicResource TextPrimaryBrush}\\u0022\\r\\n                             CaretBrush=\\u0022{DynamicResource TextPrimaryBrush}\\u0022\\r\\n                             ToolTip=\\u0022\\u041F\\u043E\\u0438\\u0441\\u043A\\u0022/\\u003E\\r\\n                \\u003C/Border\\u003E\\r\\n\\r\\n                \\u003C!-- Chat List --\\u003E\\r\\n                \\u003CListBox ItemsSource=\\u0022{Binding Chats}\\u0022 \\r\\n                         SelectedItem=\\u0022{Binding SelectedChat}\\u0022\\r\\n                         BorderThickness=\\u00220\\u0022 Background=\\u0022Transparent\\u0022\\r\\n                         ScrollViewer.HorizontalScrollBarVisibility=\\u0022Disabled\\u0022\\u003E\\r\\n                    \\u003CListBox.ItemContainerStyle\\u003E\\r\\n                        \\u003CStyle TargetType=\\u0022ListBoxItem\\u0022\\u003E\\r\\n                            \\u003CSetter Property=\\u0022Padding\\u0022 Value=\\u002212,10\\u0022/\\u003E\\r\\n                            \\u003CSetter Property=\\u0022Margin\\u0022 Value=\\u00220\\u0022/\\u003E\\r\\n                            \\u003CSetter Property=\\u0022HorizontalContentAlignment\\u0022 Value=\\u0022Stretch\\u0022/\\u003E\\r\\n                            \\u003CSetter Property=\\u0022Template\\u0022\\u003E\\r\\n                                \\u003CSetter.Value\\u003E\\r\\n                                    \\u003CControlTemplate TargetType=\\u0022ListBoxItem\\u0022\\u003E\\r\\n                                        \\u003CBorder x:Name=\\u0022Bd\\u0022 Background=\\u0022Transparent\\u0022 Padding=\\u0022{TemplateBinding Padding}\\u0022\\u003E\\r\\n                                            \\u003CContentPresenter/\\u003E\\r\\n                                        \\u003C/Border\\u003E\\r\\n                                        \\u003CControlTemplate.Triggers\\u003E\\r\\n                                            \\u003CTrigger Property=\\u0022IsMouseOver\\u0022 Value=\\u0022True\\u0022\\u003E\\r\\n                                                \\u003CSetter TargetName=\\u0022Bd\\u0022 Property=\\u0022Background\\u0022 Value=\\u0022{DynamicResource HoverChatBrush}\\u0022/\\u003E\\r\\n                                            \\u003C/Trigger\\u003E\\r\\n                                            \\u003CTrigger Property=\\u0022IsSelected\\u0022 Value=\\u0022True\\u0022\\u003E\\r\\n                                                \\u003CSetter TargetName=\\u0022Bd\\u0022 Property=\\u0022Background\\u0022 Value=\\u0022{DynamicResource SelectedChatBrush}\\u0022/\\u003E\\r\\n                                            \\u003C/Trigger\\u003E\\r\\n                                        \\u003C/ControlTemplate.Triggers\\u003E\\r\\n                                    \\u003C/ControlTemplate\\u003E\\r\\n                                \\u003C/Setter.Value\\u003E\\r\\n                            \\u003C/Setter\\u003E\\r\\n                        \\u003C/Style\\u003E\\r\\n                    \\u003C/ListBox.ItemContainerStyle\\u003E\\r\\n                    \\u003CListBox.ItemTemplate\\u003E\\r\\n                        \\u003CDataTemplate\\u003E\\r\\n                            \\u003CGrid\\u003E\\r\\n                                \\u003CGrid.ColumnDefinitions\\u003E\\r\\n                                    \\u003CColumnDefinition Width=\\u002248\\u0022/\\u003E\\r\\n                                    \\u003CColumnDefinition Width=\\u0022*\\u0022/\\u003E\\r\\n                                \\u003C/Grid.ColumnDefinitions\\u003E\\r\\n                                \\u003CBorder W\\u2026\u0022,\u0022Path\u0022:null,\u0022Command\u0022:null,\u0022Shell\u0022:null,\u0022ExitCode\u0022:null,\u0022Count\u0022:null,\u0022Backup\u0022:false,\u0022OldText\u0022:null,\u0022NewText\u0022:null},{\u0022Type\u0022:\u0022summary\u0022,\u0022Icon\u0022:\u0022\\u2705\u0022,\u0022Title\u0022:\u0022\\u0418\\u0442\\u043E\\u0433\u0022,\u0022Status\u0022:\u0022success\u0022,\u0022Details\u0022:\u0022\\u041F\\u043B\\u0430\\u043D \\u0440\\u0435\\u0430\\u043B\\u0438\\u0437\\u0430\\u0446\\u0438\\u0438 \\u0440\\u0430\\u0437\\u0434\\u0435\\u043B\\u0430 \\u0442\\u0440\\u0435\\u043D\\u0438\\u0440\\u043E\\u0432\\u043A\\u0438 \\u0434\\u043B\\u044F \\u0448\\u0430\\u0445\\u043C\\u0430\\u0442:\\n\\n1. **\\u0421\\u043E\\u0437\\u0434\\u0430\\u0442\\u044C \\u043C\\u043E\\u0434\\u0435\\u043B\\u0438 \\u0448\\u0430\\u0445\\u043C\\u0430\\u0442** (Models/Chess/):\\n   - ChessPosition.cs - \\u043F\\u043E\\u0437\\u0438\\u0446\\u0438\\u044F \\u043D\\u0430 \\u0434\\u043E\\u0441\\u043A\\u0435\\n   - ChessMove.cs - \\u0445\\u043E\\u0434 \\u0444\\u0438\\u0433\\u0443\\u0440\\u044B\\n   - ChessPuzzle.cs - \\u0448\\u0430\\u0445\\u043C\\u0430\\u0442\\u043D\\u0430\\u044F \\u0437\\u0430\\u0434\\u0430\\u0447\\u0430\\n   - ChessProgress.cs - \\u043F\\u0440\\u043E\\u0433\\u0440\\u0435\\u0441\\u0441 \\u043F\\u043E\\u043B\\u044C\\u0437\\u043E\\u0432\\u0430\\u0442\\u0435\\u043B\\u044F\\n   - ChessDifficulty.cs - \\u0443\\u0440\\u043E\\u0432\\u043D\\u0438 \\u0441\\u043B\\u043E\\u0436\\u043D\\u043E\\u0441\\u0442\\u0438 (\\u043D\\u0430\\u0447\\u0430\\u043B\\u044C\\u043D\\u044B\\u0439, \\u0441\\u0440\\u0435\\u0434\\u043D\\u0438\\u0439, \\u043F\\u0440\\u043E\\u0434\\u0432\\u0438\\u043D\\u0443\\u0442\\u044B\\u0439)\\n\\n2. **\\u0421\\u043E\\u0437\\u0434\\u0430\\u0442\\u044C \\u0441\\u0435\\u0440\\u0432\\u0438\\u0441 \\u0448\\u0430\\u0445\\u043C\\u0430\\u0442** (Services/ChessService.cs):\\n   - \\u0417\\u0430\\u0433\\u0440\\u0443\\u0437\\u043A\\u0430 \\u043B\\u043E\\u043A\\u0430\\u043B\\u044C\\u043D\\u044B\\u0445 \\u0437\\u0430\\u0434\\u0430\\u0447 \\u0438\\u0437 \\u0440\\u0435\\u0441\\u0443\\u0440\\u0441\\u043E\\u0432\\n   - \\u0412\\u0430\\u043B\\u0438\\u0434\\u0430\\u0446\\u0438\\u044F \\u0445\\u043E\\u0434\\u043E\\u0432 \\u043F\\u043E \\u0448\\u0430\\u0445\\u043C\\u0430\\u0442\\u043D\\u044B\\u043C \\u043F\\u0440\\u0430\\u0432\\u0438\\u043B\\u0430\\u043C\\n   - \\u041E\\u0442\\u0441\\u043B\\u0435\\u0436\\u0438\\u0432\\u0430\\u043D\\u0438\\u0435 \\u043F\\u0440\\u043E\\u0433\\u0440\\u0435\\u0441\\u0441\\u0430\\n   - \\u0421\\u043E\\u0445\\u0440\\u0430\\u043D\\u0435\\u043D\\u0438\\u0435 \\u0441\\u0442\\u0430\\u0442\\u0438\\u0441\\u0442\\u0438\\u043A\\u0438 \\u0432 AppData\\n\\n3. **\\u0421\\u043E\\u0437\\u0434\\u0430\\u0442\\u044C ViewModel \\u0434\\u043B\\u044F \\u0442\\u0440\\u0435\\u043D\\u0438\\u0440\\u043E\\u0432\\u043A\\u0438** (ViewModels/ChessTrainingViewModel.cs):\\n   - \\u0423\\u043F\\u0440\\u0430\\u0432\\u043B\\u0435\\u043D\\u0438\\u0435 \\u0442\\u0435\\u043A\\u0443\\u0449\\u0435\\u0439 \\u0437\\u0430\\u0434\\u0430\\u0447\\u0435\\u0439\\n   - \\u041E\\u0431\\u0440\\u0430\\u0431\\u043E\\u0442\\u043A\\u0430 \\u0445\\u043E\\u0434\\u043E\\u0432 \\u043F\\u043E\\u043B\\u044C\\u0437\\u043E\\u0432\\u0430\\u0442\\u0435\\u043B\\u044F\\n   - \\u041F\\u0440\\u043E\\u0432\\u0435\\u0440\\u043A\\u0430 \\u043F\\u0440\\u0430\\u0432\\u0438\\u043B\\u044C\\u043D\\u043E\\u0441\\u0442\\u0438 \\u0440\\u0435\\u0448\\u0435\\u043D\\u0438\\u044F\\n   - \\u041F\\u0435\\u0440\\u0435\\u043A\\u043B\\u044E\\u0447\\u0435\\u043D\\u0438\\u0435 \\u043C\\u0435\\u0436\\u0434\\u0443 \\u0443\\u0440\\u043E\\u0432\\u043D\\u044F\\u043C\\u0438 \\u0441\\u043B\\u043E\\u0436\\u043D\\u043E\\u0441\\u0442\\u0438\\n   - \\u0421\\u0442\\u0430\\u0442\\u0438\\u0441\\u0442\\u0438\\u043A\\u0430 \\u0440\\u0435\\u0448\\u0451\\u043D\\u043D\\u044B\\u0445 \\u0437\\u0430\\u0434\\u0430\\u0447\\n\\n4. **\\u0421\\u043E\\u0437\\u0434\\u0430\\u0442\\u044C UserControl \\u0434\\u043B\\u044F \\u0448\\u0430\\u0445\\u043C\\u0430\\u0442\\u043D\\u043E\\u0439 \\u0434\\u043E\\u0441\\u043A\\u0438** (Controls/ChessBoardControl.xaml):\\n   - \\u0412\\u0438\\u0437\\u0443\\u0430\\u043B\\u044C\\u043D\\u043E\\u0435 \\u043E\\u0442\\u043E\\u0431\\u0440\\u0430\\u0436\\u0435\\u043D\\u0438\\u0435 \\u0434\\u043E\\u0441\\u043A\\u0438 8x8\\n   - \\u041E\\u0442\\u043E\\u0431\\u0440\\u0430\\u0436\\u0435\\u043D\\u0438\\u0435 \\u0444\\u0438\\u0433\\u0443\\u0440 \\u0441 \\u043F\\u043E\\u043C\\u043E\\u0449\\u044C\\u044E Unicode \\u0441\\u0438\\u043C\\u0432\\u043E\\u043B\\u043E\\u0432 (\\u2654\\u2655\\u2656\\u2657\\u2658\\u2659)\\n   - \\u041E\\u0431\\u0440\\u0430\\u0431\\u043E\\u0442\\u043A\\u0430 \\u043A\\u043B\\u0438\\u043A\\u043E\\u0432 \\u0434\\u043B\\u044F \\u0432\\u044B\\u0431\\u043E\\u0440\\u0430 \\u0438 \\u043F\\u0435\\u0440\\u0435\\u043C\\u0435\\u0449\\u0435\\u043D\\u0438\\u044F \\u0444\\u0438\\u0433\\u0443\\u0440\\n   - \\u041F\\u043E\\u0434\\u0441\\u0432\\u0435\\u0442\\u043A\\u0430 \\u0432\\u043E\\u0437\\u043C\\u043E\\u0436\\u043D\\u044B\\u0445 \\u0445\\u043E\\u0434\\u043E\\u0432\\n   - \\u0410\\u043D\\u0438\\u043C\\u0430\\u0446\\u0438\\u0438 \\u043F\\u0435\\u0440\\u0435\\u043C\\u0435\\u0449\\u0435\\u043D\\u0438\\u044F\\n\\n5. **\\u0421\\u043E\\u0437\\u0434\\u0430\\u0442\\u044C View \\u0434\\u043B\\u044F \\u0440\\u0430\\u0437\\u0434\\u0435\\u043B\\u0430 \\u0442\\u0440\\u0435\\u043D\\u0438\\u0440\\u043E\\u0432\\u043A\\u0438** (Views/ChessTrainingView.xaml):\\n   - \\u0428\\u0430\\u0445\\u043C\\u0430\\u0442\\u043D\\u0430\\u044F \\u0434\\u043E\\u0441\\u043A\\u0430\\n   - \\u0418\\u043D\\u0444\\u043E\\u0440\\u043C\\u0430\\u0446\\u0438\\u044F \\u043E \\u0442\\u0435\\u043A\\u0443\\u0449\\u0435\\u0439 \\u0437\\u0430\\u0434\\u0430\\u0447\\u0435\\n   - \\u0412\\u044B\\u0431\\u043E\\u0440 \\u0443\\u0440\\u043E\\u0432\\u043D\\u044F \\u0441\\u043B\\u043E\\u0436\\u043D\\u043E\\u0441\\u0442\\u0438\\n   - \\u0421\\u0442\\u0430\\u0442\\u0438\\u0441\\u0442\\u0438\\u043A\\u0430 (\\u0440\\u0435\\u0448\\u0435\\u043D\\u043E \\u0437\\u0430\\u0434\\u0430\\u0447, \\u043F\\u0440\\u043E\\u0446\\u0435\\u043D\\u0442 \\u0443\\u0441\\u043F\\u0435\\u0445\\u0430)\\n   - \\u041A\\u043D\\u043E\\u043F\\u043A\\u0438 \\u0443\\u043F\\u0440\\u0430\\u0432\\u043B\\u0435\\u043D\\u0438\\u044F (\\u0441\\u043B\\u0435\\u0434\\u0443\\u044E\\u0449\\u0430\\u044F \\u0437\\u0430\\u0434\\u0430\\u0447\\u0430, \\u043F\\u043E\\u0434\\u0441\\u043A\\u0430\\u0437\\u043A\\u0430, \\u0441\\u0431\\u0440\\u043E\\u0441)\\n\\n6. **\\u0418\\u043D\\u0442\\u0435\\u0433\\u0440\\u0430\\u0446\\u0438\\u044F \\u0432 \\u0433\\u043B\\u0430\\u0432\\u043D\\u043E\\u0435 \\u043E\\u043A\\u043D\\u043E**:\\n   - \\u0414\\u043E\\u0431\\u0430\\u0432\\u0438\\u0442\\u044C \\u043D\\u043E\\u0432\\u0443\\u044E \\u0432\\u043A\\u043B\\u0430\\u0434\\u043A\\u0443 \\u0022\\u0422\\u0440\\u0435\\u043D\\u0438\\u0440\\u043E\\u0432\\u043A\\u0430\\u0022 \\u0432 MainWindow.xaml\\n   - \\u041E\\u0431\\u043D\\u043E\\u0432\\u0438\\u0442\\u044C MainViewModel \\u0434\\u043B\\u044F \\u043F\\u043E\\u0434\\u0434\\u0435\\u0440\\u0436\\u043A\\u0438 \\u043F\\u0435\\u0440\\u0435\\u043A\\u043B\\u044E\\u0447\\u0435\\u043D\\u0438\\u044F \\u043C\\u0435\\u0436\\u0434\\u0443 \\u0447\\u0430\\u0442\\u043E\\u043C \\u0438 \\u0442\\u0440\\u0435\\u043D\\u0438\\u0440\\u043E\\u0432\\u043A\\u043E\\u0439\\n   - \\u041D\\u0430\\u0441\\u0442\\u0440\\u043E\\u0438\\u0442\\u044C \\u043D\\u0430\\u0432\\u0438\\u0433\\u0430\\u0446\\u0438\\u044E \\u043C\\u0435\\u0436\\u0434\\u0443 \\u0440\\u0430\\u0437\\u0434\\u0435\\u043B\\u0430\\u043C\\u0438\\n\\n7. **\\u041F\\u043E\\u0434\\u0433\\u043E\\u0442\\u043E\\u0432\\u0438\\u0442\\u044C \\u0432\\u0441\\u0442\\u0440\\u043E\\u0435\\u043D\\u043D\\u044B\\u0435 \\u0437\\u0430\\u0434\\u0430\\u0447\\u0438**:\\n   - \\u0421\\u043E\\u0437\\u0434\\u0430\\u0442\\u044C JSON \\u0444\\u0430\\u0439\\u043B \\u0441 \\u0448\\u0430\\u0445\\u043C\\u0430\\u0442\\u043D\\u044B\\u043C\\u0438 \\u0437\\u0430\\u0434\\u0430\\u0447\\u0430\\u043C\\u0438 (\\u043C\\u0430\\u0442 \\u0432 1-3 \\u0445\\u043E\\u0434\\u0430, \\u0442\\u0430\\u043A\\u0442\\u0438\\u043A\\u0430, \\u044D\\u043D\\u0434\\u0448\\u043F\\u0438\\u043B\\u044C)\\n   - \\u0421\\u0442\\u0440\\u0443\\u043A\\u0442\\u0443\\u0440\\u0430: FEN \\u043F\\u043E\\u0437\\u0438\\u0446\\u0438\\u044F, \\u043F\\u0440\\u0430\\u0432\\u0438\\u043B\\u044C\\u043D\\u044B\\u0439 \\u0445\\u043E\\u0434, \\u0443\\u0440\\u043E\\u0432\\u0435\\u043D\\u044C \\u0441\\u043B\\u043E\\u0436\\u043D\\u043E\\u0441\\u0442\\u0438, \\u043E\\u043F\\u0438\\u0441\\u0430\\u043D\\u0438\\u0435\\n\\n8. **\\u041E\\u0431\\u043D\\u043E\\u0432\\u0438\\u0442\\u044C AppData**:\\n   - \\u0414\\u043E\\u0431\\u0430\\u0432\\u0438\\u0442\\u044C \\u043F\\u043E\\u043B\\u0435 \\u0434\\u043B\\u044F \\u0445\\u0440\\u0430\\u043D\\u0435\\u043D\\u0438\\u044F \\u0448\\u0430\\u0445\\u043C\\u0430\\u0442\\u043D\\u043E\\u0433\\u043E \\u043F\\u0440\\u043E\\u0433\\u0440\\u0435\\u0441\\u0441\\u0430\\n   - \\u0420\\u0435\\u0430\\u043B\\u0438\\u0437\\u043E\\u0432\\u0430\\u0442\\u044C \\u0441\\u043E\\u0445\\u0440\\u0430\\u043D\\u0435\\u043D\\u0438\\u0435 \\u0432 \\u043B\\u043E\\u043A\\u0430\\u043B\\u044C\\u043D\\u043E\\u0435 \\u0445\\u0440\\u0430\\u043D\\u0438\\u043B\\u0438\\u0449\\u0435\\n\\n\\u041F\\u043E\\u0441\\u043B\\u0435 \\u0440\\u0435\\u0430\\u043B\\u0438\\u0437\\u0430\\u0446\\u0438\\u0438 \\u0431\\u0443\\u0434\\u0435\\u0442 \\u0434\\u043E\\u0441\\u0442\\u0443\\u043F\\u0435\\u043D \\u043F\\u043E\\u043B\\u043D\\u043E\\u0444\\u0443\\u043D\\u043A\\u0446\\u0438\\u043E\\u043D\\u0430\\u043B\\u044C\\u043D\\u044B\\u0439 \\u0440\\u0430\\u0437\\u0434\\u0435\\u043B \\u0442\\u0440\\u0435\\u043D\\u0438\\u0440\\u043E\\u0432\\u043A\\u0438 \\u0448\\u0430\\u0445\\u043C\\u0430\\u0442 \\u0441 \\u0432\\u0430\\u043B\\u0438\\u0434\\u0430\\u0446\\u0438\\u0435\\u0439 \\u0445\\u043E\\u0434\\u043E\\u0432, \\u043B\\u043E\\u043A\\u0430\\u043B\\u044C\\u043D\\u044B\\u043C\\u0438 \\u0437\\u0430\\u0434\\u0430\\u0447\\u0430\\u043C\\u0438 \\u0438 \\u043E\\u0442\\u0441\\u043B\\u0435\\u0436\\u0438\\u0432\\u0430\\u043D\\u0438\\u0435\\u043C \\u043F\\u0440\\u043E\\u0433\\u0440\\u0435\\u0441\\u0441\\u0430.\\r\\n\\r\\n\\u0414\\u0435\\u0439\\u0441\\u0442\\u0432\\u0438\\u044F:\\r\\n- read_files \\u2192 \\u043F\\u0440\\u043E\\u0447\\u0438\\u0442\\u0430\\u043D\\u043E 5/5, \\u043D\\u0435 \\u0432\\u043B\\u0435\\u0437\\u043B\\u043E 0\\r\\n- read_files \\u2192 \\u043F\\u0440\\u043E\\u0447\\u0438\\u0442\\u0430\\u043D\\u043E 5/5, \\u043D\\u0435 \\u0432\\u043B\\u0435\\u0437\\u043B\\u043E 0\\r\\n\u0022,\u0022Path\u0022:null,\u0022Command\u0022:null,\u0022Shell\u0022:null,\u0022ExitCode\u0022:null,\u0022Count\u0022:null,\u0022Backup\u0022:false,\u0022OldText\u0022:null,\u0022NewText\u0022:null}]"
+    },
+    {
+      "Author": "coder",
+      "Text": "\u23F9 \u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u043C.",
+      "Bg": "#16213e",
+      "Time": "20:24",
+      "CardsJson": "[{\u0022Type\u0022:\u0022summary\u0022,\u0022Icon\u0022:\u0022\\u274C\u0022,\u0022Title\u0022:\u0022\\u0418\\u0442\\u043E\\u0433\u0022,\u0022Status\u0022:\u0022failed\u0022,\u0022Details\u0022:\u0022\\u23F9 \\u041E\\u0442\\u043C\\u0435\\u043D\\u0435\\u043D\\u043E \\u043F\\u043E\\u043B\\u044C\\u0437\\u043E\\u0432\\u0430\\u0442\\u0435\\u043B\\u0435\\u043C.\\r\\n\u0022,\u0022Path\u0022:null,\u0022Command\u0022:null,\u0022Shell\u0022:null,\u0022ExitCode\u0022:null,\u0022Count\u0022:null,\u0022Backup\u0022:false,\u0022OldText\u0022:null,\u0022NewText\u0022:null}]"
     }
   ]
 }
@@ -22579,6 +23391,6 @@ echo   [OK] Лог сохранён: %LOG_FILE%
 pause
 
 ==================== SUMMARY ====================
-  Source files : 54
+  Source files : 56
   Report file  : GUI_report.txt
 ================================================================

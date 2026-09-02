@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -47,7 +47,8 @@ public partial class MainWindow : ChromeWindow
 
     public MainWindow(string? projectPath = null, string? projectName = null)
     {
-        InitializeComponent(); LoadBoundRolesFromConfig();
+        InitializeComponent();
+        MemoryPageControl.BackRequested += () => { MemoryOverlay.Visibility = Visibility.Collapsed; }; LoadBoundRolesFromConfig();
         var holo = Theme.MakeHoloPlanet(); Grid.SetRow(holo, 1); ChatRootGrid.Children.Insert(0, holo);
 
         _browserPane.MountIn(BrowserPaneHost);
@@ -727,4 +728,25 @@ switch (e.Key)
 
     internal void LoadHistoryFromDisk() => _history = HistoryStore.Load();
     internal void SaveHistoryToDisk() => HistoryStore.Save(_history);
+
+    private void OnMemoryClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (MemoryOverlay.Visibility == Visibility.Visible)
+            {
+                MemoryOverlay.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                var root = _projectPath ?? "";
+                if (!string.IsNullOrEmpty(root))
+                {
+                    MemoryPageControl.Load(root);
+                    MemoryOverlay.Visibility = Visibility.Visible;
+                }
+            }
+        }
+        catch { }
+    }
 }
