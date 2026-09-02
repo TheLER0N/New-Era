@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 namespace Gateway {
@@ -21,5 +21,13 @@ if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
 var msg = $"[{DateTime.Now:HH:mm:ss}] {role}\n{text}\n---\n";
 lock (_lock) { File.AppendAllText(LogPath, msg, Encoding.UTF8); }
 }
-}
+
+        public static void LogSummary(int total, int ok, int fail, string verdict)
+        {
+            var dir = Path.GetDirectoryName(LogPath);
+            if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            var msg = $"[{DateTime.Now:HH:mm:ss}] SUMMARY| итого: {ok}/{total} ОК, {fail} ОШИБКА| вердикт: {verdict}";
+            lock (_lock) { File.AppendAllText(LogPath, msg + Environment.NewLine, Encoding.UTF8); }
+        }
+    }
 }

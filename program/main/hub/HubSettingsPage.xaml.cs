@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -84,42 +84,39 @@ namespace Hub
             }
         }
 
-        private async void TestFullGui_Click(object sender, RoutedEventArgs e){
-            BtnFullTest.IsEnabled = false;
-            BtnFullTest.Content = "⏳ Тестирование...";
-            SystemStatusText.Text = "тестирование...";
-            SystemStatusDot.Fill = B("#00d9ff");
-            bool allOk = true;
-            foreach (var t in _tests) {
-                var sw = Stopwatch.StartNew();
-                bool ok; string err = "";
-                try { ok = await t.Run(); } catch (Exception ex) { ok = false; err = ex.Message; }
-                sw.Stop();
-                TestLog(t.LogFile, t.Name, "авто", ok, err);
-                if (t.TimeText != null) t.TimeText.Text = $"{sw.Elapsed.TotalSeconds:F1}с";
-                if (t.Badge != null && t.BadgeText != null) {
-                    if (ok) {
-                        t.Badge.Background = B("#113322");
-                        t.Badge.BorderBrush = B("#3fd158");
-                        t.Badge.BorderThickness = new Thickness(1);
-                        t.BadgeText.Text = "OK";
-                        t.BadgeText.Foreground = B("#3fd158");
-                    } else {
-                        t.Badge.Background = B("#331111");
-                        t.Badge.BorderBrush = B("#e94560");
-                        t.Badge.BorderThickness = new Thickness(1);
-                        t.BadgeText.Text = "ОШИБКА";
-                        t.BadgeText.Foreground = B("#e94560");
-                        allOk = false;
-                    }
-                }
-            }
-            SystemStatusText.Text = allOk ? "все системы OK" : "ошибка в тестах";
-            SystemStatusDot.Fill = allOk ? B("#3fd158") : B("#e94560");
-            BtnFullTest.IsEnabled = true;
-            BtnFullTest.Content = "⚡ Полный тест GUI";
-            RefreshLogs();
-        }
+        private async void TestFullGui_Click(object sender, RoutedEventArgs e)
+{
+    BtnFullTest.IsEnabled = false;
+    BtnFullTest.Content = "⏳ Тестирование...";
+    SystemStatusText.Text = "полный тест...";
+    SystemStatusDot.Fill = B("#00d9ff");
+
+    MainApp.GuiTestRunner.OnProgress = (text, pct) =>
+    {
+        Dispatcher.InvokeAsync(() => { SystemStatusText.Text = text; });
+    };
+
+    try
+    {
+        var resultPath = await Task.Run(() => MainApp.GuiTestRunner.RunFullTestAsync());
+        var content = File.ReadAllText(resultPath);
+        bool pass = content.Contains("ВЕРДИКТ: PASS");
+
+        SystemStatusText.Text = pass ? "все системы OK" : "ошибка в тестах";
+        SystemStatusDot.Fill = pass ? B("#3fd158") : B("#e94560");
+        BtnFullTest.Content = pass ? "✅ Тест пройден" : "❌ Тест провален";
+        try { Process.Start(new ProcessStartInfo { FileName = resultPath, UseShellExecute = true }); } catch { }
+    }
+    catch (Exception ex)
+    {
+        SystemStatusText.Text = "ошибка теста: " + ex.Message;
+        SystemStatusDot.Fill = B("#e94560");
+        BtnFullTest.Content = "⚡ Полный тест GUI";
+    }
+
+    BtnFullTest.IsEnabled = true;
+    RefreshLogs();
+}
 
         private void RefreshLogs(){
             LogsContainer.Children.Clear();

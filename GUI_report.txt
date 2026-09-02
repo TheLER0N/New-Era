@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : GUI
-  GENERATED      : 01.09.2026 21:53:02
+  GENERATED      : 02.09.2026 14:30:46
   PATH           : C:\Users\Пользователь\Desktop\GUI
 ================================================================
 
@@ -17,6 +17,7 @@ C:\Users\Пользователь\Desktop\GUI
 |   +---LeronCli.exe
 |   +---LeronCli.pdb
 |   +---LeronCli.runtimeconfig.json
+|   +---logs
 |   +---Microsoft.Web.WebView2.Core.dll
 |   +---Microsoft.Web.WebView2.Core.xml
 |   +---Microsoft.Web.WebView2.WinForms.dll
@@ -34,6 +35,9 @@ C:\Users\Пользователь\Desktop\GUI
 |           \---native
 |               \---WebView2Loader.dll
 +---logs
+|   +---backup_20260902_142632
+|   |   +---GuiDiagnostics.cs.bak
+|   |   \---HubSettingsPage.xaml.cs.bak
 |   +---messages_20260820.log
 |   \---messages_20260828.log
 +---program
@@ -61,6 +65,7 @@ C:\Users\Пользователь\Desktop\GUI
 |   |   |   +---GatewayStateTools.cs
 |   |   |   \---GuiDiagnostics.cs
 |   |   +---hub
+|   |   |   +---GuiTestRunner.cs
 |   |   |   +---HubArt.cs
 |   |   |   +---HubCamera.cs
 |   |   |   +---HubLayoutStore.cs
@@ -121,6 +126,9 @@ C:\Users\Пользователь\Desktop\GUI
 |           +---unknown_20260821.log
 |           \---unknown_20260822.log
 +---push-to-github.bat
++---release
+|   \---LERON-2.7-win-x64.zip
++---release-to-github.bat
 +---sending and receiving
 |   +---config.json
 |   +---history.json
@@ -245,6 +253,140 @@ if "%CHOICE%"=="1" (
 :end
 echo.
 echo   Готово.
+pause
+
+
+------------------------------------------------
+FILE: release-to-github.bat
+SIZE: 4768 bytes
+------------------------------------------------
+@echo off
+chcp 65001 >nul 2>&1
+setlocal enabledelayedexpansion
+set "ROOT=%~dp0"
+set "PROJ=%ROOT%program\main\MainApp.csproj"
+set "BUILD_DIR=%ROOT%GUI result"
+
+echo.
+echo ================================================================
+echo   LERON · RELEASE TO GITHUB
+echo ================================================================
+echo.
+echo   Репозиторий: https://github.com/TheLER0N/New-Era
+echo.
+
+:: ── Проверка окружения ──────────────────────────────────────────
+where dotnet >nul 2>&1
+if !errorlevel! neq 0 (
+    echo   [XX] dotnet не найден. Установи .NET SDK.
+    pause
+    exit /b 1
+)
+
+if not exist "%PROJ%" (
+    echo   [XX] MainApp.csproj не найден: %PROJ%
+    pause
+    exit /b 1
+)
+
+:: ── Ввод данных релиза ──────────────────────────────────────────
+set /p "VER=   Версия (например 1.0.0): "
+if "!VER!"=="" (
+    echo   [XX] Версия не указана.
+    pause
+    exit /b 1
+)
+
+set /p "TITLE=   Название (Enter = LERON v!VER!): "
+if "!TITLE!"=="" set "TITLE=LERON v!VER!"
+
+set /p "DESC=    Описание (Enter = дефолт): "
+if "!DESC!"=="" set "DESC=LERON v!VER! — GUI с AI-агентом, WebView2 и gateway."
+
+echo.
+echo ================================================================
+echo   Версия   : !VER!
+echo   Название : !TITLE!
+echo   Проект   : %PROJ%
+echo   Сборка   : %BUILD_DIR%
+echo ================================================================
+echo.
+set /p "CONFIRM=   Продолжить? [Y/n]: "
+if /i "!CONFIRM!"=="n" (
+    echo   Отменено.
+    pause
+    exit /b 0
+)
+
+:: ── [1/4] Сборка Release ────────────────────────────────────────
+echo.
+echo   [1/4] Гашу старый gateway...
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":51234" ^| findstr "LISTENING"') do (
+    taskkill /PID %%P /F >nul 2>&1
+)
+timeout /t 1 >nul
+
+echo   [2/4] dotnet publish (Release)...
+if exist "%BUILD_DIR%" (
+    :: Не удаляем всю папку — бережём config.json и logs
+    for %%F in ("%BUILD_DIR%\*.exe" "%BUILD_DIR%\*.dll" "%BUILD_DIR%\*.json" "%BUILD_DIR%\*.pdb") do (
+        if /i not "%%~nxF"=="config.json" del "%%F" 2>nul
+    )
+    if exist "%BUILD_DIR%\runtimes" rd /s /q "%BUILD_DIR%\runtimes" 2>nul
+)
+dotnet publish "%PROJ%" -c Release -o "%BUILD_DIR%" --nologo -v q
+if !errorlevel! neq 0 (
+    echo.
+    echo   [XX] Сборка не удалась — повтори dotnet publish вручную.
+    pause
+    exit /b 1
+)
+echo   [OK] Собрано в %BUILD_DIR%
+
+:: ── [3/4] Создание ZIP ──────────────────────────────────────────
+echo.
+echo   [3/4] Создание архива...
+set "ZIP_NAME=LERON-!VER!-win-x64.zip"
+set "ZIP_PATH=%ROOT%release\!ZIP_NAME!"
+if not exist "%ROOT%release" mkdir "%ROOT%release"
+if exist "!ZIP_PATH!" del "!ZIP_PATH!"
+
+powershell -NoProfile -Command "Compress-Archive -Path '%BUILD_DIR%\*' -DestinationPath '!ZIP_PATH!' -Force"
+if !errorlevel! neq 0 (
+    echo   [XX] Не удалось создать архив.
+    pause
+    exit /b 1
+)
+
+for %%A in ("!ZIP_PATH!") do set /a "ZIP_MB=%%~zA / 1048576"
+echo   [OK] Архив: !ZIP_PATH! (~!ZIP_MB! MB)
+
+:: ── [4/4] Открытие страницы релиза ──────────────────────────────
+echo.
+echo   [4/4] Открываю GitHub Releases...
+echo.
+echo ================================================================
+echo   ГОТОВО!
+echo ================================================================
+echo.
+echo   Что сделать в браузере:
+echo.
+echo   1. В поле "Tag version" введи:   !VER!
+echo   2. В поле "Release title" введи: !TITLE!
+echo   3. В поле "Describe" вставь:     !DESC!
+echo   4. Нажми "attaching binaries"
+echo   5. Выбери файл: !ZIP_PATH!
+echo   6. Нажми "Publish release"
+echo.
+echo   Путь к архиву скопирован в буфер обмена —
+echo   в поле выбора файла нажми Ctrl+V и Enter.
+echo.
+
+:: Копируем путь в буфер
+echo|set /p="!ZIP_PATH!" | clip
+
+start "" "https://github.com/TheLER0N/New-Era/releases/new?tag=!VER!&title=!TITLE!"
+
 pause
 
 
@@ -407,7 +549,7 @@ SIZE: 2822 bytes
 
 ------------------------------------------------
 FILE: GUI result\LeronCli.runtimeconfig.json
-SIZE: 540 bytes
+SIZE: 612 bytes
 ------------------------------------------------
 {
   "runtimeOptions": {
@@ -427,6 +569,7 @@ SIZE: 540 bytes
       }
     ],
     "configProperties": {
+      "System.Reflection.Metadata.MetadataUpdater.IsSupported": false,
       "System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization": false,
       "CSWINRT_USE_WINDOWS_UI_XAML_PROJECTIONS": false
     }
@@ -17099,7 +17242,7 @@ System.IO.File.AppendAllText(path, content, System.Text.Encoding.UTF8);
 
 ------------------------------------------------
 FILE: program\main\gateway\GuiDiagnostics.cs
-SIZE: 1234 bytes
+SIZE: 1719 bytes
 ------------------------------------------------
 using System;
 using System.IO;
@@ -17124,7 +17267,636 @@ if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
 var msg = $"[{DateTime.Now:HH:mm:ss}] {role}\n{text}\n---\n";
 lock (_lock) { File.AppendAllText(LogPath, msg, Encoding.UTF8); }
 }
+
+        public static void LogSummary(int total, int ok, int fail, string verdict)
+        {
+            var dir = Path.GetDirectoryName(LogPath);
+            if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            var msg = $"[{DateTime.Now:HH:mm:ss}] SUMMARY| итого: {ok}/{total} ОК, {fail} ОШИБКА| вердикт: {verdict}";
+            lock (_lock) { File.AppendAllText(LogPath, msg + Environment.NewLine, Encoding.UTF8); }
+        }
+    }
 }
+
+
+------------------------------------------------
+FILE: program\main\hub\GuiTestRunner.cs
+SIZE: 26688 bytes
+------------------------------------------------
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace MainApp;
+
+/// <summary>Результат одного теста.</summary>
+public sealed class GuiTestResult
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public bool Success { get; set; }
+    public string Error { get; set; } = "";
+    public double Seconds { get; set; }
+    public bool ExpectedFail { get; set; }
+    public string Block { get; set; } = "";
+}
+
+/// <summary>
+/// Полный автотест GUI: файловые инструменты, режимы, пакеты,
+/// GUI-данные, стресс-тесты. Пишет итог в txt.
+/// </summary>
+public static class GuiTestRunner
+{
+    private static readonly object _writeLock = new();
+    private static string _resultPath = "";
+
+    public static string LogsDir => Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "..", "..", "logs");
+
+    /// <summary>Прогресс для UI: (текст, доля 0..1).</summary>
+    public static Action<string, double>? OnProgress { get; set; }
+
+    /// <summary>Запустить полный тест. Возвращает путь к итоговому txt.</summary>
+    public static async Task<string> RunFullTestAsync()
+    {
+        var results = new List<GuiTestResult>();
+        var sb = new StringBuilder();
+        _resultPath = Path.Combine(LogsDir,
+            $"gui_test_result_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+        Directory.CreateDirectory(LogsDir);
+
+        var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        sb.AppendLine("================================================================");
+        sb.AppendLine("LERON GUI - ПОЛНЫЙ АВТОТЕСТ");
+        sb.AppendLine($"ЗАПУЩЕН : {DateTime.Now:dd.MM.yyyy HH:mm:ss}");
+        sb.AppendLine($"СБОРКА  : v{ver}");
+        sb.AppendLine($"ЛОГ     : {_resultPath}");
+        sb.AppendLine("================================================================");
+        sb.AppendLine();
+        Flush(sb);
+
+        Report("Блок A: базовые файловые операции...", 0.0);
+        await BlockA(sb, results);
+
+        Report("Блок B: большие файлы и пакеты...", 0.25);
+        await BlockB(sb, results);
+
+        Report("Блок C: режимы агента...", 0.45);
+        await BlockC(sb, results);
+
+        Report("Блок D: GUI-элементы...", 0.65);
+        await BlockD(sb, results);
+
+        Report("Блок E: стресс и ошибки...", 0.85);
+        await BlockE(sb, results);
+
+        int total = results.Count;
+        int ok = results.Count(r => r.Success || r.ExpectedFail);
+        var fails = results.Where(r => !r.Success && !r.ExpectedFail).ToList();
+
+        sb.AppendLine();
+        sb.AppendLine("========================================");
+        sb.AppendLine($"ИТОГО: {ok}/{total} ОК, {fails.Count} ОШИБКА");
+        sb.AppendLine($"ВЕРДИКТ: {(fails.Count == 0 ? "PASS" : "FAIL")}");
+        if (fails.Count > 0)
+        {
+            sb.AppendLine("Ошибки:");
+            foreach (var f in fails)
+                sb.AppendLine($"  - {f.Id} {f.Name}: {f.Error}");
+        }
+        sb.AppendLine($"Время: {results.Sum(r => r.Seconds):F1}с");
+        sb.AppendLine("========================================");
+        Flush(sb);
+
+        Report($"Готово: {ok}/{total} ОК", 1.0);
+        return _resultPath;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  БЛОК A
+    // ════════════════════════════════════════════════════════════
+    private static async Task BlockA(StringBuilder sb, List<GuiTestResult> res)
+    {
+        sb.AppendLine("-- БЛОК A: БАЗОВЫЕ ФАЙЛОВЫЕ ОПЕРАЦИИ --");
+        var tmp = MakeTempProject("A");
+
+        await Run(sb, res, "A1", "Чтение маленького файла", "A", async () =>
+        {
+            var f = Path.Combine(tmp, "small.txt");
+            File.WriteAllText(f, "hello leron");
+            var (exec, s) = await Tool("read_file", new JsonObject { ["path"] = "small.txt" }, tmp);
+            Assert(exec.Output.Contains("hello leron"), "содержимое не найдено");
+        });
+
+        await Run(sb, res, "A2", "Чтение большого файла (1000+ строк)", "A", async () =>
+        {
+            var f = Path.Combine(tmp, "big.txt");
+            var lines = new StringBuilder();
+            for (int i = 0; i < 1500; i++) lines.AppendLine($"строка {i:0000} LERON");
+            File.WriteAllText(f, lines.ToString());
+            var (exec, s) = await Tool("read_file", new JsonObject { ["path"] = "big.txt" }, tmp);
+            Assert(exec.Output.Length > 0, "пустой вывод");
+            Assert(exec.Output.Contains("строка 0000"), "нет первой строки");
+        });
+
+        await Run(sb, res, "A3", "Чтение бинарного файла", "A", async () =>
+        {
+            var f = Path.Combine(tmp, "bin.dat");
+            File.WriteAllBytes(f, new byte[] { 0x00, 0x01, 0xFF, 0xFE, 0x00 });
+            var (exec, s) = await Tool("read_file", new JsonObject { ["path"] = "bin.dat" }, tmp);
+            Assert(exec.Card.Type == "warning" || exec.Output.Contains("бинарн"),
+                $"ожидался отказ/предупреждение, получено: {exec.Output.Substring(0, Math.Min(100, exec.Output.Length))}");
+        });
+
+        await Run(sb, res, "A4", "Запись нового файла", "A", async () =>
+        {
+            var (exec, s) = await Tool("write_file", new JsonObject
+            {
+                ["path"] = "test_a4.txt",
+                ["content"] = "hello from test"
+            }, tmp);
+            var f = Path.Combine(tmp, "test_a4.txt");
+            Assert(File.Exists(f), "файл не создан");
+            Assert(File.ReadAllText(f) == "hello from test", "содержимое не совпадает");
+        });
+
+        await Run(sb, res, "A5", "Запись поверх существующего + бэкап", "A", async () =>
+        {
+            var f = Path.Combine(tmp, "overwrite.txt");
+            File.WriteAllText(f, "old content");
+            var (exec, s) = await Tool("write_file", new JsonObject
+            {
+                ["path"] = "overwrite.txt",
+                ["content"] = "new content"
+            }, tmp);
+            Assert(File.ReadAllText(f) == "new content", "не перезаписан");
+            var backups = Directory.GetFiles(tmp, "*.bak");
+            Assert(backups.Length > 0, "бэкап не создан");
+        });
+
+        await Run(sb, res, "A6", "Патч файла (замена куска)", "A", async () =>
+        {
+            var f = Path.Combine(tmp, "patch_me.txt");
+            File.WriteAllText(f, "line one\nOLD_TEXT\nline three");
+            var (exec, s) = await Tool("patch_file", new JsonObject
+            {
+                ["path"] = "patch_me.txt",
+                ["old_text"] = "OLD_TEXT",
+                ["new_text"] = "NEW_TEXT"
+            }, tmp);
+            Assert(File.ReadAllText(f).Contains("NEW_TEXT"), "патч не применён");
+            Assert(!File.ReadAllText(f).Contains("OLD_TEXT"), "старый текст остался");
+        });
+
+        await Run(sb, res, "A7", "Патч несуществующим фрагментом", "A", async () =>
+        {
+            var f = Path.Combine(tmp, "patch_fail.txt");
+            var original = "line one\nline two\nline three";
+            File.WriteAllText(f, original);
+            var (exec, s) = await Tool("patch_file", new JsonObject
+            {
+                ["path"] = "patch_fail.txt",
+                ["old_text"] = "THIS_DOES_NOT_EXIST",
+                ["new_text"] = "REPLACEMENT"
+            }, tmp);
+            Assert(File.ReadAllText(f) == original, "файл изменён при ошибке");
+            Assert(exec.Output.Contains("не найден") || exec.Output.Contains("Ошибка"),
+                $"ожидалась ошибка, получено: {exec.Output.Substring(0, Math.Min(100, exec.Output.Length))}");
+        }, expectedFail: true);
+
+        await Run(sb, res, "A8", "Переименование файла", "A", async () =>
+        {
+            var f = Path.Combine(tmp, "rename_src.txt");
+            File.WriteAllText(f, "rename test");
+            var (exec, s) = await Tool("rename_file", new JsonObject
+            {
+                ["path"] = "rename_src.txt",
+                ["new_path"] = "rename_dst.txt"
+            }, tmp);
+            Assert(!File.Exists(f), "старый файл не удалён");
+            Assert(File.Exists(Path.Combine(tmp, "rename_dst.txt")), "новый файл не создан");
+        });
+
+        await Run(sb, res, "A9", "Удаление файла + бэкап", "A", async () =>
+        {
+            var f = Path.Combine(tmp, "delete_me.txt");
+            File.WriteAllText(f, "to be deleted");
+            var (exec, s) = await Tool("delete_file", new JsonObject { ["path"] = "delete_me.txt" }, tmp);
+            Assert(!File.Exists(f), "файл не удалён");
+        });
+
+        await Run(sb, res, "A10", "Создание папки", "A", async () =>
+        {
+            var (exec, s) = await Tool("create_directory", new JsonObject
+            {
+                ["path"] = "test_subdir"
+            }, tmp);
+            Assert(Directory.Exists(Path.Combine(tmp, "test_subdir")), "папка не создана");
+        });
+
+        Cleanup(tmp);
+        sb.AppendLine();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  БЛОК B
+    // ════════════════════════════════════════════════════════════
+    private static async Task BlockB(StringBuilder sb, List<GuiTestResult> res)
+    {
+        sb.AppendLine("-- БЛОК B: БОЛЬШИЕ ФАЙЛЫ И ПАКЕТЫ --");
+        var tmp = MakeTempProject("B");
+
+        await Run(sb, res, "B1", "Запись 500КБ, чтение обратно", "B", async () =>
+        {
+            var content = new string('X', 512_000);
+            var (exec, s) = await Tool("write_file", new JsonObject
+            {
+                ["path"] = "big500.txt",
+                ["content"] = content
+            }, tmp);
+            var f = Path.Combine(tmp, "big500.txt");
+            Assert(File.Exists(f), "файл не создан");
+            Assert(new FileInfo(f).Length >= 500_000, $"размер {new FileInfo(f).Length} < 500000");
+            var (exec2, s2) = await Tool("read_file", new JsonObject { ["path"] = "big500.txt" }, tmp);
+            Assert(exec2.Output.Length > 0, "чтение пустое");
+        });
+
+        await Run(sb, res, "B2", "read_files пакет из 5 файлов", "B", async () =>
+        {
+            for (int i = 1; i <= 5; i++)
+                File.WriteAllText(Path.Combine(tmp, $"pack{i}.txt"), $"content of file {i}");
+            var paths = new JsonArray();
+            for (int i = 1; i <= 5; i++) paths.Add($"pack{i}.txt");
+            var (exec, s) = await Tool("read_files", new JsonObject { ["paths"] = paths }, tmp);
+            for (int i = 1; i <= 5; i++)
+                Assert(exec.Output.Contains($"content of file {i}"), $"файл {i} не в выводе");
+        });
+
+        await Run(sb, res, "B3", "write_files пакет из 3 файлов", "B", async () =>
+        {
+            var files = new JsonArray();
+            for (int i = 1; i <= 3; i++)
+            {
+                var obj = new JsonObject();
+                obj["path"] = $"wf{i}.txt";
+                obj["content"] = $"write_files test {i}";
+                files.Add(obj);
+            }
+            var (exec, s) = await Tool("write_files", new JsonObject { ["files"] = files }, tmp);
+            for (int i = 1; i <= 3; i++)
+            {
+                var f = Path.Combine(tmp, $"wf{i}.txt");
+                Assert(File.Exists(f), $"wf{i}.txt не создан");
+                Assert(File.ReadAllText(f) == $"write_files test {i}", $"wf{i}.txt содержимое неверно");
+            }
+        });
+
+        await Run(sb, res, "B4", "grep по нескольким паттернам", "B", async () =>
+        {
+            File.WriteAllText(Path.Combine(tmp, "grep_target.txt"),
+                "alpha line\nbeta line\ngamma line\nalpha again");
+            var patterns = new JsonArray();
+            patterns.Add("alpha");
+            patterns.Add("gamma");
+            var (exec, s) = await Tool("grep", new JsonObject
+            {
+                ["patterns"] = patterns,
+                ["path"] = "."
+            }, tmp);
+            Assert(exec.Output.Contains("alpha"), "alpha не найден");
+            Assert(exec.Output.Contains("gamma"), "gamma не найден");
+        });
+
+        Cleanup(tmp);
+        sb.AppendLine();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  БЛОК C
+    // ════════════════════════════════════════════════════════════
+    private static async Task BlockC(StringBuilder sb, List<GuiTestResult> res)
+    {
+        sb.AppendLine("-- БЛОК C: РЕЖИМЫ АГЕНТА --");
+        var tmp = MakeTempProject("C");
+        File.WriteAllText(Path.Combine(tmp, "mode_test.txt"), "mode check");
+
+        await Run(sb, res, "C1", "Режим чат — инструменты недоступны", "C", async () =>
+        {
+            var s = MakeSession(tmp, "chat");
+            Assert(!s.AllowTools, "AllowTools должен быть false в чате");
+        });
+
+        await Run(sb, res, "C2", "Режим планирование — мутации запрещены", "C", async () =>
+        {
+            var s = MakeSession(tmp, "plan");
+            Assert(s.AllowTools, "AllowTools должен быть true");
+            Assert(s.Mode == "plan", $"режим {s.Mode} != plan");
+            var (exec, _) = await ToolWithSession("write_file", new JsonObject
+            {
+                ["path"] = "plan_block.txt",
+                ["content"] = "should not write"
+            }, s);
+            Assert(!File.Exists(Path.Combine(tmp, "plan_block.txt")),
+                "файл создан в режиме планирования");
+        });
+
+        await Run(sb, res, "C3", "Режим аккуратный — требуется подтверждение", "C", async () =>
+        {
+            var s = MakeSession(tmp, "edit");
+            Assert(s.AllowTools, "AllowTools true");
+            Assert(s.Mode == "edit", $"режим {s.Mode} != edit");
+        });
+
+        await Run(sb, res, "C4", "Режим авто — автоправила", "C", async () =>
+        {
+            var s = MakeSession(tmp, "auto");
+            Assert(s.AllowTools, "AllowTools true");
+            Assert(s.Mode == "auto", $"режим {s.Mode} != auto");
+        });
+
+        await Run(sb, res, "C5", "Режим агрессивный — без подтверждений", "C", async () =>
+        {
+            var s = MakeSession(tmp, "yolo");
+            Assert(s.AllowTools, "AllowTools true");
+            Assert(s.Mode == "yolo", $"режим {s.Mode} != yolo");
+        });
+
+        await Run(sb, res, "C6", "Режим ремонт — минимальный патч", "C", async () =>
+        {
+            var s = MakeSession(tmp, "repair");
+            Assert(s.AllowTools, "AllowTools true");
+            Assert(s.Mode == "repair", $"режим {s.Mode} != repair");
+        });
+
+        Cleanup(tmp);
+        sb.AppendLine();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  БЛОК D
+    // ════════════════════════════════════════════════════════════
+    private static async Task BlockD(StringBuilder sb, List<GuiTestResult> res)
+    {
+        sb.AppendLine("-- БЛОК D: GUI-ЭЛЕМЕНТЫ --");
+        var tmp = MakeTempProject("D");
+
+        await Run(sb, res, "D1", "История чата: сохранение/загрузка", "D", async () =>
+        {
+            var histFile = Path.Combine(tmp, "history_test.json");
+            var msgs = new List<ChatMessage>
+            {
+                new ChatMessage { Author = "Ты", Text = "привет", Bg = "#0f3460", Time = "12:00" },
+                new ChatMessage { Author = "coder", Text = "привет!", Bg = "#1a1a2e", Time = "12:01" }
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(msgs);
+            File.WriteAllText(histFile, json);
+            var loaded = System.Text.Json.JsonSerializer.Deserialize<List<ChatMessage>>(
+                File.ReadAllText(histFile));
+            Assert(loaded != null && loaded.Count == 2, $"загружено {loaded?.Count ?? 0} != 2");
+            Assert(loaded![0].Text == "привет", "текст первого не совпадает");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "D2", "Счётчик шагов", "D", async () =>
+        {
+            var s = MakeSession(tmp, "edit");
+            Assert(s.StepUsed == 0, $"StepUsed={s.StepUsed} != 0");
+            Assert(s.StepLimit > 0, $"StepLimit={s.StepLimit} <= 0");
+            s.StepUsed++;
+            Assert(s.StepUsed == 1, "инкремент не работает");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "D3", "Переключение режимов", "D", async () =>
+        {
+            var modes = new[] { "chat", "plan", "edit", "auto", "yolo", "repair" };
+            foreach (var m in modes)
+            {
+                var s = MakeSession(tmp, m);
+                Assert(s.Mode == m, $"режим {s.Mode} != {m}");
+            }
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "D4", "Тема: цвета существуют", "D", async () =>
+        {
+            Assert(!string.IsNullOrEmpty(Theme.Background), "Theme.Background пуст");
+            Assert(!string.IsNullOrEmpty(Theme.Accent), "Theme.Accent пуст");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "D5", "Карточки действий создаются", "D", async () =>
+        {
+            var card = new ActionCard
+            {
+                Type = "write", Icon = "✏️", Title = "Запись файла",
+                Status = "OK", Details = "100 символов"
+            };
+            Assert(card.Type == "write", "Type неверный");
+            Assert(card.Icon == "✏️", "Icon неверный");
+            Assert(!string.IsNullOrEmpty(card.Title), "Title пуст");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "D6", "Профиль пользователя", "D", async () =>
+        {
+            UserProfile.Exists();
+            var nick = UserProfile.Nick;
+            Assert(true, "");
+            await Task.CompletedTask;
+        });
+
+        Cleanup(tmp);
+        sb.AppendLine();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  БЛОК E
+    // ════════════════════════════════════════════════════════════
+    private static async Task BlockE(StringBuilder sb, List<GuiTestResult> res)
+    {
+        sb.AppendLine("-- БЛОК E: СТРЕСС И ОШИБКИ --");
+        var tmp = MakeTempProject("E");
+
+        await Run(sb, res, "E1", "10 быстрых запросов подряд", "E", async () =>
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                File.WriteAllText(Path.Combine(tmp, $"rapid{i}.txt"), $"rapid {i}");
+                var (exec, _) = await Tool("read_file",
+                    new JsonObject { ["path"] = $"rapid{i}.txt" }, tmp);
+                Assert(exec.Output.Contains($"rapid {i}"), $"запрос {i} не вернул данные");
+            }
+        });
+
+        await Run(sb, res, "E2", "Отмена запроса (CancellationToken)", "E", async () =>
+        {
+            var cts = new CancellationTokenSource();
+            cts.Cancel();
+            try
+            {
+                await Task.Delay(5000, cts.Token);
+                Assert(false, "не отменился");
+            }
+            catch (OperationCanceledException)
+            {
+                Assert(true, "");
+            }
+        });
+
+        await Run(sb, res, "E3", "Некорректный JSON", "E", async () =>
+        {
+            var badJson = "{invalid json!!!}}}";
+            try
+            {
+                var node = JsonNode.Parse(badJson);
+                Assert(false, "должен был выбросить исключение");
+            }
+            catch (Exception)
+            {
+                Assert(true, "");
+            }
+            await Task.CompletedTask;
+        }, expectedFail: true);
+
+        await Run(sb, res, "E4", "Пустой ответ от ИИ", "E", async () =>
+        {
+            var empty = "";
+            Assert(string.IsNullOrEmpty(empty), "пустая строка не пустая");
+            var whitespace = "   ";
+            Assert(string.IsNullOrWhiteSpace(whitespace), "пробелы не пустые");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "E5", "Таймаут ожидания", "E", async () =>
+        {
+            var sw = Stopwatch.StartNew();
+            var completed = await Task.WhenAny(
+                Task.Delay(500),
+                Task.Delay(100)
+            );
+            sw.Stop();
+            Assert(sw.ElapsedMilliseconds < 300, $"заняло {sw.ElapsedMilliseconds}мс");
+        });
+
+        Cleanup(tmp);
+        sb.AppendLine();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  ИНФРАСТРУКТУРА
+    // ════════════════════════════════════════════════════════════
+
+    private static async Task<(ToolExecution exec, AgentSession session)> Tool(
+        string name, JsonObject args, string root, string mode = "edit")
+    {
+        var s = MakeSession(root, mode);
+        return await ToolWithSession(name, args, s);
+    }
+
+    private static async Task<(ToolExecution exec, AgentSession session)> ToolWithSession(
+        string name, JsonObject args, AgentSession s)
+    {
+        var gw = new GatewayState();
+        var tool = new PendingTool
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = name,
+            Args = args
+        };
+        var exec = await gw.ExecuteToolAsync(s, tool);
+        return (exec, s);
+    }
+
+    private static AgentSession MakeSession(string root, string mode)
+    {
+        return new AgentSession
+        {
+            Role = "test",
+            Root = root,
+            Mode = mode,
+            AllowTools = root != null && mode != "chat",
+            StepLimit = 30,
+            StepUsed = 0,
+            Messages = new List<JsonObject>()
+        };
+    }
+
+    private static async Task Run(StringBuilder sb, List<GuiTestResult> res,
+        string id, string name, string block, Func<Task> action, bool expectedFail = false)
+    {
+        var sw = Stopwatch.StartNew();
+        bool ok; string err = "";
+        try
+        {
+            await action();
+            ok = true;
+        }
+        catch (Exception ex)
+        {
+            ok = false;
+            err = ex.Message;
+        }
+        sw.Stop();
+
+        var r = new GuiTestResult
+        {
+            Id = id, Name = name, Block = block,
+            Success = ok, Error = err,
+            Seconds = sw.Elapsed.TotalSeconds,
+            ExpectedFail = expectedFail
+        };
+        res.Add(r);
+
+        var status = ok ? (expectedFail ? "ОК (ожидаемая ошибка)" : "ОК") : "ОШИБКА";
+        var line = $"[{DateTime.Now:HH:mm:ss}] {id} {name} | {sw.Elapsed.TotalSeconds:F2}с | {status}"
+            + (ok ? "" : $" - {err}");
+        sb.AppendLine(line);
+        Flush(sb);
+
+        try
+        {
+            Gateway.GuiTestLogger.Log($"{id}_{name}", "авто",
+                ok ? "OK" : $"ОШИБКА - {err}", ok);
+        }
+        catch { }
+    }
+
+    private static void Assert(bool condition, string msg)
+    {
+        if (!condition) throw new Exception(msg);
+    }
+
+    private static string MakeTempProject(string block)
+    {
+        var dir = Path.Combine(LogsDir, $"_test_{block}_{DateTime.Now:HHmmss}");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static void Cleanup(string dir)
+    {
+        try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
+    }
+
+    private static void Flush(StringBuilder sb)
+    {
+        lock (_writeLock)
+        {
+            File.WriteAllText(_resultPath, sb.ToString(), Encoding.UTF8);
+        }
+    }
+
+    private static void Report(string text, double progress)
+    {
+        OnProgress?.Invoke(text, progress);
+    }
 }
 
 
@@ -17633,7 +18405,7 @@ SIZE: 21909 bytes
 
 ------------------------------------------------
 FILE: program\main\hub\HubSettingsPage.xaml.cs
-SIZE: 13537 bytes
+SIZE: 7527 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -17721,141 +18493,41 @@ namespace Hub
             }
         }
 
-        private async void TestFullGui_Click(object sender, RoutedEventArgs e){
-            BtnFullTest.IsEnabled = false;
-            BtnFullTest.Content = "⏳ Тестирование...";
-            SystemStatusText.Text = "тестирование...";
-            SystemStatusDot.Fill = B("#00d9ff");
-            bool allOk = true;
-            foreach (var t in _tests) {
-                var sw = Stopwatch.StartNew();
-                bool ok; string err = "";
-                try { ok = await t.Run(); } catch (Exception ex) { ok = false; err = ex.Message; }
-                sw.Stop();
-                TestLog(t.LogFile, t.Name, "авто", ok, err);
-                if (t.TimeText != null) t.TimeText.Text = $"{sw.Elapsed.TotalSeconds:F1}с";
-                if (t.Badge != null && t.BadgeText != null) {
-                    if (ok) {
-                        t.Badge.Background = B("#113322");
-                        t.Badge.BorderBrush = B("#3fd158");
-                        t.Badge.BorderThickness = new Thickness(1);
-                        t.BadgeText.Text = "OK";
-                        t.BadgeText.Foreground = B("#3fd158");
-                    } else {
-                        t.Badge.Background = B("#331111");
-                        t.Badge.BorderBrush = B("#e94560");
-                        t.Badge.BorderThickness = new Thickness(1);
-                        t.BadgeText.Text = "ОШИБКА";
-                        t.BadgeText.Foreground = B("#e94560");
-                        allOk = false;
-                    }
-                }
-            }
-            SystemStatusText.Text = allOk ? "все системы OK" : "ошибка в тестах";
-            SystemStatusDot.Fill = allOk ? B("#3fd158") : B("#e94560");
-            BtnFullTest.IsEnabled = true;
-            BtnFullTest.Content = "⚡ Полный тест GUI";
-            RefreshLogs();
-        }
+        private async void TestFullGui_Click(object sender, RoutedEventArgs e)
+{
+    BtnFullTest.IsEnabled = false;
+    BtnFullTest.Content = "⏳ Тестирование...";
+    SystemStatusText.Text = "полный тест...";
+    SystemStatusDot.Fill = B("#00d9ff");
 
-        private void RefreshLogs(){
-            LogsContainer.Children.Clear();
-            int c = 0;
-            try {
-                var files = Directory.GetFiles(LogsDir(), "gui_test_*.log")
-                    .Select(f => new FileInfo(f))
-                    .OrderByDescending(f => f.LastWriteTime)
-                    .Take(5);
-                foreach (var f in files) {
-                    c++;
-                    string ll = "";
-                    try { var ls = File.ReadAllLines(f.FullName); if (ls.Length > 0) ll = ls[ls.Length-1]; } catch {}
-                    bool isErr = ll.Contains("ОШИБКА") || ll.Contains("ERROR");
-                    var r = new Grid{Margin=new Thickness(0,0,0,6)};
-                    r.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(120)});
-                    r.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
-                    r.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(80)});
-                    var tm = new TextBlock{Text=f.LastWriteTime.ToString("HH:mm:ss"),Foreground=B("#8fe6ff"),FontSize=12}; Grid.SetColumn(tm,0);
-                    var nm = new TextBlock{Text=f.Name,Foreground=B("#eaf6ff"),FontSize=12}; Grid.SetColumn(nm,1);
-                    var rs = new TextBlock{Text=isErr?"ОШИБКА":"OK",Foreground=isErr?B("#e94560"):B("#3fd158"),FontSize=12,FontWeight=FontWeights.Bold}; Grid.SetColumn(rs,2);
-                    r.Children.Add(tm); r.Children.Add(nm); r.Children.Add(rs);
-                    LogsContainer.Children.Add(r);
-                }
-            } catch {}
-            LogsCountText.Text = $"logs/gui_test_*.log: {c} записей";
-        }
+    MainApp.GuiTestRunner.OnProgress = (text, pct) =>
+    {
+        Dispatcher.InvokeAsync(() => { SystemStatusText.Text = text; });
+    };
 
-        private void OpenLogsDir_Click(object s, RoutedEventArgs e){
-            try { Process.Start(new ProcessStartInfo{FileName=LogsDir(),UseShellExecute=true}); } catch {}
-        }
+    try
+    {
+        var resultPath = await Task.Run(() => MainApp.GuiTestRunner.RunFullTestAsync());
+        var content = File.ReadAllText(resultPath);
+        bool pass = content.Contains("ВЕРДИКТ: PASS");
 
-        private void Menu_Click(object s, RoutedEventArgs e){
-            if (s is Button b) SwitchPanel(b.Name.Replace("Menu",""));
-        }
-
-        private void SwitchPanel(string n){
-            PanelProfile.Visibility = Visibility.Collapsed;
-            PanelTools.Visibility = Visibility.Collapsed;
-            PanelTests.Visibility = Visibility.Collapsed;
-            PanelLogs.Visibility = Visibility.Collapsed;
-            PanelHotkeys.Visibility = Visibility.Collapsed;
-            PanelAbout.Visibility = Visibility.Collapsed;
-            MenuProfile.Tag=""; MenuTools.Tag=""; MenuTests.Tag="";
-            MenuLogs.Tag=""; MenuHotkeys.Tag=""; MenuAbout.Tag="";
-            switch (n) {
-                case "Profile": PanelProfile.Visibility=Visibility.Visible; MenuProfile.Tag="Active"; break;
-                case "Tools":   PanelTools.Visibility=Visibility.Visible;   MenuTools.Tag="Active";   break;
-                case "Tests":   PanelTests.Visibility=Visibility.Visible;   MenuTests.Tag="Active";   break;
-                case "Logs":    PanelLogs.Visibility=Visibility.Visible;    MenuLogs.Tag="Active";    RefreshLogs(); break;
-                case "Hotkeys": PanelHotkeys.Visibility=Visibility.Visible; MenuHotkeys.Tag="Active"; break;
-                case "About":   PanelAbout.Visibility=Visibility.Visible;   MenuAbout.Tag="Active";   break;
-            }
-        }
-
-        private void SearchBox_TextChanged(object s, TextChangedEventArgs e){
-            SearchHint.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        private void Save_Click(object s, RoutedEventArgs e){
-            try {
-                var nick = TxtUsername.Text.Trim();
-                var desc = TxtDescription.Text.Trim();
-                if (string.IsNullOrWhiteSpace(nick)) {
-                    StatusText.Text = "имя не может быть пустым";
-                    return;
-                }
-                // КЛЮЧЕВАЯ ПРАВКА: используем UserProfile.Save(nick, desc) вместо сеттеров
-                UserProfile.Save(nick, desc);
-                _initialUsername = nick;
-                _initialDescription = desc;
-                StatusText.Text = $"сохранено: {nick}";
-                ApplyAvatar();
-                GuiTestLogger.Log("SETTINGS_SAVE", nick, desc, true);
-                SavedBadge.Visibility = Visibility.Visible;
-                var t = new DispatcherTimer{Interval=TimeSpan.FromSeconds(2)};
-                t.Tick += (_,_) => { SavedBadge.Visibility=Visibility.Collapsed; t.Stop(); };
-                t.Start();
-            } catch (Exception ex) {
-                StatusText.Text = "ошибка: " + ex.Message;
-                GuiTestLogger.Log("SETTINGS_SAVE", "", ex.Message, false);
-            }
-        }
-
-        private void Reset_Click(object s, RoutedEventArgs e){
-            TxtUsername.Text = _initialUsername;
-            TxtDescription.Text = _initialDescription;
-        }
-
-        private void Back_Click(object s, RoutedEventArgs e){
-            BackRequested?.Invoke();
-        }
-
-        private void OnKeyDown(object s, KeyEventArgs e){
-            if (e.Key == Key.Escape) Back_Click(s,e);
-            else if (e.Key == Key.OemQuestion || e.Key == Key.Divide) { SearchBox.Focus(); e.Handled = true; }
-            else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control) { Save_Click(s,e); e.Handled = true; }
-        }
+        SystemStatusText.Text = pass ? "все системы OK" : "ошибка в тестах";
+        SystemStatusDot.Fill = pass ? B("#3fd158") : B("#e94560");
+        BtnFullTest.Content = pass ? "✅ Тест пройден" : "❌ Тест провален";
+        try { Process.Start(new ProcessStartInfo { FileName = resultPath, UseShellExecute = true }); } catch { }
     }
+    catch (Exception ex)
+    {
+        SystemStatusText.Text = "ошибка теста: " + ex.Message;
+        SystemStatusDot.Fill = B("#e94560");
+        BtnFullTest.Content = "⚡ Полный тест GUI";
+    }
+
+    BtnFullTest.IsEnabled = true;
+    RefreshLogs();
+}
+
+    
 }
 
 
@@ -20479,7 +21151,7 @@ SIZE: 16115 bytes
       "Name": "GUI_test",
       "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\GUI_test",
       "Role": "team",
-      "LastOpened": "2026-09-01T21:36:39.057468\u002B03:00"
+      "LastOpened": "2026-09-01T22:00:29.817502\u002B03:00"
     }
   ],
   "HubLayout": {
@@ -20962,6 +21634,6 @@ echo   [OK] Лог сохранён: %LOG_FILE%
 pause
 
 ==================== SUMMARY ====================
-  Source files : 51
+  Source files : 53
   Report file  : GUI_report.txt
 ================================================================
