@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
@@ -19,6 +19,26 @@ internal sealed partial class GatewayState
     }
     public object Finish(AgentSession s, string text, string resultStatus = "success")
     {
+        // ── РАУНД 3: Автозапись краткосрочной памяти ──────────
+        try
+        {
+            var lastUser = "";
+            var lastMsg = s.Messages.LastOrDefault();
+            if (lastMsg is JsonObject lastObj) {
+                var role = lastObj["role"]?.ToString() ?? "";
+                var txt = lastObj["content"]?.ToString() ?? "";
+                if (role == "user" && !string.IsNullOrWhiteSpace(txt)) lastUser = txt;
+            }
+            if (!string.IsNullOrWhiteSpace(lastUser) && !string.IsNullOrWhiteSpace(text))
+            {
+                var userShort = lastUser.Length > 150 ? lastUser.Substring(0, 150) + "..." : lastUser;
+                var aiShort = text.Length > 250 ? text.Substring(0, 250) + "..." : text;
+                var memChanged = s.ChangedFiles.Take(3).ToList();
+                if (memChanged.Count > 0) aiShort += " · файлы: " + string.Join(", ", memChanged);
+                MemoryStore.PushShort(s.Root ?? "", userShort, aiShort);
+            }
+        }
+        catch { }
         AgentLog($"[FINAL] {Truncate(text, 500)}");
         if (!string.IsNullOrEmpty(s.Role))
             LogRole(s.Role, $"[AGENT]: {Truncate(text, 300)}");
@@ -174,6 +194,14 @@ internal sealed partial class GatewayState
             {
                 sb.AppendLine();
                 sb.Append(indexPrompt);
+            }
+
+            // ── РАУНД 3: Блок памяти проекта ──────────────────
+            var memoryPrompt = GetMemoryPrompt(s);
+            if (!string.IsNullOrEmpty(memoryPrompt))
+            {
+                sb.AppendLine();
+                sb.Append(memoryPrompt);
             }
         }
         if (s.AllowTools)

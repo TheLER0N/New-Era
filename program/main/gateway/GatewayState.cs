@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -537,6 +537,44 @@ internal sealed partial class GatewayState
     // Блок «КРАТКИЕ ОПИСАНИЯ ФАЙЛОВ» для промпта: описание + отметка свежести.
     // Если файл изменили после записи описания (mtime/size не совпадают) —
     // помечаем, чтобы ИИ перечитал файл перед правкой.
+    
+    /// <summary>Формирует блок памяти для системного промпта (РАУНД 3).</summary>
+    public string GetMemoryPrompt(AgentSession s)
+    {
+        if (string.IsNullOrWhiteSpace(s.Root)) return "";
+        try
+        {
+            var shortTerm = MemoryStore.ShortTerm(s.Root);
+            var (total, byCat) = MemoryStore.Summary(s.Root);
+            var sb = new StringBuilder();
+            sb.AppendLine("=== ПАМЯТЬ ПРОЕКТА ===");
+            if (shortTerm.Count > 0)
+            {
+                sb.AppendLine($"Краткосрочная (последние {shortTerm.Count} запросов, всегда актуальна):");
+                foreach (var entry in shortTerm)
+                {
+                    var time = entry["time"]?.ToString() ?? "??:??";
+                    var user = entry["user"]?.ToString() ?? "";
+                    var ai = entry["ai"]?.ToString() ?? "";
+                    sb.AppendLine($"  [{time}] Пользователь: {user} | ИИ: {ai}");
+                }
+            }
+            else
+            {
+                sb.AppendLine("Краткосрочная: пусто (это первый запрос)");
+            }
+            sb.AppendLine();
+            sb.AppendLine($"Долгосрочная: всего карточек {total} (choices {byCat["choices"]}, facts {byCat["facts"]}, files {byCat["files"]}, notes {byCat["notes"]}).");
+            sb.AppendLine();
+            sb.AppendLine("Правила памяти:");
+            sb.AppendLine("- Перед ответом о прошлых решениях/предпочтениях — memory_search, затем memory_read (читай сколько нужно).");
+            sb.AppendLine("- После содержательного запроса обнови память: memory_write (текст ≤ 3-4 предложения, категорию выбирай сам: choices/facts/files/notes).");
+            sb.AppendLine("- Устарело — обнови по id или memory_forget. Не дублируй file_index.json.");
+            sb.AppendLine();
+            return sb.ToString();
+        }
+        catch { return ""; }
+    }
     public string GetFileIndexPrompt(AgentSession s)
     {
         if (s.Root == null) return "";
