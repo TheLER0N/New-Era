@@ -71,6 +71,9 @@ public static class GuiTestRunner
         Report("Блок E: стресс и ошибки...", 0.85);
         await BlockE(sb, results);
 
+        Report("Блок M: память...", 0.95);
+        await BlockM(sb, results);
+
         int total = results.Count;
         int ok = results.Count(r => r.Success || r.ExpectedFail);
         var fails = results.Where(r => !r.Success && !r.ExpectedFail).ToList();
@@ -498,6 +501,143 @@ public static class GuiTestRunner
             );
             sw.Stop();
             Assert(sw.ElapsedMilliseconds < 300, $"заняло {sw.ElapsedMilliseconds}мс");
+        });
+
+        Cleanup(tmp);
+        sb.AppendLine();
+    }
+
+
+    // ════════════════════════════════════════════════════════════
+    //  БЛОК M — ПАМЯТЬ
+    // ════════════════════════════════════════════════════════════
+    private static async Task BlockM(StringBuilder sb, List<GuiTestResult> res)
+    {
+        sb.AppendLine("-- БЛОК M: ПАМЯТЬ --");
+        var tmp = MakeTempProject("M");
+
+        await Run(sb, res, "M1", "Upsert новой карточки", "M", async () =>
+        {
+            var id = MemoryStore.Upsert(tmp, null, "facts", "Тестовый факт", "Содержание факта о проекте", null);
+            Assert(!string.IsNullOrEmpty(id), "id пустой");
+            Assert(id.StartsWith("m"), "id не начинается с m");
+            Assert(id == "m001", $"id должен быть m001, получено {id}");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M2", "Read по id", "M", async () =>
+        {
+            var id = MemoryStore.Upsert(tmp, null, "choices", "Выбор темы", "Пользователь выбрал тёмную тему", null);
+            var cards = MemoryStore.Read(tmp, new[] { id });
+            Assert(cards.Count == 1, $"ожидал 1 карточку, получил {cards.Count}");
+            Assert(cards[0]["title"]?.ToString() == "Выбор темы", "title неверный");
+            Assert(cards[0]["cat"]?.ToString() == "choices", "cat неверный");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M3", "Search по слову", "M", async () =>
+        {
+            MemoryStore.Upsert(tmp, null, "notes", "Заметка LERON", "уникальное слово ZEBRA123 для поиска", null);
+            MemoryStore.Upsert(tmp, null, "notes", "Другая заметка", "совсем другое содержимое", null);
+            var found = MemoryStore.Search(tmp, "ZEBRA123", 10);
+            Assert(found.Count == 1, $"найдено {found.Count}, ожидал 1");
+            Assert(found[0]["title"]?.ToString() == "Заметка LERON", "нашли не ту карточку");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M4", "Upsert обновление + updated", "M", async () =>
+        {
+            var id = MemoryStore.Upsert(tmp, null, "facts", "Старый факт", "старое содержимое", null);
+            var before = MemoryStore.Read(tmp, new[] { id })[0];
+            var oldUpdated = before["updated"]?.ToString();
+            await Task.Delay(50);
+            MemoryStore.Upsert(tmp, id, "facts", "Новый факт", "обновлённое содержимое", null);
+            var after = MemoryStore.Read(tmp, new[] { id })[0];
+            Assert(after["title"]?.ToString() == "Новый факт", "title не обновился");
+            Assert(after["text"]?.ToString() == "обновлённое содержимое", "text не обновился");
+            var newUpdated = after["updated"]?.ToString();
+            Assert(newUpdated != oldUpdated, "updated не изменился");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M5", "Forget + ForgetAll", "M", async () =>
+        {
+            var tmp2 = MakeTempProject("M5");
+            var id1 = MemoryStore.Upsert(tmp2, null, "facts", "Факт 1", "текст 1", null);
+            var id2 = MemoryStore.Upsert(tmp2, null, "facts", "Факт 2", "текст 2", null);
+            Assert(MemoryStore.Forget(tmp2, id1), "Forget вернул false");
+            var afterForget = MemoryStore.Read(tmp2, new[] { id1 });
+            Assert(afterForget.Count == 0, "карточка не удалилась");
+            var beforeAll = MemoryStore.Read(tmp2, new[] { id2 });
+            Assert(beforeAll.Count == 1, "вторая карточка пропала раньше времени");
+            MemoryStore.ForgetAll(tmp2);
+            var afterAll = MemoryStore.Search(tmp2, "Факт", 10);
+            Assert(afterAll.Count == 0, "после ForgetAll что-то осталось");
+            Cleanup(tmp2);
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M6", "PushShort: ровно 5 записей", "M", async () =>
+        {
+            var tmp3 = MakeTempProject("M6");
+            for (int i = 1; i <= 7; i++)
+                MemoryStore.PushShort(tmp3, $"запрос {i}", $"ответ {i}");
+            var mem = MemoryStore.Load(tmp3);
+            var arr = mem["short_term"] as JsonArray;
+            Assert(arr != null, "short_term == null");
+            Assert(arr!.Count == 5, $"ожидал 5, получил {arr.Count}");
+            var first = arr[0] as JsonObject;
+            Assert(first?["user"]?.ToString() == "запрос 3", $"первая запись {first?["user"]}, ожидал 'запрос 3'");
+            var last = arr[4] as JsonObject;
+            Assert(last?["user"]?.ToString() == "запрос 7", $"последняя {last?["user"]}, ожидал 'запрос 7'");
+            Cleanup(tmp3);
+            await Task.CompletedTask;
+        });
+
+
+        await Run(sb, res, "M7", "memory_write через ExecuteTool", "M", async () =>
+        {
+            var args = new JsonObject { ["cat"] = "facts", ["title"] = "Тест через gateway", ["text"] = "Проверка что инструмент memory_write работает" };
+            var (exec, _) = await Tool("memory_write", args, tmp);
+            Assert(exec.Output.Contains("записано"), $"ожидал 'записано', получил: {exec.Output}");
+            Assert(exec.Output.Contains("#m"), "нет id в выводе");
+        });
+
+        await Run(sb, res, "M8", "memory_search через ExecuteTool", "M", async () =>
+        {
+            var writeArgs = new JsonObject { ["cat"] = "notes", ["title"] = "Уникальная заметка", ["text"] = "уникальное слово SEARCHTEST789 для поиска" };
+            await Tool("memory_write", writeArgs, tmp);
+            var searchArgs = new JsonObject { ["query"] = "SEARCHTEST789", ["limit"] = 10 };
+            var (exec, _) = await Tool("memory_search", searchArgs, tmp);
+            Assert(exec.Output.Contains("найдено"), $"ожидал 'найдено', получил: {exec.Output}");
+            Assert(exec.Output.Contains("Уникальная заметка"), "не нашли нашу карточку");
+        });
+
+        await Run(sb, res, "M9", "memory_read через ExecuteTool", "M", async () =>
+        {
+            var writeArgs = new JsonObject { ["cat"] = "choices", ["title"] = "Выбор для чтения", ["text"] = "текст для проверки memory_read" };
+            var (writeExec, _) = await Tool("memory_write", writeArgs, tmp);
+            var idMatch = System.Text.RegularExpressions.Regex.Match(writeExec.Output, @"#(m\d+)");
+            Assert(idMatch.Success, $"не удалось извлечь id из: {writeExec.Output}");
+            var id = idMatch.Groups[1].Value;
+            var readArgs = new JsonObject { ["ids"] = new JsonArray { id } };
+            var (readExec, _) = await Tool("memory_read", readArgs, tmp);
+            Assert(readExec.Output.Contains("прочитано 1"), $"ожидал 'прочитано 1', получил: {readExec.Output}");
+            Assert(readExec.Output.Contains("Выбор для чтения"), "нет title");
+        });
+
+        await Run(sb, res, "M10", "memory_forget через ExecuteTool", "M", async () =>
+        {
+            var writeArgs = new JsonObject { ["cat"] = "files", ["title"] = "Файл для удаления", ["text"] = "будет удалён" };
+            var (writeExec, _) = await Tool("memory_write", writeArgs, tmp);
+            var idMatch = System.Text.RegularExpressions.Regex.Match(writeExec.Output, @"#(m\d+)");
+            var id = idMatch.Groups[1].Value;
+            var forgetArgs = new JsonObject { ["id"] = id };
+            var (forgetExec, _) = await Tool("memory_forget", forgetArgs, tmp);
+            Assert(forgetExec.Output.Contains("удалено"), $"ожидал 'удалено', получил: {forgetExec.Output}");
+            var readArgs = new JsonObject { ["ids"] = new JsonArray { id } };
+            var (readExec, _) = await Tool("memory_read", readArgs, tmp);
+            Assert(readExec.Output.Contains("не найдены"), $"карточка не удалилась: {readExec.Output}");
         });
 
         Cleanup(tmp);

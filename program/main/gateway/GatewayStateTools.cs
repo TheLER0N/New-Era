@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -908,6 +908,221 @@ exec.Card = ErrorCard("Индекс", "ошибка парсинга", "");
 }
 return exec;
 }
+
+                    // ── MEMORY TOOLS (память проекта) ──────────────────
+                    case "memory_search":
+                    {
+                        var query = Arg("query");
+                        var limit = GetInt(c.Args, "limit", 5);
+                        try
+                        {
+                            var results = MemoryStore.Search(s.Root, query, limit);
+                            if (results.Count == 0)
+                            {
+                                exec.Output = "ничего не найдено по запросу: " + query;
+                                exec.Log = "memory_search → ничего не найдено";
+                                exec.Card = new ActionCard { Type = "info", Icon = "🧠", Title = "Поиск памяти", Status = "0 результатов", Details = query };
+                            }
+                            else
+                            {
+                                var sb = new StringBuilder();
+                                sb.AppendLine($"найдено {results.Count} карточек:");
+                                foreach (var card in results)
+                                {
+                                    var id = card["id"]?.ToString() ?? "?";
+                                    var cat = card["cat"]?.ToString() ?? "?";
+                                    var title = card["title"]?.ToString() ?? "?";
+                                    var snippet = card["snippet"]?.ToString() ?? "";
+                                    sb.AppendLine($"  [#{id}] ({cat}) {title} — {snippet}");
+                                }
+                                exec.Output = sb.ToString();
+                                exec.Log = $"memory_search → найдено {results.Count}";
+                                exec.Card = new ActionCard { Type = "info", Icon = "🧠", Title = "Поиск памяти", Status = $"{results.Count} найдено", Details = query };
+                            }
+                            Gateway.GuiTestLogger.Log("memory_search", query, $"найдено {results.Count}", true);
+                        }
+                        catch (Exception ex)
+                        {
+                            exec.Output = "ошибка: " + ex.Message;
+                            exec.Log = $"memory_search → ошибка: {ex.Message}";
+                            exec.Card = ErrorCard("Поиск памяти", ex.Message, query);
+                            Gateway.GuiTestLogger.Log("memory_search", query, "ошибка " + ex.Message, false);
+                        }
+                        return exec;
+                    }
+
+                    case "memory_read":
+                    {
+                        var idsNode = c.Args["ids"];
+                        var ids = new List<string>();
+                        if (idsNode is JsonArray arr)
+                        {
+                            foreach (var item in arr)
+                            {
+                                try { var v = item?.GetValue<string>(); if (!string.IsNullOrEmpty(v)) ids.Add(v); } catch { }
+                            }
+                        }
+                        else if (idsNode != null)
+                        {
+                            ids.Add(idsNode.ToString());
+                        }
+                        
+                        try
+                        {
+                            if (ids.Count == 0)
+                            {
+                                exec.Output = "ids не указан или пустой";
+                                exec.Log = "memory_read → ids пустой";
+                                exec.Card = ErrorCard("Чтение памяти", "ids пустой", "");
+                                Gateway.GuiTestLogger.Log("memory_read", "", "ids пустой", false);
+                            }
+                            else
+                            {
+                                var cards = MemoryStore.Read(s.Root, ids);
+                                if (cards.Count == 0)
+                                {
+                                    exec.Output = "карточки не найдены по id: " + string.Join(", ", ids);
+                                    exec.Log = "memory_read → не найдены";
+                                    exec.Card = ErrorCard("Чтение памяти", "не найдены", string.Join(",", ids));
+                                    Gateway.GuiTestLogger.Log("memory_read", string.Join(",", ids), "не найдены", false);
+                                }
+                                else
+                                {
+                                    var sb = new StringBuilder();
+                                    sb.AppendLine($"прочитано {cards.Count} карточек:");
+                                    foreach (var card in cards)
+                                    {
+                                        sb.AppendLine($"[#{card["id"]}] ({card["cat"]}) {card["title"]}");
+                                        sb.AppendLine($"  {card["text"]}");
+                                        var links = card["links"] as JsonArray;
+                                        if (links != null && links.Count > 0)
+                                        {
+                                            var linkIds = new List<string>();
+                                            foreach (var l in links) if (l != null) linkIds.Add(l.ToString());
+                                            sb.AppendLine($"  links: {string.Join(", ", linkIds)}");
+                                        }
+                                        sb.AppendLine($"  created: {card["created"]}, updated: {card["updated"]}");
+                                        sb.AppendLine();
+                                    }
+                                    exec.Output = sb.ToString();
+                                    exec.Log = $"memory_read → прочитано {cards.Count}";
+                                    exec.Card = new ActionCard { Type = "info", Icon = "🧠", Title = "Чтение памяти", Status = $"{cards.Count} карточек", Details = string.Join(",", ids) };
+                                    Gateway.GuiTestLogger.Log("memory_read", string.Join(",", ids), $"прочитано {cards.Count}", true);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            exec.Output = "ошибка: " + ex.Message;
+                            exec.Log = $"memory_read → ошибка: {ex.Message}";
+                            exec.Card = ErrorCard("Чтение памяти", ex.Message, string.Join(",", ids));
+                            Gateway.GuiTestLogger.Log("memory_read", string.Join(",", ids), "ошибка " + ex.Message, false);
+                        }
+                        return exec;
+                    }
+
+                    case "memory_write":
+                    {
+                        var id = Arg("id");
+                        var cat = Arg("cat");
+                        var title = Arg("title");
+                        var text = Arg("text");
+                        var linksNode = c.Args["links"];
+                        var links = new List<string>();
+                        if (linksNode is JsonArray arr)
+                        {
+                            foreach (var item in arr)
+                            {
+                                try { var v = item?.GetValue<string>(); if (!string.IsNullOrEmpty(v)) links.Add(v); } catch { }
+                            }
+                        }
+                        
+                        try
+                        {
+                            if (string.IsNullOrWhiteSpace(cat))
+                            {
+                                exec.Output = "cat обязателен (choices/facts/files/notes)";
+                                exec.Log = "memory_write → cat пустой";
+                                exec.Card = ErrorCard("Запись памяти", "cat пустой", "");
+                                Gateway.GuiTestLogger.Log("memory_write", "", "cat пустой", false);
+                            }
+                            else if (string.IsNullOrWhiteSpace(title))
+                            {
+                                exec.Output = "title обязателен";
+                                exec.Log = "memory_write → title пустой";
+                                exec.Card = ErrorCard("Запись памяти", "title пустой", "");
+                                Gateway.GuiTestLogger.Log("memory_write", "", "title пустой", false);
+                            }
+                            else
+                            {
+                                var resultId = MemoryStore.Upsert(s.Root, string.IsNullOrEmpty(id) ? null : id, cat, title, text, links);
+                                var action = string.IsNullOrEmpty(id) ? "записано" : "обновлено";
+                                exec.Output = $"{action}: #{resultId} ({cat}) {title}";
+                                exec.Log = $"memory_write → {action} #{resultId}";
+                                exec.Card = new ActionCard { Type = "write", Icon = "🧠", Title = "Запись памяти", Status = action, Details = $"#{resultId} {title}" };
+                                Gateway.GuiTestLogger.Log("memory_write", $"{cat}: {title}", resultId, true);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            exec.Output = "ошибка: " + ex.Message;
+                            exec.Log = $"memory_write → ошибка: {ex.Message}";
+                            exec.Card = ErrorCard("Запись памяти", ex.Message, $"{cat}: {title}");
+                            Gateway.GuiTestLogger.Log("memory_write", $"{cat}: {title}", "ошибка " + ex.Message, false);
+                        }
+                        return exec;
+                    }
+
+                    case "memory_forget":
+                    {
+                        var id = Arg("id");
+                        var all = GetBool(c.Args, "all", false);
+                        
+                        try
+                        {
+                            if (all)
+                            {
+                                MemoryStore.ForgetAll(s.Root);
+                                exec.Output = "вся память удалена";
+                                exec.Log = "memory_forget → удалено всё";
+                                exec.Card = new ActionCard { Type = "delete", Icon = "🧠", Title = "Очистка памяти", Status = "удалено всё", Details = "" };
+                                Gateway.GuiTestLogger.Log("memory_forget", "all:true", "удалено", true);
+                            }
+                            else if (string.IsNullOrWhiteSpace(id))
+                            {
+                                exec.Output = "id не указан (или укажи all:true)";
+                                exec.Log = "memory_forget → id пустой";
+                                exec.Card = ErrorCard("Удаление памяти", "id пустой", "");
+                                Gateway.GuiTestLogger.Log("memory_forget", "", "id пустой", false);
+                            }
+                            else
+                            {
+                                var deleted = MemoryStore.Forget(s.Root, id);
+                                if (deleted)
+                                {
+                                    exec.Output = $"удалено: #{id}";
+                                    exec.Log = $"memory_forget → удалено #{id}";
+                                    exec.Card = new ActionCard { Type = "delete", Icon = "🧠", Title = "Удаление памяти", Status = "удалено", Details = $"#{id}" };
+                                    Gateway.GuiTestLogger.Log("memory_forget", id, "удалено", true);
+                                }
+                                else
+                                {
+                                    exec.Output = $"карточка #{id} не найдена";
+                                    exec.Log = $"memory_forget → #{id} не найдена";
+                                    exec.Card = ErrorCard("Удаление памяти", "не найдена", id);
+                                    Gateway.GuiTestLogger.Log("memory_forget", id, "не найдена", false);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            exec.Output = "ошибка: " + ex.Message;
+                            exec.Log = $"memory_forget → ошибка: {ex.Message}";
+                            exec.Card = ErrorCard("Удаление памяти", ex.Message, id);
+                            Gateway.GuiTestLogger.Log("memory_forget", id ?? "all", "ошибка " + ex.Message, false);
+                        }
+                        return exec;
+                    }
 default:
 exec.Output = $"Неизвестный инструмент: {c.Name}";
 exec.Log = $"{c.Name} → неизвестный";

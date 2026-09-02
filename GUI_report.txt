@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : GUI
-  GENERATED      : 02.09.2026 19:13:59
+  GENERATED      : 02.09.2026 19:24:42
   PATH           : C:\Users\Пользователь\Desktop\GUI
 ================================================================
 
@@ -38,6 +38,8 @@ C:\Users\Пользователь\Desktop\GUI
 |   +---backup_20260902_142632
 |   |   +---GuiDiagnostics.cs.bak
 |   |   \---HubSettingsPage.xaml.cs.bak
+|   +---backup_r1_20260902_192242
+|   |   \---GuiTestRunner.cs.bak
 |   +---backup_ui_20260902_184454
 |   |   +---HubSettingsPage.xaml.bak
 |   |   \---HubSettingsPage.xaml.cs.bak
@@ -66,7 +68,8 @@ C:\Users\Пользователь\Desktop\GUI
 |   |   |   +---GatewayStateAutoBind.cs
 |   |   |   +---GatewayStateExec.cs
 |   |   |   +---GatewayStateTools.cs
-|   |   |   \---GuiDiagnostics.cs
+|   |   |   +---GuiDiagnostics.cs
+|   |   |   \---MemoryStore.cs
 |   |   +---hub
 |   |   |   +---GuiTestRunner.cs
 |   |   |   +---HubArt.cs
@@ -130,7 +133,7 @@ C:\Users\Пользователь\Desktop\GUI
 |           \---unknown_20260822.log
 +---push-to-github.bat
 +---release
-|   \---LERON-2.7.1-win-x64.zip
+|   \---LERON-2.7.2-win-x64.zip
 +---release-to-github.bat
 +---sending and receiving
 |   +---config.json
@@ -17284,8 +17287,306 @@ lock (_lock) { File.AppendAllText(LogPath, msg, Encoding.UTF8); }
 
 
 ------------------------------------------------
+FILE: program\main\gateway\MemoryStore.cs
+SIZE: 10684 bytes
+------------------------------------------------
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace MainApp;
+
+/// <summary>
+/// Хранилище памяти проекта (.leron/memory.json).
+/// Thread-safe через lock. Все операции только здесь.
+/// </summary>
+public static class MemoryStore
+{
+    private static readonly object _lock = new();
+    private static readonly string[] ValidCats = { "choices", "facts", "files", "notes" };
+    private const int MAX_TEXT = 600;
+    private const int MAX_SHORT = 5;
+
+    public static string MemPath(string root)
+    {
+        if (string.IsNullOrWhiteSpace(root)) throw new ArgumentException("root пустой");
+        // используем существующий EnsureLeronFolder из проекта
+        var t = typeof(MemoryStore).Assembly.GetTypes()
+            .FirstOrDefault(t => t.Name == "LeronFiles" || t.Name == "LeronMeta" || t.Name == "FileIndexer" || t.Name.Contains("Leron"));
+        // прямой вызов через рефлексию, чтобы не делать жёсткую зависимость
+        foreach (var tp in typeof(MemoryStore).Assembly.GetTypes())
+        {
+            var m = tp.GetMethod("EnsureLeronFolder", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            if (m != null && m.GetParameters().Length == 1) { try { m.Invoke(null, new object?[] { root }); break; } catch { } }
+        }
+        var dir = Path.Combine(root, ".leron");
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "memory.json");
+    }
+
+    public static JsonObject Load(string root)
+    {
+        lock (_lock)
+        {
+            var path = MemPath(root);
+            if (!File.Exists(path)) return Empty();
+            try
+            {
+                var json = File.ReadAllText(path, Encoding.UTF8);
+                if (string.IsNullOrWhiteSpace(json)) return Empty();
+                var node = JsonNode.Parse(json);
+                var obj = node as JsonObject;
+                if (obj == null) return Empty();
+                if (!obj.ContainsKey("long_term")) obj["long_term"] = new JsonArray();
+                if (!obj.ContainsKey("short_term")) obj["short_term"] = new JsonArray();
+                return obj;
+            }
+            catch { return Empty(); }
+        }
+    }
+
+    public static void Save(string root, JsonObject mem)
+    {
+        lock (_lock)
+        {
+            var path = MemPath(root);
+            var opts = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+            File.WriteAllText(path, mem.ToJsonString(opts), Encoding.UTF8);
+        }
+    }
+
+    public static JsonObject Empty()
+    {
+        return new JsonObject
+        {
+            ["version"] = 1,
+            ["long_term"] = new JsonArray(),
+            ["short_term"] = new JsonArray()
+        };
+    }
+
+    /// <summary>Поиск по title+text (регистронезависимо).</summary>
+    public static List<JsonObject> Search(string root, string query, int limit = 5)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return new List<JsonObject>();
+        var q = query.Trim().ToLower();
+        var mem = Load(root);
+        var arr = mem["long_term"] as JsonArray ?? new JsonArray();
+        var result = new List<JsonObject>();
+        foreach (var n in arr)
+        {
+            var o = n as JsonObject;
+            if (o == null) continue;
+            var title = (o["title"]?.ToString() ?? "").ToLower();
+            var text = (o["text"]?.ToString() ?? "").ToLower();
+            if (title.Contains(q) || text.Contains(q))
+            {
+                var snippet = Snippet(o["text"]?.ToString() ?? "", 120);
+                var copy = new JsonObject
+                {
+                    ["id"] = o["id"]?.ToString(),
+                    ["cat"] = o["cat"]?.ToString(),
+                    ["title"] = o["title"]?.ToString(),
+                    ["snippet"] = snippet
+                };
+                result.Add(copy);
+                if (result.Count >= limit) break;
+            }
+        }
+        return result;
+    }
+
+    /// <summary>Полные карточки по списку id.</summary>
+    public static List<JsonObject> Read(string root, IEnumerable<string> ids)
+    {
+        if (ids == null) return new List<JsonObject>();
+        var want = new HashSet<string>(ids.Where(x => !string.IsNullOrEmpty(x)));
+        if (want.Count == 0) return new List<JsonObject>();
+        var mem = Load(root);
+        var arr = mem["long_term"] as JsonArray ?? new JsonArray();
+        var result = new List<JsonObject>();
+        foreach (var n in arr)
+        {
+            var o = n as JsonObject;
+            if (o == null) continue;
+            var id = o["id"]?.ToString();
+            if (id != null && want.Contains(id))
+            {
+                // deepcopy через JSON round-trip
+                var copy = JsonNode.Parse(o.ToJsonString()) as JsonObject;
+                if (copy != null) result.Add(copy);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>Создать или обновить карточку. Возвращает id.</summary>
+    public static string Upsert(string root, string? id, string cat, string title, string text, IEnumerable<string>? links)
+    {
+        if (!ValidCats.Contains(cat)) throw new ArgumentException($"cat '{cat}' недопустим (разрешены: {string.Join(",", ValidCats)})");
+        if (string.IsNullOrWhiteSpace(title)) throw new ArgumentException("title пустой");
+        title = title.Trim();
+        text = Truncate((text ?? "").Trim(), MAX_TEXT);
+
+        var now = DateTime.UtcNow.ToString("o");
+        var mem = Load(root);
+        var arr = mem["long_term"] as JsonArray ?? new JsonArray();
+
+        var linkArr = new JsonArray();
+        if (links != null) foreach (var l in links) if (!string.IsNullOrEmpty(l)) linkArr.Add(l);
+
+        // обновление по id
+        if (!string.IsNullOrEmpty(id))
+        {
+            for (int i = 0; i < arr.Count; i++)
+            {
+                var o = arr[i] as JsonObject;
+                if (o == null) continue;
+                if (o["id"]?.ToString() == id)
+                {
+                    arr[i] = new JsonObject
+                    {
+                        ["id"] = id,
+                        ["cat"] = cat,
+                        ["title"] = title,
+                        ["text"] = text,
+                        ["links"] = linkArr,
+                        ["created"] = o["created"]?.ToString() ?? now,
+                        ["updated"] = now
+                    };
+                    Save(root, mem);
+                    return id;
+                }
+            }
+        }
+
+        // новая карточка
+        var newId = NextId(arr);
+        arr.Add(new JsonObject
+        {
+            ["id"] = newId,
+            ["cat"] = cat,
+            ["title"] = title,
+            ["text"] = text,
+            ["links"] = linkArr,
+            ["created"] = now,
+            ["updated"] = now
+        });
+        Save(root, mem);
+        return newId;
+    }
+
+    /// <summary>Удалить карточку по id. Возвращает true если удалена.</summary>
+    public static bool Forget(string root, string id)
+    {
+        if (string.IsNullOrEmpty(id)) return false;
+        var mem = Load(root);
+        var arr = mem["long_term"] as JsonArray ?? new JsonArray();
+        for (int i = 0; i < arr.Count; i++)
+        {
+            if (arr[i] is JsonObject o && o["id"]?.ToString() == id)
+            {
+                arr.RemoveAt(i);
+                Save(root, mem);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Удалить всю память.</summary>
+    public static void ForgetAll(string root)
+    {
+        var mem = Empty();
+        Save(root, mem);
+    }
+
+    /// <summary>Добавить краткосрочную запись. Держит ровно MAX_SHORT (5).</summary>
+    public static void PushShort(string root, string user, string ai)
+    {
+        var mem = Load(root);
+        var arr = mem["short_term"] as JsonArray ?? new JsonArray();
+        arr.Add(new JsonObject
+        {
+            ["user"] = Truncate((user ?? "").Trim(), 300),
+            ["ai"] = Truncate((ai ?? "").Trim(), 500),
+            ["time"] = DateTime.Now.ToString("HH:mm")
+        });
+        while (arr.Count > MAX_SHORT) arr.RemoveAt(0);
+        Save(root, mem);
+    }
+
+    /// <summary>Сводка для промпта: счётчики по категориям.</summary>
+    public static (int total, Dictionary<string, int> byCat) Summary(string root)
+    {
+        var mem = Load(root);
+        var arr = mem["long_term"] as JsonArray ?? new JsonArray();
+        var byCat = new Dictionary<string, int>();
+        foreach (var c in ValidCats) byCat[c] = 0;
+        foreach (var n in arr)
+        {
+            if (n is JsonObject o)
+            {
+                var c = o["cat"]?.ToString();
+                if (c != null && byCat.ContainsKey(c)) byCat[c]++;
+            }
+        }
+        return (arr.Count, byCat);
+    }
+
+    /// <summary>Краткосрочные записи для промпта.</summary>
+    public static List<JsonObject> ShortTerm(string root)
+    {
+        var mem = Load(root);
+        var arr = mem["short_term"] as JsonArray ?? new JsonArray();
+        var res = new List<JsonObject>();
+        foreach (var n in arr) if (n is JsonObject o) res.Add(o);
+        return res;
+    }
+
+    // ── helpers ──
+    private static string NextId(JsonArray arr)
+    {
+        int max = 0;
+        foreach (var n in arr)
+        {
+            if (n is JsonObject o)
+            {
+                var id = o["id"]?.ToString() ?? "";
+                if (id.StartsWith("m") && int.TryParse(id.Substring(1), out var num) && num > max)
+                    max = num;
+            }
+        }
+        return "m" + (max + 1).ToString("D3");
+    }
+
+    private static string Snippet(string s, int max)
+    {
+        s = (s ?? "").Trim().Replace("\r", " ").Replace("\n", " ");
+        if (s.Length <= max) return s;
+        return s.Substring(0, max) + "…";
+    }
+
+    private static string Truncate(string s, int max)
+    {
+        if (s == null) return "";
+        return s.Length <= max ? s : s.Substring(0, max);
+    }
+}
+
+
+------------------------------------------------
 FILE: program\main\hub\GuiTestRunner.cs
-SIZE: 26686 bytes
+SIZE: 32284 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -17359,6 +17660,9 @@ public static class GuiTestRunner
 
         Report("Блок E: стресс и ошибки...", 0.85);
         await BlockE(sb, results);
+
+        Report("Блок M: память...", 0.95);
+        await BlockM(sb, results);
 
         int total = results.Count;
         int ok = results.Count(r => r.Success || r.ExpectedFail);
@@ -17787,6 +18091,97 @@ public static class GuiTestRunner
             );
             sw.Stop();
             Assert(sw.ElapsedMilliseconds < 300, $"заняло {sw.ElapsedMilliseconds}мс");
+        });
+
+        Cleanup(tmp);
+        sb.AppendLine();
+    }
+
+
+    // ════════════════════════════════════════════════════════════
+    //  БЛОК M — ПАМЯТЬ
+    // ════════════════════════════════════════════════════════════
+    private static async Task BlockM(StringBuilder sb, List<GuiTestResult> res)
+    {
+        sb.AppendLine("-- БЛОК M: ПАМЯТЬ --");
+        var tmp = MakeTempProject("M");
+
+        await Run(sb, res, "M1", "Upsert новой карточки", "M", async () =>
+        {
+            var id = MemoryStore.Upsert(tmp, null, "facts", "Тестовый факт", "Содержание факта о проекте", null);
+            Assert(!string.IsNullOrEmpty(id), "id пустой");
+            Assert(id.StartsWith("m"), "id не начинается с m");
+            Assert(id == "m001", $"id должен быть m001, получено {id}");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M2", "Read по id", "M", async () =>
+        {
+            var id = MemoryStore.Upsert(tmp, null, "choices", "Выбор темы", "Пользователь выбрал тёмную тему", null);
+            var cards = MemoryStore.Read(tmp, new[] { id });
+            Assert(cards.Count == 1, $"ожидал 1 карточку, получил {cards.Count}");
+            Assert(cards[0]["title"]?.ToString() == "Выбор темы", "title неверный");
+            Assert(cards[0]["cat"]?.ToString() == "choices", "cat неверный");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M3", "Search по слову", "M", async () =>
+        {
+            MemoryStore.Upsert(tmp, null, "notes", "Заметка LERON", "уникальное слово ZEBRA123 для поиска", null);
+            MemoryStore.Upsert(tmp, null, "notes", "Другая заметка", "совсем другое содержимое", null);
+            var found = MemoryStore.Search(tmp, "ZEBRA123", 10);
+            Assert(found.Count == 1, $"найдено {found.Count}, ожидал 1");
+            Assert(found[0]["title"]?.ToString() == "Заметка LERON", "нашли не ту карточку");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M4", "Upsert обновление + updated", "M", async () =>
+        {
+            var id = MemoryStore.Upsert(tmp, null, "facts", "Старый факт", "старое содержимое", null);
+            var before = MemoryStore.Read(tmp, new[] { id })[0];
+            var oldUpdated = before["updated"]?.ToString();
+            await Task.Delay(50);
+            MemoryStore.Upsert(tmp, id, "facts", "Новый факт", "обновлённое содержимое", null);
+            var after = MemoryStore.Read(tmp, new[] { id })[0];
+            Assert(after["title"]?.ToString() == "Новый факт", "title не обновился");
+            Assert(after["text"]?.ToString() == "обновлённое содержимое", "text не обновился");
+            var newUpdated = after["updated"]?.ToString();
+            Assert(newUpdated != oldUpdated, "updated не изменился");
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M5", "Forget + ForgetAll", "M", async () =>
+        {
+            var tmp2 = MakeTempProject("M5");
+            var id1 = MemoryStore.Upsert(tmp2, null, "facts", "Факт 1", "текст 1", null);
+            var id2 = MemoryStore.Upsert(tmp2, null, "facts", "Факт 2", "текст 2", null);
+            Assert(MemoryStore.Forget(tmp2, id1), "Forget вернул false");
+            var afterForget = MemoryStore.Read(tmp2, new[] { id1 });
+            Assert(afterForget.Count == 0, "карточка не удалилась");
+            var beforeAll = MemoryStore.Read(tmp2, new[] { id2 });
+            Assert(beforeAll.Count == 1, "вторая карточка пропала раньше времени");
+            MemoryStore.ForgetAll(tmp2);
+            var afterAll = MemoryStore.Search(tmp2, "Факт", 10);
+            Assert(afterAll.Count == 0, "после ForgetAll что-то осталось");
+            Cleanup(tmp2);
+            await Task.CompletedTask;
+        });
+
+        await Run(sb, res, "M6", "PushShort: ровно 5 записей", "M", async () =>
+        {
+            var tmp3 = MakeTempProject("M6");
+            for (int i = 1; i <= 7; i++)
+                MemoryStore.PushShort(tmp3, $"запрос {i}", $"ответ {i}");
+            var mem = MemoryStore.Load(tmp3);
+            var arr = mem["short_term"] as JsonArray;
+            Assert(arr != null, "short_term == null");
+            Assert(arr!.Count == 5, $"ожидал 5, получил {arr.Count}");
+            var first = arr[0] as JsonObject;
+            Assert(first?["user"]?.ToString() == "запрос 3", $"первая запись {first?["user"]}, ожидал 'запрос 3'");
+            var last = arr[4] as JsonObject;
+            Assert(last?["user"]?.ToString() == "запрос 7", $"последняя {last?["user"]}, ожидал 'запрос 7'");
+            Cleanup(tmp3);
+            await Task.CompletedTask;
         });
 
         Cleanup(tmp);
@@ -21435,7 +21830,7 @@ SIZE: 16116 bytes
       "Name": "GUI_test",
       "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\GUI_test",
       "Role": "team",
-      "LastOpened": "2026-09-02T19:00:08.7032465\u002B03:00"
+      "LastOpened": "2026-09-02T19:23:59.5440415\u002B03:00"
     }
   ],
   "HubLayout": {
@@ -21448,8 +21843,8 @@ SIZE: 16116 bytes
     "Nodes": [
       {
         "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\GUI_test",
-        "X": 755,
-        "Y": 994.5,
+        "X": 754,
+        "Y": 995.5,
         "PointId": "pt-bba002c4"
       }
     ],
@@ -21918,6 +22313,6 @@ echo   [OK] Лог сохранён: %LOG_FILE%
 pause
 
 ==================== SUMMARY ====================
-  Source files : 53
+  Source files : 54
   Report file  : GUI_report.txt
 ================================================================
