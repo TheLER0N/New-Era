@@ -1,6 +1,6 @@
 ﻿================================================================
   PROJECT REPORT : GUI
-  GENERATED      : 02.09.2026 20:32:09
+  GENERATED      : 03.09.2026 23:25:10
   PATH           : C:\Users\Пользователь\Desktop\GUI
 ================================================================
 
@@ -10,6 +10,11 @@ C:\Users\Пользователь\Desktop\GUI
 +---.gitignore
 +---.leron
 |   \---file_index.json
++---.leron_update_backup
+|   +---GatewayStateAgent.cs.20260903_230919.bak
+|   +---MainWindowCards.cs.20260903_230919.bak
+|   +---MemoryPage.xaml.cs.20260903_230919.bak
+|   \---MemoryStore.cs.20260903_230919.bak
 +---AGENT_GUIDE.md
 +---GUI result
 |   +---LeronCli.deps.json
@@ -106,7 +111,12 @@ C:\Users\Пользователь\Desktop\GUI
 |   |   +---MainApp.csproj
 |   |   +---memory
 |   |   |   +---MemoryPage.xaml
-|   |   |   \---MemoryPage.xaml.cs
+|   |   |   +---MemoryPage.xaml.bak_r6
+|   |   |   +---MemoryPage.xaml.bak_syntax
+|   |   |   +---MemoryPage.xaml.cs
+|   |   |   +---MemoryPage.xaml.cs.bak_r6
+|   |   |   +---MemoryPage.xaml.cs.bak_syntax
+|   |   |   \---MemoryPageDesign.cs
 |   |   +---roles
 |   |   |   +---RolePickWindow.xaml
 |   |   |   \---RolePickWindow.xaml.cs
@@ -155,7 +165,8 @@ C:\Users\Пользователь\Desktop\GUI
 |           \---unknown_20260822.log
 +---push-to-github.bat
 +---release
-|   \---LERON-2.7.2-win-x64.zip
+|   +---LERON-2.7.2-win-x64.zip
+|   \---LERON-2.8.0-win-x64.zip
 +---release-to-github.bat
 +---sending and receiving
 |   +---config.json
@@ -166,6 +177,7 @@ C:\Users\Пользователь\Desktop\GUI
 |       +---agent_20260830.log
 |       +---agent_20260901.log
 |       +---agent_20260902.log
+|       +---agent_20260903.log
 |       +---coder_20260828.log
 |       +---coder_20260829.log
 |       \---coder_20260902.log
@@ -13554,7 +13566,7 @@ switch (e.Key)
 
 ------------------------------------------------
 FILE: program\main\chat\MainWindowCards.cs
-SIZE: 27910 bytes
+SIZE: 30123 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -14033,66 +14045,152 @@ var border = new Border
         ChatScroll.ScrollToEnd();
     }
 
-    private void AddUserInputCard(AgentRunResponse r)
+    // [LERON UPDATE] AddUserInputCard: all questions shown at once
+private void AddUserInputCard(AgentRunResponse r)
+{
+    var border = new Border
     {
-var border = new Border
+        Background = B("#07141d"),
+        BorderBrush = B("#12404f"),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(10),
+        Padding = new Thickness(14),
+        Margin = new Thickness(CardLeft, 8, 0, 8)
+    };
+
+    var sp = new StackPanel();
+    border.Child = sp;
+
+    bool hasMany = r.Questions != null && r.Questions.Count > 1;
+    sp.Children.Add(CardText(hasMany ? "❓ Вопросы пользователю" : "❓ Вопрос пользователю", "#00d9ff", 16, true));
+    sp.Children.Add(CardText("Ответь на все пункты и нажми «Ответить». Карточка закроется только после отправки.", "#6f96a8", 12));
+
+    if (r.StepsUsed.HasValue && r.StepLimit.HasValue)
+        sp.Children.Add(CardText($"Использовано: {r.StepsUsed.Value}/{r.StepLimit.Value}", "#eaf6ff", 13));
+
+    if (!string.IsNullOrWhiteSpace(r.Question))
+        sp.Children.Add(CardText(r.Question, "#eaf6ff", 14));
+
+    var inputs = new System.Collections.Generic.List<System.Tuple<string, string, TextBox>>();
+
+    if (r.Questions != null && r.Questions.Count > 0)
+    {
+        int qi = 1;
+
+        foreach (var q in r.Questions)
         {
-            Background = B("#07141d"), BorderBrush = B("#12404f"),
-            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(12), Margin = new Thickness(CardLeft, 6, 0, 6)
-        };
-        var sp = new StackPanel();
-        sp.Children.Add(CardText("❓ Вопрос пользователю", "#00d9ff", 16, true));
-        var statusTb = CardText("ожидает ответа", "#6f96a8", 14);
-        sp.Children.Add(statusTb);
-        sp.Children.Add(CardText(r.Question ?? "Нужна дополнительная информация.", "#eaf6ff", 15));
-        if (r.StepsUsed.HasValue && r.StepLimit.HasValue)
-            sp.Children.Add(CardText($"запросы: {r.StepsUsed}/{r.StepLimit}", "#8fe6ff", 13));
-        if (r.Options != null)
-        {
-            foreach (var opt in r.Options)
+            if (q == null) continue;
+
+            var qId = string.IsNullOrWhiteSpace(q.Id) ? $"q{qi}" : q.Id;
+            var qText = q.Text ?? "";
+
+            sp.Children.Add(new TextBlock
             {
-                var o = opt;
-                if (string.IsNullOrWhiteSpace(o)) continue;
-                sp.Children.Add(MakeButton(o, "#12404f", "#00d9ff", () =>
-                    AnswerAndClose(border, new
-                    {
-                        sessionId = r.SessionId, approve = true, remember = false,
-                        steps = 0, inputText = o
-                    })));
+                Text = $"[{qId}] {qText}",
+                Foreground = B("#eaf6ff"),
+                FontSize = 14,
+                FontWeight = System.Windows.FontWeights.SemiBold,
+                TextWrapping = System.Windows.TextWrapping.Wrap,
+                Margin = new Thickness(0, 10, 0, 4)
+            });
+
+            var tb = new TextBox
+            {
+                MinHeight = 32,
+                Background = B("#0a1620"),
+                Foreground = B("#eaf6ff"),
+                BorderBrush = B("#12404f"),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8, 6, 8, 6),
+                TextWrapping = System.Windows.TextWrapping.Wrap,
+                AcceptsReturn = true,
+                Tag = qId
+            };
+
+            if (q.Options != null && q.Options.Count > 0)
+            {
+                var optionsPanel = new System.Windows.Controls.WrapPanel
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    Margin = new Thickness(0, 4, 0, 4)
+                };
+
+                foreach (var opt in q.Options)
+                {
+                    if (string.IsNullOrWhiteSpace(opt)) continue;
+
+                    var optBtn = MakeButton(opt, "#12404f", "#8fe6ff", () => { tb.Text = opt; });
+                    optBtn.Margin = new Thickness(0, 0, 6, 6);
+                    optionsPanel.Children.Add(optBtn);
+                }
+
+                sp.Children.Add(optionsPanel);
             }
+
+            sp.Children.Add(tb);
+            inputs.Add(System.Tuple.Create(qId, qText, tb));
+            qi++;
         }
-        var box = new TextBox
-        {
-            Background = B("#050b12"), Foreground = B("#eaf6ff"),
-            BorderBrush = B("#12404f"), BorderThickness = new Thickness(1),
-            Padding = new Thickness(8), FontFamily = Theme.Font(), FontSize = 16,
-            Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap
-        };
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
-        };
-        buttons.Children.Add(MakeButton("Ответить", "#12404f", "#00d9ff", () =>
-            AnswerAndClose(border, new
-            {
-                sessionId = r.SessionId, approve = true, remember = false,
-                steps = 0, inputText = box.Text.Trim()
-            })));
-        buttons.Children.Add(MakeButton("Пропустить", "#1a0f14", "#e94560", () =>
-            AnswerAndClose(border, new
-            {
-                sessionId = r.SessionId, approve = false, remember = false,
-                steps = 0, inputText = (string?)null
-            })));
-        sp.Children.Add(box);
-        sp.Children.Add(buttons);
-        border.Child = sp;
-        border.Tag = statusTb;
-        _interactiveCards.Add(border);
-        ChatMessages.Children.Add(border);
-        ChatScroll.ScrollToEnd();
     }
+    else
+    {
+        var tb = new TextBox
+        {
+            MinHeight = 34,
+            Background = B("#0a1620"),
+            Foreground = B("#eaf6ff"),
+            BorderBrush = B("#12404f"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 6, 8, 6),
+            TextWrapping = System.Windows.TextWrapping.Wrap,
+            AcceptsReturn = true
+        };
+
+        sp.Children.Add(tb);
+        inputs.Add(System.Tuple.Create("answer", r.Question ?? "", tb));
+    }
+
+    var buttons = new StackPanel
+    {
+        Orientation = System.Windows.Controls.Orientation.Horizontal,
+        Margin = new Thickness(0, 12, 0, 0)
+    };
+
+    var sendBtn = MakeButton("✅ Ответить на все", "#12404f", "#00d9ff", () =>
+    {
+        var sbAns = new System.Text.StringBuilder();
+        var answers = new System.Collections.Generic.Dictionary<string, string>();
+
+        sbAns.AppendLine("Ответы пользователя:");
+
+        foreach (var inp in inputs)
+        {
+            var val = inp.Item3 != null ? (inp.Item3.Text ?? "").Trim() : "";
+            if (string.IsNullOrWhiteSpace(val)) val = "без ответа";
+
+            answers[inp.Item1] = val;
+            sbAns.AppendLine($"{inp.Item1}: {val}");
+        }
+
+        AnswerAndClose(border, new
+        {
+            sessionId = r.SessionId,
+            approve = true,
+            remember = false,
+            inputText = sbAns.ToString(),
+            answers = answers,
+            source = "user_input_card"
+        });
+    });
+
+    buttons.Children.Add(sendBtn);
+    sp.Children.Add(buttons);
+
+    _interactiveCards.Add(border);
+    ChatMessages.Children.Add(border);
+    ChatScroll.ScrollToEnd();
+}
+
 
     private void AddOutsideCard(AgentRunResponse r)
     {
@@ -15429,7 +15527,7 @@ internal sealed partial class GatewayState
 
 ------------------------------------------------
 FILE: program\main\gateway\GatewayStateAgent.cs
-SIZE: 48595 bytes
+SIZE: 52236 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -15655,6 +15753,60 @@ sb.AppendLine("  - Ответы на вопросы пользователя");
 sb.AppendLine("  - Простые действия (rename_file, delete_file)");
 sb.AppendLine("Это ускоряет работу — размышление только когда действительно нужно.");
             sb.AppendLine("- Читай и редактируй, когда сам считаешь нужным; НЕСКОЛЬКО инструментов в ОДНОМ ответе — цепочкой JSON-объектов подряд в одном сообщении. Это экономит запросы.");
+// [LERON UPDATE] Auto memory search based on last user query
+try
+{
+    string __memLastUser = "";
+    var __memLastMsg = s.Messages.LastOrDefault();
+    var __memLastObj = __memLastMsg as System.Text.Json.Nodes.JsonObject;
+
+    if (__memLastObj != null)
+    {
+        var __memRole = __memLastObj["role"]?.ToString() ?? "";
+        var __memContent = __memLastObj["content"]?.ToString() ?? "";
+
+        if (__memRole == "user" && !string.IsNullOrWhiteSpace(__memContent))
+            __memLastUser = __memContent;
+    }
+
+    if (!string.IsNullOrWhiteSpace(__memLastUser))
+    {
+        var __memQuery = __memLastUser.Length > 180 ? __memLastUser.Substring(0, 180) : __memLastUser;
+        var __memAuto = MemoryStore.Search(s.Root, __memQuery, 3);
+
+        if (__memAuto.Count > 0)
+        {
+            sb.AppendLine("Автопоиск памяти по последнему запросу:");
+
+            foreach (var __card in __memAuto)
+            {
+                var __id = __card["id"]?.ToString() ?? "?";
+                var __cat = __card["cat"]?.ToString() ?? "?";
+                var __title = __card["title"]?.ToString() ?? "?";
+                var __text = __card["text"]?.ToString() ?? "";
+
+                if (__text.Length > 220)
+                    __text = __text.Substring(0, 220) + "...";
+
+                sb.AppendLine($" [#{__id}] ({__cat}) {__title}: {__text}");
+            }
+
+            sb.AppendLine();
+        }
+    }
+}
+catch { }
+
+sb.AppendLine("Правила памяти:");
+sb.AppendLine("- Память используется ВСЕГДА: в первом же ответе вызови memory_search по сути последнего запроса одновременно с другими инструментами (несколько JSON-объектов в одном сообщении). Если автопоиск уже дал релевантные карточки, не дублируй тот же запрос.");
+sb.AppendLine("- Текст долгосрочной карточки <= 300 символов. Пиши коротко: 3-4 предложения максимум.");
+sb.AppendLine("- Предпочтения и выборы пользователя (тема, дизайн, режим, технологии) сохраняй в choices; факты проекта в facts; файлы/структуру в files; заметки в notes.");
+sb.AppendLine("- Если информация уточнилась или устарела — обнови существующую карточку по id через memory_write, а не создавай дубль.");
+sb.AppendLine("- Если memory_search вернул 0 результатов — отвечай по текущему контексту и файлам; не выдумывай прошлые решения.");
+sb.AppendLine("- Не дублируй file_index.json: память хранит решения/факты/предпочтения, а не описания файлов.");
+sb.AppendLine("- Связывай карточки через links по id только когда темы реально пересекаются.");
+sb.AppendLine("- memory_forget используй только если карточка полностью устарела и противоречит текущему состоянию проекта.");
+sb.AppendLine("- Краткосрочная память: фиксируй суть запроса <= 150 символов и итог ответа <= 250 символов, добавляя изменённые файлы, если они были.");
 sb.AppendLine("В режиме планирования задавай вопросы ТОЛЬКО через request_user_input — GUI покажет карточку и пользователь ответит пакетом.");
                 sb.AppendLine($"ты в режиме планирования: прочитай файлы, затем задай {s.PlanRounds} раундов уточняющих вопросов. В каждом раунде ОДИН request_user_input с массивом questions из {s.PlanMin}–{s.PlanMax} вопросов формата {{\"id\":\"q1\",\"text\":\"текст вопроса\",\"options\":[\"вариант1\",\"вариант2\"],\"allow_custom\":true}} (options — 2–4 варианта; все вопросы раунда приходят одной карточкой и пользователь отвечает одним сообщением). Пример: {{\"name\":\"request_user_input\",\"arguments\":{{\"questions\":[{{\"id\":\"q1\",\"text\":\"Какой режим игры нужен?\",\"options\":[\"Локальный\",\"Сетевой\"],\"allow_custom\":true}}]}}}}. После ответов всех раундов составь нумерованный план работ и вызови finish с планом в summary.");
             }
@@ -17620,7 +17772,7 @@ lock (_lock) { File.AppendAllText(LogPath, msg, Encoding.UTF8); }
 
 ------------------------------------------------
 FILE: program\main\gateway\MemoryStore.cs
-SIZE: 10684 bytes
+SIZE: 10716 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -17641,8 +17793,8 @@ public static class MemoryStore
 {
     private static readonly object _lock = new();
     private static readonly string[] ValidCats = { "choices", "facts", "files", "notes" };
-    private const int MAX_TEXT = 600;
-    private const int MAX_SHORT = 5;
+    private const int MAX_TEXT = 300; // LERON UPDATE
+    private const int MAX_SHORT = 5; // LERON UPDATE
 
     public static string MemPath(string root)
     {
@@ -17849,8 +18001,8 @@ public static class MemoryStore
         var arr = mem["short_term"] as JsonArray ?? new JsonArray();
         arr.Add(new JsonObject
         {
-            ["user"] = Truncate((user ?? "").Trim(), 300),
-            ["ai"] = Truncate((ai ?? "").Trim(), 500),
+            ["user"] = Truncate((user ?? "").Trim(), 150),
+            ["ai"] = Truncate((ai ?? "").Trim(), 250),
             ["time"] = DateTime.Now.ToString("HH:mm")
         });
         while (arr.Count > MAX_SHORT) arr.RemoveAt(0);
@@ -20938,7 +21090,7 @@ public static class ProjectStore
 
 ------------------------------------------------
 FILE: program\main\memory\MemoryPage.xaml
-SIZE: 8293 bytes
+SIZE: 13605 bytes
 ------------------------------------------------
 <UserControl x:Class="MainApp.Memory.MemoryPage"
 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -20990,7 +21142,9 @@ Background="#050d13" FontFamily="Consolas" Focusable="True">
 </UserControl.Resources>
 
 <Grid Background="{StaticResource BgMain}">
+<!-- ROUND 6 TOOLBAR -->
   <Grid.RowDefinitions>
+<!-- ROUND 6 TOOLBAR -->
     <RowDefinition Height="Auto"/>
     <RowDefinition Height="*"/>
     <RowDefinition Height="Auto"/>
@@ -20999,7 +21153,9 @@ Background="#050d13" FontFamily="Consolas" Focusable="True">
   <!-- ШАПКА -->
   <Border Grid.Row="0" Background="{StaticResource BgPanel}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
     <Grid>
+<!-- ROUND 6 TOOLBAR -->
       <Grid.ColumnDefinitions>
+<!-- ROUND 6 TOOLBAR -->
         <ColumnDefinition Width="Auto"/>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>
@@ -21028,7 +21184,9 @@ Background="#050d13" FontFamily="Consolas" Focusable="True">
 
   <!-- ОСНОВНОЙ КОНТЕНТ -->
   <Grid Grid.Row="1">
+<!-- ROUND 6 TOOLBAR -->
     <Grid.ColumnDefinitions>
+<!-- ROUND 6 TOOLBAR -->
       <ColumnDefinition Width="200"/>
       <ColumnDefinition Width="*"/>
     </Grid.ColumnDefinitions>
@@ -21073,13 +21231,16 @@ Background="#050d13" FontFamily="Consolas" Focusable="True">
     <!-- СПИСОК КАРТОЧЕК -->
     <!-- ГРАФ СВЯЗЕЙ -->
     <Grid Grid.Column="1" Margin="0,0,0,12">
+<!-- ROUND 6 TOOLBAR -->
       <Grid.RowDefinitions>
+<!-- ROUND 6 TOOLBAR -->
         <RowDefinition Height="320"/>
         <RowDefinition Height="*"/>
       </Grid.RowDefinitions>
       
       <Border Grid.Row="0" Background="{StaticResource BgCard}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="10" Margin="0,0,0,12">
         <Grid>
+<!-- ROUND 6 TOOLBAR -->
           <TextBlock Text="ГРАФ СВЯЗЕЙ" Foreground="{StaticResource Accent}" FontSize="10" FontWeight="Bold" 
                      HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,8,0,0"/>
           <Canvas x:Name="GraphCanvas" ClipToBounds="True" Background="Transparent"/>
@@ -21088,7 +21249,13 @@ Background="#050d13" FontFamily="Consolas" Focusable="True">
 
       <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0">
         <StackPanel>
-          <TextBlock Text="ДОЛГОСРОЧНАЯ ПАМЯТЬ" Foreground="{StaticResource Accent}" FontSize="11" FontWeight="Bold" Margin="0,0,0,12"/>
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+    <Button Content="+ карточка" Click="BtnAddCard_Click" Margin="0,0,6,0" Padding="10,6" Background="#12404f" Foreground="#00d9ff" BorderBrush="#00d9ff"/>
+    <Button Content="экспорт" Click="BtnExport_Click" Margin="0,0,6,0" Padding="10,6" Background="#12404f" Foreground="#00d9ff" BorderBrush="#00d9ff"/>
+    <Button Content="импорт" Click="BtnImport_Click" Margin="0,0,6,0" Padding="10,6" Background="#12404f" Foreground="#00d9ff" BorderBrush="#00d9ff"/>
+    <Button Content="забыть всё" Click="BtnForgetAll_Click" Padding="10,6" Background="#401212" Foreground="#ff4d4d" BorderBrush="#ff4d4d"/>
+</StackPanel>
+<TextBlock Text="ДОЛГОСРОЧНАЯ ПАМЯТЬ" Foreground="{StaticResource Accent}" FontSize="11" FontWeight="Bold" Margin="0,0,0,12"/>
           <StackPanel x:Name="CardsList"/>
           
           <TextBlock Text="КРАТКОСРОЧНАЯ ПАМЯТЬ" Foreground="{StaticResource Accent}" FontSize="11" FontWeight="Bold" Margin="0,20,0,12"/>
@@ -21102,13 +21269,70 @@ Background="#050d13" FontFamily="Consolas" Focusable="True">
   <Border Grid.Row="2" Background="{StaticResource BgPanel}" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="16,10">
     <TextBlock x:Name="StatusText" Text="готово" Foreground="{StaticResource TextDim}" FontSize="11.5"/>
   </Border>
-</Grid>
+
+    
+        <Border x:Name="InspectorPanel" Grid.Row="0" Grid.RowSpan="3" Visibility="Collapsed" Background="#CC050d13" HorizontalAlignment="Right" Width="320">
+            <Border Background="#0a1620" BorderBrush="#12404f" BorderThickness="1" CornerRadius="10" Margin="10" Padding="14">
+                <StackPanel>
+                    <Grid>
+                        <TextBlock x:Name="InspectorTitle" Text="" Foreground="#eaf6ff" FontSize="14" FontWeight="Bold" TextWrapping="Wrap" Margin="0,0,28,0"/>
+                        <Button Content="✕" Click="InspectorClose_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Foreground="#7d93a5" BorderThickness="0" FontSize="14" Padding="4,2" Cursor="Hand"/>
+                    </Grid>
+
+                    <TextBlock x:Name="InspectorId" Text="" Foreground="#7d93a5" FontSize="11" Margin="0,4,0,0"/>
+
+                    <Border x:Name="InspectorCatBadge" Background="#12404f33" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" Margin="0,6,0,0">
+                        <TextBlock x:Name="InspectorCat" Text="" Foreground="#00d9ff" FontSize="11"/>
+                    </Border>
+
+                    <TextBlock x:Name="InspectorText" Text="" Foreground="#eaf6ff" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+
+                    <TextBlock Text="Связи:" Foreground="#7d93a5" FontSize="11" Margin="0,8,0,2"/>
+                    <TextBlock x:Name="InspectorLinks" Text="" Foreground="#eaf6ff" FontSize="11" TextWrapping="Wrap"/>
+
+                    <TextBlock x:Name="InspectorTime" Text="" Foreground="#7d93a5" FontSize="10" Margin="0,8,0,0"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="✎" Click="InspectorEdit_Click" Margin="0,0,8,0" Padding="10,6" Background="#12404f" Foreground="#00d9ff" BorderBrush="#00d9ff" Cursor="Hand"/>
+                        <Button Content="✖" Click="InspectorDelete_Click" Padding="10,6" Background="#401212" Foreground="#ff4d4d" BorderBrush="#ff4d4d" Cursor="Hand"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+    
+        <Border x:Name="FormOverlay" Grid.Row="0" Grid.RowSpan="3" Visibility="Collapsed" Background="#CC000000">
+            <Border Background="#0a1620" BorderBrush="#12404f" BorderThickness="1" CornerRadius="10" Width="420" Padding="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel>
+                    <TextBlock x:Name="FormTitle" Text="" Foreground="#00d9ff" FontSize="16" FontWeight="Bold" Margin="0,0,0,16"/>
+
+                    <TextBlock Text="Категория" Foreground="#7d93a5" FontSize="12" Margin="0,0,0,4"/>
+                    <ComboBox x:Name="FormCat" Margin="0,0,0,12" SelectedIndex="0">
+                        <ComboBoxItem Tag="choices" Content="choices"/>
+                        <ComboBoxItem Tag="facts" Content="facts"/>
+                        <ComboBoxItem Tag="files" Content="files"/>
+                        <ComboBoxItem Tag="notes" Content="notes"/>
+                    </ComboBox>
+
+                    <TextBlock Text="Заголовок" Foreground="#7d93a5" FontSize="12" Margin="0,0,0,4"/>
+                    <TextBox x:Name="FormTitleBox" Margin="0,0,0,12" Padding="8,6" Background="#050d13" Foreground="#eaf6ff" BorderBrush="#12404f" BorderThickness="1"/>
+
+                    <TextBlock Text="Текст" Foreground="#7d93a5" FontSize="12" Margin="0,0,0,4"/>
+                    <TextBox x:Name="FormTextBox" Margin="0,0,0,16" Padding="8,6" Height="120" Background="#050d13" Foreground="#eaf6ff" BorderBrush="#12404f" BorderThickness="1" TextWrapping="Wrap" AcceptsReturn="True"/>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Отмена" Click="FormCancel_Click" Margin="0,0,8,0" Padding="12,8" Background="Transparent" Foreground="#7d93a5" BorderBrush="#12404f" BorderThickness="1" Cursor="Hand"/>
+                        <Button Content="Сохранить" Click="FormSave_Click" Padding="12,8" Background="#12404f" Foreground="#00d9ff" BorderBrush="#00d9ff" BorderThickness="1" Cursor="Hand"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
 </UserControl>
 
 
 ------------------------------------------------
 FILE: program\main\memory\MemoryPage.xaml.cs
-SIZE: 22837 bytes
+SIZE: 27448 bytes
 ------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -21129,7 +21353,9 @@ namespace MainApp.Memory
     {
         public event Action? BackRequested;
         private string _root = "";
-        private string _currentFilter = "all";`n        private string? _selectedId = null;`n        private bool _isEditing = false;
+        private string _currentFilter = "all";
+        private string? _selectedId = null;
+        private bool _isEditing = false;
 
         private static SolidColorBrush B(string h) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(h));
         private static readonly Dictionary<string, string> CatColors = new Dictionary<string, string>
@@ -21142,7 +21368,7 @@ namespace MainApp.Memory
         {
             InitializeComponent();
             KeyDown += OnKeyDown;
-        }
+         ApplyLeronMemoryDesign(); }
 
         public void Load(string root)
         {
@@ -21374,22 +21600,6 @@ namespace MainApp.Memory
                 var cards = MemoryStore.Read(_root, new[] { id });
                 if (cards.Count == 0) return;
                 var card = cards[0];
-                var title = card["title"]?.ToString() ?? "";
-                var text = card["text"]?.ToString() ?? "";
-                var links = card["links"] as JsonArray;
-                var linkStr = links != null && links.Count > 0 ? "\n\nСвязи: " + string.Join(", ", links) : "";
-                MessageBox.Show($"{text}{linkStr}", title, MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch { }
-        }
-
-                private void ShowCardDetail(string id)
-        {
-            try
-            {
-                var cards = MemoryStore.Read(_root, new[] { id });
-                if (cards.Count == 0) return;
-                var card = cards[0];
                 
                 _selectedId = id;
                 InspectorTitle.Text = card["title"]?.ToString() ?? "";
@@ -21610,6 +21820,221 @@ namespace MainApp.Memory
         private void OnKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Escape) BackRequested?.Invoke();
+        }
+
+        // === ROUND 6: Management & Export/Import ===
+        private string GetRoot() {
+            try {
+                var field = this.GetType().GetField("_root", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+                if (field != null) return field.GetValue(this) as string;
+                var prop = this.GetType().GetProperty("Root", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                if (prop != null) return prop.GetValue(this) as string;
+                return System.IO.Directory.GetCurrentDirectory();
+            } catch { return System.IO.Directory.GetCurrentDirectory(); }
+        }
+
+        private void SafeRefresh() {
+            try {
+                foreach (var mName in new[] { "RefreshAll", "LoadData", "Refresh", "UpdateGraph", "LoadMemory" }) {
+                    var method = this.GetType().GetMethod(mName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    if (method != null) { method.Invoke(this, null); return; }
+                }
+            } catch {}
+        }
+
+        private void BtnAdd_Click(object sender, RoutedEventArgs e) => OpenEditor(null);
+        private void BtnEdit_Click(object sender, RoutedEventArgs e)
+        {
+            dynamic ctx = null;
+            var lb = FindVisualChild<System.Windows.Controls.ListBox>(this);
+            if (lb?.SelectedItem != null) ctx = lb.SelectedItem;
+            OpenEditor(ctx);
+        }
+        private void BtnDelete_Click(object sender, RoutedEventArgs e)
+        {
+            dynamic ctx = null;
+            var lb = FindVisualChild<System.Windows.Controls.ListBox>(this);
+            if (lb?.SelectedItem != null) ctx = lb.SelectedItem;
+            if (ctx != null) {
+                string id = ctx.Id;
+                MemoryStore.Forget(GetRoot(), id);
+                SafeRefresh();
+            }
+        }
+
+        private T FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is T t) return t;
+                var result = FindVisualChild<T>(child);
+                if (result != null) return result;
+            }
+            return null;
+        }
+
+        private void OpenEditor(dynamic existing)
+        {
+            var win = new Window { Title = existing == null ? "Новая карточка" : "Редактировать", Width = 400, Height = 350, WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Window.GetWindow(this) };
+            var panel = new StackPanel { Margin = new Thickness(15) };
+            var cbCat = new System.Windows.Controls.ComboBox { Margin = new Thickness(0,0,0,10) };
+            cbCat.Items.Add("choices"); cbCat.Items.Add("facts"); cbCat.Items.Add("files"); cbCat.Items.Add("notes");
+            try { cbCat.SelectedItem = existing?.Cat ?? "notes"; } catch { cbCat.SelectedItem = "notes"; }
+            var tbTitle = new System.Windows.Controls.TextBox { Margin = new Thickness(0,0,0,10), Text = existing?.Title ?? "" };
+            var tbText = new System.Windows.Controls.TextBox { Margin = new Thickness(0,0,0,10), Text = existing?.Text ?? "", AcceptsReturn = true, Height = 120, TextWrapping = TextWrapping.Wrap };
+            var btnSave = new System.Windows.Controls.Button { Content = "Сохранить", Height = 30 };
+            btnSave.Click += (s, ev) => {
+                string id = existing?.Id;
+                System.Collections.Generic.List<string> links = null;
+                try { links = new System.Collections.Generic.List<string>(existing?.Links); } catch {}
+                MemoryStore.Upsert(GetRoot(), id, cbCat.SelectedItem.ToString(), tbTitle.Text, tbText.Text, links);
+                win.DialogResult = true;
+                win.Close();
+            };
+            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "Категория:" }); panel.Children.Add(cbCat);
+            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "Заголовок:" }); panel.Children.Add(tbTitle);
+            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "Текст:" }); panel.Children.Add(tbText);
+            panel.Children.Add(btnSave);
+            win.Content = panel;
+            if (win.ShowDialog() == true) SafeRefresh();
+        }
+
+
+}
+
+
+
+}
+
+
+------------------------------------------------
+FILE: program\main\memory\MemoryPageDesign.cs
+SIZE: 4898 bytes
+------------------------------------------------
+using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Threading;
+
+namespace MainApp.Memory
+{
+    // [LERON UPDATE 2] принудительный редизайн раздела памяти
+    partial class MemoryPage
+    {
+        private static readonly DependencyProperty LeronStyledProp =
+            DependencyProperty.RegisterAttached("LeronStyled", typeof(bool), typeof(MemoryPage), new PropertyMetadata(false));
+
+        private DispatcherTimer? _designTimer;
+
+        private void ApplyLeronMemoryDesign()
+        {
+            try
+            {
+                this.Background = new LinearGradientBrush(
+                    Color.FromRgb(4, 10, 16), Color.FromRgb(8, 18, 28), 90);
+
+                this.Loaded += (s, e) =>
+                {
+                    StylePass();
+                    if (_designTimer == null)
+                    {
+                        _designTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+                        _designTimer.Tick += (s2, e2) => StylePass();
+                        _designTimer.Start();
+                    }
+                };
+            }
+            catch { }
+        }
+
+        private void StylePass()
+        {
+            try { StyleTree(this); } catch { }
+        }
+
+        private void StyleTree(DependencyObject root)
+        {
+            int n = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < n; i++)
+            {
+                var el = VisualTreeHelper.GetChild(root, i);
+                try { StyleOne(el); } catch { }
+                StyleTree(el);
+            }
+        }
+
+        private void StyleOne(DependencyObject el)
+        {
+            if ((bool)el.GetValue(LeronStyledProp)) return;
+
+            if (el is Button btn)
+            {
+                string txt = btn.Content?.ToString() ?? "";
+                if (txt.Contains("забыть"))
+                {
+                    btn.Background = new SolidColorBrush(Color.FromRgb(42, 13, 18));
+                    btn.Foreground = new SolidColorBrush(Color.FromRgb(255, 85, 102));
+                    btn.BorderBrush = new SolidColorBrush(Color.FromRgb(122, 29, 42));
+                }
+                else
+                {
+                    btn.Background = new SolidColorBrush(Color.FromRgb(13, 37, 48));
+                    btn.Foreground = new SolidColorBrush(Color.FromRgb(0, 217, 255));
+                    btn.BorderBrush = new SolidColorBrush(Color.FromRgb(18, 64, 79));
+                }
+                btn.FontWeight = FontWeights.SemiBold;
+                btn.Padding = new Thickness(12, 6, 12, 6);
+                el.SetValue(LeronStyledProp, true);
+                return;
+            }
+
+            if (el is Border b)
+            {
+                // не трогаем тонкие разделители
+                if (b.Height > 0 && b.Height <= 3) { el.SetValue(LeronStyledProp, true); return; }
+
+                b.Background = new SolidColorBrush(Color.FromRgb(9, 20, 30));
+                if (b.BorderThickness.Top < 1) b.BorderThickness = new Thickness(1);
+                b.BorderBrush = new SolidColorBrush(Color.FromRgb(18, 64, 79));
+                b.CornerRadius = new CornerRadius(10);
+                if (b.Padding == new Thickness(0)) b.Padding = new Thickness(10);
+                el.SetValue(LeronStyledProp, true);
+                return;
+            }
+
+            if (el is TextBox tb)
+            {
+                tb.Background = new SolidColorBrush(Color.FromRgb(10, 22, 32));
+                tb.Foreground = new SolidColorBrush(Color.FromRgb(234, 246, 255));
+                tb.BorderBrush = new SolidColorBrush(Color.FromRgb(18, 64, 79));
+                tb.CaretBrush = new SolidColorBrush(Color.FromRgb(0, 217, 255));
+                el.SetValue(LeronStyledProp, true);
+                return;
+            }
+
+            if (el is TextBlock t)
+            {
+                string txt = (t.Text ?? "").Trim();
+                if (txt == "ДОЛГОСРОЧНАЯ ПАМЯТЬ" || txt == "КРАТКОСРОЧНАЯ ПАМЯТЬ" ||
+                    txt == "ГРАФ СВЯЗЕЙ" || txt == "КАТЕГОРИИ")
+                {
+                    t.Foreground = new SolidColorBrush(Color.FromRgb(0, 217, 255));
+                    t.FontWeight = FontWeights.Bold;
+                    t.FontSize = 13;
+                    el.SetValue(LeronStyledProp, true);
+                    return;
+                }
+                if (txt.StartsWith("ПАМЯТЬ"))
+                {
+                    t.Foreground = new SolidColorBrush(Color.FromRgb(0, 217, 255));
+                    t.FontWeight = FontWeights.Bold;
+                    t.FontSize = 18;
+                    el.SetValue(LeronStyledProp, true);
+                    return;
+                }
+            }
         }
     }
 }
@@ -22887,7 +23312,7 @@ SIZE: 16116 bytes
       "Name": "GUI_test",
       "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\GUI_test",
       "Role": "team",
-      "LastOpened": "2026-09-02T20:24:49.4129476\u002B03:00"
+      "LastOpened": "2026-09-03T23:24:31.2437701\u002B03:00"
     }
   ],
   "HubLayout": {
@@ -22900,8 +23325,8 @@ SIZE: 16116 bytes
     "Nodes": [
       {
         "Path": "C:\\Users\\\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\\Desktop\\GUI_test",
-        "X": 754,
-        "Y": 998.5,
+        "X": 755,
+        "Y": 997.5,
         "PointId": "pt-bba002c4"
       }
     ],
@@ -23391,6 +23816,6 @@ echo   [OK] Лог сохранён: %LOG_FILE%
 pause
 
 ==================== SUMMARY ====================
-  Source files : 56
+  Source files : 57
   Report file  : GUI_report.txt
 ================================================================

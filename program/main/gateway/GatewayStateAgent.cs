@@ -222,6 +222,60 @@ sb.AppendLine("  - Ответы на вопросы пользователя");
 sb.AppendLine("  - Простые действия (rename_file, delete_file)");
 sb.AppendLine("Это ускоряет работу — размышление только когда действительно нужно.");
             sb.AppendLine("- Читай и редактируй, когда сам считаешь нужным; НЕСКОЛЬКО инструментов в ОДНОМ ответе — цепочкой JSON-объектов подряд в одном сообщении. Это экономит запросы.");
+// [LERON UPDATE] Auto memory search based on last user query
+try
+{
+    string __memLastUser = "";
+    var __memLastMsg = s.Messages.LastOrDefault();
+    var __memLastObj = __memLastMsg as System.Text.Json.Nodes.JsonObject;
+
+    if (__memLastObj != null)
+    {
+        var __memRole = __memLastObj["role"]?.ToString() ?? "";
+        var __memContent = __memLastObj["content"]?.ToString() ?? "";
+
+        if (__memRole == "user" && !string.IsNullOrWhiteSpace(__memContent))
+            __memLastUser = __memContent;
+    }
+
+    if (!string.IsNullOrWhiteSpace(__memLastUser))
+    {
+        var __memQuery = __memLastUser.Length > 180 ? __memLastUser.Substring(0, 180) : __memLastUser;
+        var __memAuto = MemoryStore.Search(s.Root, __memQuery, 3);
+
+        if (__memAuto.Count > 0)
+        {
+            sb.AppendLine("Автопоиск памяти по последнему запросу:");
+
+            foreach (var __card in __memAuto)
+            {
+                var __id = __card["id"]?.ToString() ?? "?";
+                var __cat = __card["cat"]?.ToString() ?? "?";
+                var __title = __card["title"]?.ToString() ?? "?";
+                var __text = __card["text"]?.ToString() ?? "";
+
+                if (__text.Length > 220)
+                    __text = __text.Substring(0, 220) + "...";
+
+                sb.AppendLine($" [#{__id}] ({__cat}) {__title}: {__text}");
+            }
+
+            sb.AppendLine();
+        }
+    }
+}
+catch { }
+
+sb.AppendLine("Правила памяти:");
+sb.AppendLine("- Память используется ВСЕГДА: в первом же ответе вызови memory_search по сути последнего запроса одновременно с другими инструментами (несколько JSON-объектов в одном сообщении). Если автопоиск уже дал релевантные карточки, не дублируй тот же запрос.");
+sb.AppendLine("- Текст долгосрочной карточки <= 300 символов. Пиши коротко: 3-4 предложения максимум.");
+sb.AppendLine("- Предпочтения и выборы пользователя (тема, дизайн, режим, технологии) сохраняй в choices; факты проекта в facts; файлы/структуру в files; заметки в notes.");
+sb.AppendLine("- Если информация уточнилась или устарела — обнови существующую карточку по id через memory_write, а не создавай дубль.");
+sb.AppendLine("- Если memory_search вернул 0 результатов — отвечай по текущему контексту и файлам; не выдумывай прошлые решения.");
+sb.AppendLine("- Не дублируй file_index.json: память хранит решения/факты/предпочтения, а не описания файлов.");
+sb.AppendLine("- Связывай карточки через links по id только когда темы реально пересекаются.");
+sb.AppendLine("- memory_forget используй только если карточка полностью устарела и противоречит текущему состоянию проекта.");
+sb.AppendLine("- Краткосрочная память: фиксируй суть запроса <= 150 символов и итог ответа <= 250 символов, добавляя изменённые файлы, если они были.");
 sb.AppendLine("В режиме планирования задавай вопросы ТОЛЬКО через request_user_input — GUI покажет карточку и пользователь ответит пакетом.");
                 sb.AppendLine($"ты в режиме планирования: прочитай файлы, затем задай {s.PlanRounds} раундов уточняющих вопросов. В каждом раунде ОДИН request_user_input с массивом questions из {s.PlanMin}–{s.PlanMax} вопросов формата {{\"id\":\"q1\",\"text\":\"текст вопроса\",\"options\":[\"вариант1\",\"вариант2\"],\"allow_custom\":true}} (options — 2–4 варианта; все вопросы раунда приходят одной карточкой и пользователь отвечает одним сообщением). Пример: {{\"name\":\"request_user_input\",\"arguments\":{{\"questions\":[{{\"id\":\"q1\",\"text\":\"Какой режим игры нужен?\",\"options\":[\"Локальный\",\"Сетевой\"],\"allow_custom\":true}}]}}}}. После ответов всех раундов составь нумерованный план работ и вызови finish с планом в summary.");
             }

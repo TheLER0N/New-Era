@@ -17,8 +17,8 @@ public static class MemoryStore
 {
     private static readonly object _lock = new();
     private static readonly string[] ValidCats = { "choices", "facts", "files", "notes" };
-    private const int MAX_TEXT = 600;
-    private const int MAX_SHORT = 5;
+    private const int MAX_TEXT = 300; // LERON UPDATE
+    private const int MAX_SHORT = 5; // LERON UPDATE
 
     public static string MemPath(string root)
     {
@@ -225,8 +225,8 @@ public static class MemoryStore
         var arr = mem["short_term"] as JsonArray ?? new JsonArray();
         arr.Add(new JsonObject
         {
-            ["user"] = Truncate((user ?? "").Trim(), 300),
-            ["ai"] = Truncate((ai ?? "").Trim(), 500),
+            ["user"] = Truncate((user ?? "").Trim(), 150),
+            ["ai"] = Truncate((ai ?? "").Trim(), 250),
             ["time"] = DateTime.Now.ToString("HH:mm")
         });
         while (arr.Count > MAX_SHORT) arr.RemoveAt(0);

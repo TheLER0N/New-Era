@@ -475,66 +475,152 @@ var border = new Border
         ChatScroll.ScrollToEnd();
     }
 
-    private void AddUserInputCard(AgentRunResponse r)
+    // [LERON UPDATE] AddUserInputCard: all questions shown at once
+private void AddUserInputCard(AgentRunResponse r)
+{
+    var border = new Border
     {
-var border = new Border
+        Background = B("#07141d"),
+        BorderBrush = B("#12404f"),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(10),
+        Padding = new Thickness(14),
+        Margin = new Thickness(CardLeft, 8, 0, 8)
+    };
+
+    var sp = new StackPanel();
+    border.Child = sp;
+
+    bool hasMany = r.Questions != null && r.Questions.Count > 1;
+    sp.Children.Add(CardText(hasMany ? "❓ Вопросы пользователю" : "❓ Вопрос пользователю", "#00d9ff", 16, true));
+    sp.Children.Add(CardText("Ответь на все пункты и нажми «Ответить». Карточка закроется только после отправки.", "#6f96a8", 12));
+
+    if (r.StepsUsed.HasValue && r.StepLimit.HasValue)
+        sp.Children.Add(CardText($"Использовано: {r.StepsUsed.Value}/{r.StepLimit.Value}", "#eaf6ff", 13));
+
+    if (!string.IsNullOrWhiteSpace(r.Question))
+        sp.Children.Add(CardText(r.Question, "#eaf6ff", 14));
+
+    var inputs = new System.Collections.Generic.List<System.Tuple<string, string, TextBox>>();
+
+    if (r.Questions != null && r.Questions.Count > 0)
+    {
+        int qi = 1;
+
+        foreach (var q in r.Questions)
         {
-            Background = B("#07141d"), BorderBrush = B("#12404f"),
-            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(12), Margin = new Thickness(CardLeft, 6, 0, 6)
-        };
-        var sp = new StackPanel();
-        sp.Children.Add(CardText("❓ Вопрос пользователю", "#00d9ff", 16, true));
-        var statusTb = CardText("ожидает ответа", "#6f96a8", 14);
-        sp.Children.Add(statusTb);
-        sp.Children.Add(CardText(r.Question ?? "Нужна дополнительная информация.", "#eaf6ff", 15));
-        if (r.StepsUsed.HasValue && r.StepLimit.HasValue)
-            sp.Children.Add(CardText($"запросы: {r.StepsUsed}/{r.StepLimit}", "#8fe6ff", 13));
-        if (r.Options != null)
-        {
-            foreach (var opt in r.Options)
+            if (q == null) continue;
+
+            var qId = string.IsNullOrWhiteSpace(q.Id) ? $"q{qi}" : q.Id;
+            var qText = q.Text ?? "";
+
+            sp.Children.Add(new TextBlock
             {
-                var o = opt;
-                if (string.IsNullOrWhiteSpace(o)) continue;
-                sp.Children.Add(MakeButton(o, "#12404f", "#00d9ff", () =>
-                    AnswerAndClose(border, new
-                    {
-                        sessionId = r.SessionId, approve = true, remember = false,
-                        steps = 0, inputText = o
-                    })));
+                Text = $"[{qId}] {qText}",
+                Foreground = B("#eaf6ff"),
+                FontSize = 14,
+                FontWeight = System.Windows.FontWeights.SemiBold,
+                TextWrapping = System.Windows.TextWrapping.Wrap,
+                Margin = new Thickness(0, 10, 0, 4)
+            });
+
+            var tb = new TextBox
+            {
+                MinHeight = 32,
+                Background = B("#0a1620"),
+                Foreground = B("#eaf6ff"),
+                BorderBrush = B("#12404f"),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8, 6, 8, 6),
+                TextWrapping = System.Windows.TextWrapping.Wrap,
+                AcceptsReturn = true,
+                Tag = qId
+            };
+
+            if (q.Options != null && q.Options.Count > 0)
+            {
+                var optionsPanel = new System.Windows.Controls.WrapPanel
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    Margin = new Thickness(0, 4, 0, 4)
+                };
+
+                foreach (var opt in q.Options)
+                {
+                    if (string.IsNullOrWhiteSpace(opt)) continue;
+
+                    var optBtn = MakeButton(opt, "#12404f", "#8fe6ff", () => { tb.Text = opt; });
+                    optBtn.Margin = new Thickness(0, 0, 6, 6);
+                    optionsPanel.Children.Add(optBtn);
+                }
+
+                sp.Children.Add(optionsPanel);
             }
+
+            sp.Children.Add(tb);
+            inputs.Add(System.Tuple.Create(qId, qText, tb));
+            qi++;
         }
-        var box = new TextBox
-        {
-            Background = B("#050b12"), Foreground = B("#eaf6ff"),
-            BorderBrush = B("#12404f"), BorderThickness = new Thickness(1),
-            Padding = new Thickness(8), FontFamily = Theme.Font(), FontSize = 16,
-            Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap
-        };
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0)
-        };
-        buttons.Children.Add(MakeButton("Ответить", "#12404f", "#00d9ff", () =>
-            AnswerAndClose(border, new
-            {
-                sessionId = r.SessionId, approve = true, remember = false,
-                steps = 0, inputText = box.Text.Trim()
-            })));
-        buttons.Children.Add(MakeButton("Пропустить", "#1a0f14", "#e94560", () =>
-            AnswerAndClose(border, new
-            {
-                sessionId = r.SessionId, approve = false, remember = false,
-                steps = 0, inputText = (string?)null
-            })));
-        sp.Children.Add(box);
-        sp.Children.Add(buttons);
-        border.Child = sp;
-        border.Tag = statusTb;
-        _interactiveCards.Add(border);
-        ChatMessages.Children.Add(border);
-        ChatScroll.ScrollToEnd();
     }
+    else
+    {
+        var tb = new TextBox
+        {
+            MinHeight = 34,
+            Background = B("#0a1620"),
+            Foreground = B("#eaf6ff"),
+            BorderBrush = B("#12404f"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 6, 8, 6),
+            TextWrapping = System.Windows.TextWrapping.Wrap,
+            AcceptsReturn = true
+        };
+
+        sp.Children.Add(tb);
+        inputs.Add(System.Tuple.Create("answer", r.Question ?? "", tb));
+    }
+
+    var buttons = new StackPanel
+    {
+        Orientation = System.Windows.Controls.Orientation.Horizontal,
+        Margin = new Thickness(0, 12, 0, 0)
+    };
+
+    var sendBtn = MakeButton("✅ Ответить на все", "#12404f", "#00d9ff", () =>
+    {
+        var sbAns = new System.Text.StringBuilder();
+        var answers = new System.Collections.Generic.Dictionary<string, string>();
+
+        sbAns.AppendLine("Ответы пользователя:");
+
+        foreach (var inp in inputs)
+        {
+            var val = inp.Item3 != null ? (inp.Item3.Text ?? "").Trim() : "";
+            if (string.IsNullOrWhiteSpace(val)) val = "без ответа";
+
+            answers[inp.Item1] = val;
+            sbAns.AppendLine($"{inp.Item1}: {val}");
+        }
+
+        AnswerAndClose(border, new
+        {
+            sessionId = r.SessionId,
+            approve = true,
+            remember = false,
+            inputText = sbAns.ToString(),
+            answers = answers,
+            source = "user_input_card"
+        });
+    });
+
+    buttons.Children.Add(sendBtn);
+    sp.Children.Add(buttons);
+
+    _interactiveCards.Add(border);
+    ChatMessages.Children.Add(border);
+    ChatScroll.ScrollToEnd();
+}
+
 
     private void AddOutsideCard(AgentRunResponse r)
     {

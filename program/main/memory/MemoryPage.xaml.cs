@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -32,7 +32,7 @@ namespace MainApp.Memory
         {
             InitializeComponent();
             KeyDown += OnKeyDown;
-        }
+         ApplyLeronMemoryDesign(); }
 
         public void Load(string root)
         {
