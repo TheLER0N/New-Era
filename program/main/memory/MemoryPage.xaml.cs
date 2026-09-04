@@ -1,572 +1,448 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using Microsoft.Win32;
 using System.Windows.Shapes;
+using System.Windows.Threading;
+using IOPath = System.IO.Path;
 
-namespace MainApp.Memory
+namespace MainApp.Memory;
+
+public partial class MemoryPage : UserControl
 {
-    public partial class MemoryPage : UserControl
+    private sealed class GNode
     {
-        public event Action? BackRequested;
-        private string _root = "";
-        private string _currentFilter = "all";
-        private string? _selectedId = null;
-        private bool _isEditing = false;
+        public string Id = "", Title = "", Cat = "", Text = "", Updated = "", Time = "";
+        public bool Short;
+        public List<string> Links = new();
+        public double X, Y, Z, SX, SY, Depth, R = 10, ScreenR;
+        public Color Color;
+        public int Degree;
+    }
 
-        private static SolidColorBrush B(string h) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(h));
-        private static readonly Dictionary<string, string> CatColors = new Dictionary<string, string>
+    private static readonly Dictionary<string, Color> CatColors = new()
+    {
+        ["choices"] = Color.FromRgb(0x22, 0xc9, 0xee),
+        ["facts"]   = Color.FromRgb(0x58, 0xd8, 0x58),
+        ["files"]   = Color.FromRgb(0xff, 0x8c, 0x3a),
+        ["notes"]   = Color.FromRgb(0xff, 0xd2, 0x3a),
+    };
+    private static readonly Color ShortColor = Color.FromRgb(0x2a, 0x8f, 0xa8);
+    private static readonly Color AllColor   = Color.FromRgb(0x9a, 0xa7, 0xb5);
+    private static readonly FontFamily Mon   = new("Consolas");
+
+    private string _root;
+    public event Action? BackRequested;
+    private readonly List<GNode> _nodes = new();
+    private readonly List<(GNode a, GNode b)> _edges = new();
+    private readonly List<(double x, double y, double ph)> _stars = new();
+    private readonly DispatcherTimer _timer;
+    private double _yaw = -0.5, _pitch = 0.35, _zoom = 1;
+    private bool _3d = true;
+    private string _filter = "";
+    private Point _lastMouse;
+    private bool _dragging;
+    private GNode? _hover;
+    private long _frames; private DateTime _fpsT = DateTime.Now;
+    private double _w, _h;
+
+    public MemoryPage() { _root = string.Empty; }
+
+
+    public MemoryPage(string root)
+    {
+        InitializeComponent();
+        _root = root;
+        ProjectNameText.Text = IOPath.GetFileName(IOPath.GetFullPath(_root).TrimEnd('\\', '/'));
+        var rnd = new Random(7);
+        for (int i = 0; i < 70; i++) _stars.Add((rnd.NextDouble(), rnd.NextDouble(), rnd.NextDouble() * 6.28));
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _timer.Tick += (_, _) =>
         {
-            { "choices", "#00d9ff" }, { "facts", "#3fd158" },
-            { "files", "#ff9f43" },  { "notes", "#ffd166" }
+            _frames++;
+            if ((DateTime.Now - _fpsT).TotalSeconds >= 1) { FpsText.Text = _frames + " FPS"; _frames = 0; _fpsT = DateTime.Now; }
+            Render();
         };
+        _timer.Start();
+        Loaded += (_, _) => { Refresh(); };
+        KeyDown += (_, e) => { if (e.Key == Key.Escape) GoBack(); };
+    }
 
-        public MemoryPage()
-        {
-            InitializeComponent();
-            KeyDown += OnKeyDown;
-         ApplyLeronMemoryDesign(); }
-
-        public void Load(string root)
-        {
-            _root = root;
-            try { ProjectNameText.Text = System.IO.Path.GetFileName(root); } catch { }
-            Refresh();
-        }
-
-        public void Refresh()
-        {
-            try
-            {
-                var mem = MemoryStore.Load(_root);
-                var longTerm = mem["long_term"] as JsonArray ?? new JsonArray();
-                var shortTerm = mem["short_term"] as JsonArray ?? new JsonArray();
-
-                // Обновляем счётчики
-                var counts = new Dictionary<string, int> { {"choices",0}, {"facts",0}, {"files",0}, {"notes",0} };
-                foreach (var n in longTerm)
-                {
-                    if (n is JsonObject o)
-                    {
-                        var c = o["cat"]?.ToString();
-                        if (c != null && counts.ContainsKey(c)) counts[c]++;
-                    }
-                }
-                ChoicesCount.Text = $"выборы ({counts["choices"]})";
-                FactsCount.Text = $"факты ({counts["facts"]})";
-                FilesCount.Text = $"файлы ({counts["files"]})";
-                NotesCount.Text = $"заметки ({counts["notes"]})";
-
-                // Долгосрочная память
-                CardsList.Children.Clear();
-                var filtered = longTerm
-                    .OfType<JsonObject>()
-                    .Where(o => _currentFilter == "all" || o["cat"]?.ToString() == _currentFilter)
-                    .ToList();
-
-                if (filtered.Count == 0)
-                {
-                    CardsList.Children.Add(new TextBlock 
-                    { 
-                        Text = _currentFilter == "all" ? "память пуста" : $"нет записей в категории '{_currentFilter}'",
-                        Foreground = B("#7d93a5"), FontSize = 11.5, Margin = new Thickness(0, 10, 0, 0)
-                    });
-                }
-                else
-                {
-                    foreach (var card in filtered.OrderByDescending(o => o["updated"]?.ToString() ?? ""))
-                    {
-                        var id = card["id"]?.ToString() ?? "?";
-                        var cat = card["cat"]?.ToString() ?? "?";
-                        var title = card["title"]?.ToString() ?? "?";
-                        var text = card["text"]?.ToString() ?? "";
-                        var updated = card["updated"]?.ToString() ?? "";
-                        var snippet = text.Length > 80 ? text.Substring(0, 80) + "..." : text;
-                        if (updated.Length > 16) updated = updated.Substring(0, 16).Replace("T", " ");
-                        var catColor = CatColors.ContainsKey(cat) ? CatColors[cat] : "#7d93a5";
-
-                        var border = new Border { Style = (Style)FindResource("Card") };
-                        var grid = new Grid();
-                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
-                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-                        var dot = new Ellipse { Width = 8, Height = 8, Fill = B(catColor), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 6, 0, 0) };
-                        Grid.SetColumn(dot, 0);
-
-                        var stack = new StackPanel();
-                        stack.Children.Add(new TextBlock { Text = title, Foreground = B("#eaf6ff"), FontSize = 12.5, FontWeight = FontWeights.Bold });
-                        stack.Children.Add(new TextBlock { Text = snippet, Foreground = B("#7d93a5"), FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) });
-                        stack.Children.Add(new TextBlock { Text = $"[{id}] ({cat}) — {updated}", Foreground = B("#4a6070"), FontSize = 9.5, Margin = new Thickness(0, 4, 0, 0) });
-                        Grid.SetColumn(stack, 1);
-
-                        grid.Children.Add(dot);
-                        grid.Children.Add(stack);
-                        border.Child = grid;
-                        border.Tag = id;
-                        border.MouseLeftButtonDown += (s, e) => ShowCardDetail(id);
-                        CardsList.Children.Add(border);
-                    }
-                }
-
-                // Краткосрочная память
-                ShortTermList.Children.Clear();
-                if (shortTerm.Count == 0)
-                {
-                    ShortTermList.Children.Add(new TextBlock 
-                    { 
-                        Text = "краткосрочная память пуста (отправьте запрос в чат)",
-                        Foreground = B("#7d93a5"), FontSize = 11.5
-                    });
-                }
-                else
-                {
-                    for (int i = shortTerm.Count - 1; i >= 0; i--)
-                    {
-                        var entry = shortTerm[i] as JsonObject;
-                        if (entry == null) continue;
-                        var time = entry["time"]?.ToString() ?? "??:??";
-                        var user = entry["user"]?.ToString() ?? "";
-                        var ai = entry["ai"]?.ToString() ?? "";
-
-                        var border = new Border 
-                        { 
-                            Background = B("#0a1620"), BorderBrush = B("#12404f"), BorderThickness = new Thickness(1),
-                            CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 0, 6)
-                        };
-                        var stack = new StackPanel();
-                        stack.Children.Add(new TextBlock { Text = $"[{time}]", Foreground = B("#00d9ff"), FontSize = 10, FontWeight = FontWeights.Bold });
-                        if (!string.IsNullOrWhiteSpace(user))
-                            stack.Children.Add(new TextBlock { Text = $"👤 {user}", Foreground = B("#eaf6ff"), FontSize = 11, Margin = new Thickness(0, 4, 0, 0) });
-                        if (!string.IsNullOrWhiteSpace(ai))
-                            stack.Children.Add(new TextBlock { Text = $"🤖 {ai}", Foreground = B("#7d93a5"), FontSize = 11, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap });
-                        border.Child = stack;
-                        ShortTermList.Children.Add(border);
-                    }
-                }
-
-                StatusText.Text = $"всего: {longTerm.Count} карточек, {shortTerm.Count} краткосрочных";
-                BuildGraph(filtered);
-            }
-            catch (Exception ex)
-            {
-                StatusText.Text = "ошибка: " + ex.Message;
-            }
-        }
-
-        
-    private void BuildGraph(List<JsonObject> cards)
+    private void GoBack() { BackRequested?.Invoke(); var win = System.Windows.Window.GetWindow(this); if (win != null) win.Close(); else Visibility = Visibility.Collapsed; }
+    private void OnBack(object s, RoutedEventArgs e) => GoBack();
+    public void Load(string root)
     {
+        _root = root;
+        ProjectNameText.Text = IOPath.GetFileName(IOPath.GetFullPath(_root).TrimEnd('\\', '/'));
+        Refresh();
+    }
+
+    // ── данные ──
+    private static string S(JsonNode? n) { try { return n?.GetValue<string>() ?? ""; } catch { return n?.ToString() ?? ""; } }
+    private static SolidColorBrush B(Color c, double op = 1) => new(c) { Opacity = op };
+    private static SolidColorBrush B2(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
+    private static Color Mix(Color a, Color b, double t) => Color.FromRgb(
+        (byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
+    private static double Clamp(double v, double a, double b) => Math.Max(a, Math.Min(b, v));
+
+    private string MemoryPath() => IOPath.Combine(_root, ".leron", "memory.json");
+
+    private void Refresh()
+    {
+        _nodes.Clear(); _edges.Clear();
+        var seen = new HashSet<string>();
+        void AddEdge(GNode a, GNode b)
+        {
+            if (a == b) return;
+            var key = string.CompareOrdinal(a.Id, b.Id) < 0 ? a.Id + "|" + b.Id : b.Id + "|" + a.Id;
+            if (seen.Add(key)) _edges.Add((a, b));
+        }
         try
         {
-            GraphCanvas.Children.Clear();
-            if (cards.Count == 0) return;
-
-            // Размеры Canvas
-            double w = GraphCanvas.ActualWidth > 0 ? GraphCanvas.ActualWidth : 800;
-            double h = GraphCanvas.ActualHeight > 0 ? GraphCanvas.ActualHeight : 300;
-            double cx = w / 2, cy = h / 2;
-
-            // Раскладка: 4 сектора по категориям
-            var sectors = new Dictionary<string, double> {
-                { "choices", 0 },    // правый сектор (0°)
-                { "facts", 90 },     // верхний сектор (90°)
-                { "files", 180 },    // левый сектор (180°)
-                { "notes", 270 }     // нижний сектор (270°)
-            };
-
-            var positions = new Dictionary<string, Point>();
-            var catCounters = new Dictionary<string, int>();
-            foreach (var cat in sectors.Keys) catCounters[cat] = 0;
-
-            // Размещаем узлы по спирали в каждом секторе
-            foreach (var card in cards)
+            var mem = MemoryStore.Load(_root);
+            var arr = mem?["nodes"] as JsonArray ?? mem?["cards"] as JsonArray ?? mem?["long_term"] as JsonArray ?? new JsonArray();
+            var longs = new List<GNode>();
+            foreach (var n in arr)
             {
-                var id = card["id"]?.ToString() ?? "?";
-                var cat = card["cat"]?.ToString() ?? "notes";
-                if (!sectors.ContainsKey(cat)) cat = "notes";
-                
-                var links = card["links"] as JsonArray;
-                int linkCount = links?.Count ?? 0;
-                double size = 14 + Math.Min(linkCount * 2, 12); // 14-26px
-                
-                int idx = catCounters[cat]++;
-                double baseAngle = sectors[cat];
-                double angleOffset = idx * 25; // угол между узлами в секторе
-                double radius = 60 + idx * 35; // расстояние от центра
-                
-                double angle = (baseAngle + angleOffset - 45) * Math.PI / 180; // -45 для разброса
-                double x = cx + radius * Math.Cos(angle) - size / 2;
-                double y = cy + radius * Math.Sin(angle) - size / 2;
-                
-                positions[id] = new Point(x + size / 2, y + size / 2);
-                
-                var catColor = CatColors.ContainsKey(cat) ? CatColors[cat] : "#7d93a5";
-                var ellipse = new Ellipse
-                {
-                    Width = size, Height = size,
-                    Fill = B(catColor),
-                    Stroke = B("#12404f"),
-                    StrokeThickness = 2,
-                    Tag = id,
-                    ToolTip = card["title"]?.ToString() ?? id
-                };
-                Canvas.SetLeft(ellipse, x);
-                Canvas.SetTop(ellipse, y);
-                ellipse.MouseLeftButtonDown += (s, e) => ShowCardDetail(id);
-                GraphCanvas.Children.Add(ellipse);
+                if (n is not JsonObject o) continue;
+                var g = new GNode { Id = S(o["id"]), Title = S(o["title"]), Cat = S(o["cat"]), Text = S(o["text"]), Updated = S(o["updated"]) };
+                if (o["links"] is JsonArray la) foreach (var l in la) { var v = S(l); if (v.Length > 0) g.Links.Add(v); }
+                g.Color = CatColors.TryGetValue(g.Cat, out var c) ? c : AllColor;
+                longs.Add(g); _nodes.Add(g);
             }
-
-            // Рисуем линии связей
-            foreach (var card in cards)
+            var sh = mem?["short_term"] as JsonArray ?? new JsonArray();
+            foreach (var n in sh)
             {
-                var id = card["id"]?.ToString() ?? "";
-                var links = card["links"] as JsonArray;
-                if (links == null || !positions.ContainsKey(id)) continue;
-                
-                foreach (var linkNode in links)
-                {
-                    var linkId = linkNode?.ToString() ?? "";
-                    if (positions.ContainsKey(linkId))
-                    {
-                        var p1 = positions[id];
-                        var p2 = positions[linkId];
-                        var line = new Line
-                        {
-                            X1 = p1.X, Y1 = p1.Y,
-                            X2 = p2.X, Y2 = p2.Y,
-                            Stroke = B("#12404f"),
-                            StrokeThickness = 1.5
-                        };
-                        // Линии рисуем ПЕРЕД узлами, чтобы они были под ними
-                        GraphCanvas.Children.Insert(0, line);
-                    }
-                }
+                if (n is not JsonObject o) continue;
+                var g = new GNode { Short = true, Time = S(o["time"]), Title = S(o["user"]), Text = S(o["ai"]), Color = ShortColor, Id = "short|" + S(o["time"]) };
+                _nodes.Add(g);
+                var t = BestMatch(g, longs);
+                if (t != null) AddEdge(g, t);
             }
+            foreach (var g in longs) foreach (var id in g.Links)
+            {
+                var t = longs.FirstOrDefault(x => x.Id == id);
+                if (t != null) AddEdge(g, t);
+            }
+            foreach (var e in _edges) { e.a.Degree++; e.b.Degree++; }
+            Layout(longs);
         }
-        catch (Exception ex)
+        catch { }
+        UpdateSidebar();
+        BuildLists();
+    }
+
+    private static GNode? BestMatch(GNode s, List<GNode> longs)
+    {
+        if (longs.Count == 0) return null;
+        var ws = (s.Title + " " + s.Text).ToLowerInvariant()
+            .Split(new[] { ' ', '\n', '\r', '\t', '*', ':', ',', '.', '(', ')', '[', ']' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 3).ToHashSet();
+        GNode? best = null; int bestScore = 0;
+        foreach (var l in longs)
         {
-            // Тихо игнорируем ошибки графа
+            int sc = ws.Count(w => l.Title.ToLowerInvariant().Contains(w) || l.Text.ToLowerInvariant().Contains(w));
+            if (sc > bestScore) { bestScore = sc; best = l; }
+        }
+        return best ?? longs.Last();
+    }
+
+    private void Layout(List<GNode> longs)
+    {
+        double R = 170, ga = Math.PI * (3 - Math.Sqrt(5));
+        for (int i = 0; i < longs.Count; i++)
+        {
+            double y = 1 - 2.0 * (i + 0.5) / Math.Max(1, longs.Count);
+            var rad = Math.Sqrt(Math.Max(0, 1 - y * y));
+            var th = ga * i;
+            var n = longs[i];
+            n.X = Math.Cos(th) * rad * R; n.Y = y * R * 0.6; n.Z = Math.Sin(th) * rad * R;
+            n.R = 10 + Math.Min(10, n.Degree * 3.0);
+        }
+        foreach (var s in _nodes.Where(n => n.Short))
+        {
+            var t = _edges.Where(e => e.a == s).Select(e => e.b).FirstOrDefault();
+            if (t == null) { s.X = 0; s.Y = 0; s.Z = 0; } else { s.X = t.X + 70; s.Y = t.Y + 25; s.Z = t.Z + 70; }
+            s.R = 7;
         }
     }
 
-    private void ShowCardDetail(string id)
+    // ── 3D проекция ──
+    private (double x, double y, double s, double d) Project(double x, double y, double z)
+    {
+        if (!_3d) return (_w / 2 + x * _zoom, _h / 2 + y * _zoom, _zoom, z);
+        double cy = Math.Cos(_yaw), sy = Math.Sin(_yaw), cp = Math.Cos(_pitch), sp = Math.Sin(_pitch);
+        double x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+        double y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+        double f = 700, s = f / (f + z2) * _zoom;
+        return (_w / 2 + x1 * s, _h * 0.52 + y1 * s, s, z2);
+    }
+
+    private void Place(FrameworkElement el, double cx, double cy, double size)
+    {
+        el.Width = size; el.Height = size;
+        el.HorizontalAlignment = HorizontalAlignment.Left; el.VerticalAlignment = VerticalAlignment.Top;
+        el.Margin = new Thickness(cx - size / 2, cy - size / 2, 0, 0);
+        el.IsHitTestVisible = false;
+        GraphCanvas.Children.Add(el);
+    }
+
+    private static RadialGradientBrush GlowBrush(Color c)
+    {
+        var b = new RadialGradientBrush();
+        b.GradientStops.Add(new GradientStop(Mix(c, Colors.White, 0.6), 0));
+        b.GradientStops.Add(new GradientStop(c, 0.35));
+        b.GradientStops.Add(new GradientStop(Color.FromArgb(0, c.R, c.G, c.B), 1));
+        return b;
+    }
+
+    private static RadialGradientBrush CoreBrush(Color c)
+    {
+        var b = new RadialGradientBrush();
+        b.Center = new Point(0.35, 0.35); b.GradientOrigin = new Point(0.35, 0.35);
+        b.GradientStops.Add(new GradientStop(Colors.White, 0));
+        b.GradientStops.Add(new GradientStop(Mix(c, Colors.White, 0.4), 0.35));
+        b.GradientStops.Add(new GradientStop(Mix(c, Colors.Black, 0.35), 1));
+        return b;
+    }
+
+    private void Render()
+    {
+        if (GraphCanvas == null) return;
+        _w = GraphCanvas.ActualWidth; _h = GraphCanvas.ActualHeight;
+        if (_w < 10 || _h < 10) return;
+        GraphCanvas.Children.Clear();
+        var t = DateTime.Now;
+        foreach (var (sx, sy, ph) in _stars)
         {
-            try
+            var op = 0.2 + 0.25 * (1 + Math.Sin(t.TimeOfDay.TotalSeconds * 1.5 + ph)) / 2;
+            var el = new Ellipse { Width = 2, Height = 2, Fill = B(Color.FromRgb(0x66, 0xd9, 0xff), op),
+                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(sx * _w, sy * _h, 0, 0), IsHitTestVisible = false };
+            GraphCanvas.Children.Add(el);
+        }
+        if (_3d)
+        {
+            var gb = B2("#12303f"); gb.Opacity = 0.5;
+            for (int i = -5; i <= 5; i++)
             {
-                var cards = MemoryStore.Read(_root, new[] { id });
-                if (cards.Count == 0) return;
-                var card = cards[0];
-                
-                _selectedId = id;
-                InspectorTitle.Text = card["title"]?.ToString() ?? "";
-                InspectorId.Text = $"#{id}";
-                InspectorCat.Text = card["cat"]?.ToString() ?? "";
-                InspectorText.Text = card["text"]?.ToString() ?? "";
-                
-                var links = card["links"] as JsonArray;
-                InspectorLinks.Text = links != null && links.Count > 0 ? string.Join(", ", links) : "нет связей";
-                
-                var created = card["created"]?.ToString() ?? "";
-                var updated = card["updated"]?.ToString() ?? "";
-                if (created.Length > 16) created = created.Substring(0, 16).Replace("T", " ");
-                if (updated.Length > 16) updated = updated.Substring(0, 16).Replace("T", " ");
-                InspectorTime.Text = $"создано: {created}\nобновлено: {updated}";
-                
-                var cat = card["cat"]?.ToString() ?? "";
-                var catColor = CatColors.ContainsKey(cat) ? CatColors[cat] : "#7d93a5";
-                InspectorCatBadge.Background = B(catColor + "33");
-                
-                InspectorPanel.Visibility = Visibility.Visible;
-            }
-            catch { }
-        }
-        
-        private void InspectorClose_Click(object sender, RoutedEventArgs e)
-        {
-            InspectorPanel.Visibility = Visibility.Collapsed;
-            _selectedId = null;
-        }
-        
-        private void InspectorEdit_Click(object sender, RoutedEventArgs e)
-        {
-            if (_selectedId == null) return;
-            try
-            {
-                var cards = MemoryStore.Read(_root, new[] { _selectedId });
-                if (cards.Count == 0) return;
-                var card = cards[0];
-                
-                _isEditing = true;
-                FormTitle.Text = "Редактировать карточку";
-                FormCat.SelectedIndex = _currentFilter switch
-                {
-                    "choices" => 0, "facts" => 1, "files" => 2, "notes" => 3, _ => 0
-                };
-                var cat = card["cat"]?.ToString() ?? "notes";
-                FormCat.SelectedIndex = cat switch { "choices" => 0, "facts" => 1, "files" => 2, "notes" => 3, _ => 3 };
-                FormTitleBox.Text = card["title"]?.ToString() ?? "";
-                FormTextBox.Text = card["text"]?.ToString() ?? "";
-                FormOverlay.Visibility = Visibility.Visible;
-            }
-            catch { }
-        }
-        
-        private void InspectorDelete_Click(object sender, RoutedEventArgs e)
-        {
-            if (_selectedId == null) return;
-            var result = MessageBox.Show($"Удалить карточку #{_selectedId}?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (result == MessageBoxResult.Yes)
-            {
-                MemoryStore.Forget(_root, _selectedId);
-                InspectorPanel.Visibility = Visibility.Collapsed;
-                _selectedId = null;
-                Refresh();
+                var p1 = Project(i * 80, 150, -400); var p2 = Project(i * 80, 150, 400);
+                var p3 = Project(-400, 150, i * 80); var p4 = Project(400, 150, i * 80);
+                GraphCanvas.Children.Add(new Line { X1 = p1.x, Y1 = p1.y, X2 = p2.x, Y2 = p2.y, Stroke = gb, StrokeThickness = 1, IsHitTestVisible = false });
+                GraphCanvas.Children.Add(new Line { X1 = p3.x, Y1 = p3.y, X2 = p4.x, Y2 = p4.y, Stroke = gb, StrokeThickness = 1, IsHitTestVisible = false });
             }
         }
-        
-        private void BtnAddCard_Click(object sender, RoutedEventArgs e)
+        foreach (var n in _nodes) { var p = Project(n.X, n.Y, n.Z); n.SX = p.x; n.SY = p.y; n.Depth = p.d; n.ScreenR = n.R * p.s; }
+        foreach (var e in _edges.OrderByDescending(e => (e.a.Depth + e.b.Depth) / 2))
         {
-            _isEditing = false;
-            _selectedId = null;
-            FormTitle.Text = "Добавить карточку";
-            FormCat.SelectedIndex = 0;
-            FormTitleBox.Text = "";
-            FormTextBox.Text = "";
-            FormOverlay.Visibility = Visibility.Visible;
+            var br = new LinearGradientBrush { MappingMode = BrushMappingMode.Absolute, StartPoint = new Point(e.a.SX, e.a.SY), EndPoint = new Point(e.b.SX, e.b.SY) };
+            br.GradientStops.Add(new GradientStop(e.a.Color, 0));
+            br.GradientStops.Add(new GradientStop(e.b.Color, 1));
+            br.Opacity = Clamp(0.9 - (e.a.Depth + e.b.Depth) / 1800, 0.3, 0.9);
+            GraphCanvas.Children.Add(new Line { X1 = e.a.SX, Y1 = e.a.SY, X2 = e.b.SX, Y2 = e.b.SY, Stroke = br, StrokeThickness = 1.4, IsHitTestVisible = false });
         }
-        
-        private void FormCancel_Click(object sender, RoutedEventArgs e)
+        foreach (var n in _nodes.OrderByDescending(n => n.Depth))
         {
-            FormOverlay.Visibility = Visibility.Collapsed;
+            bool dim = _filter.Length > 0 && !n.Short && n.Cat != _filter;
+            double op = dim ? 0.15 : 1, r = Math.Max(3, n.ScreenR);
+            Place(new Ellipse { Fill = GlowBrush(n.Color), Opacity = 0.35 * op }, n.SX, n.SY, r * 4);
+            Place(new Ellipse { Fill = CoreBrush(n.Color), Opacity = op }, n.SX, n.SY, r * 2);
+            var tb = new TextBlock { TextAlignment = TextAlignment.Center, Width = 220, FontFamily = Mon, FontSize = 12,
+                IsHitTestVisible = false, Opacity = op, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(n.SX - 110, n.SY - r - 40, 0, 0) };
+            tb.Inlines.Add(new Run(n.Title) { FontWeight = FontWeights.Bold, Foreground = B2("#e8f6ff") });
+            tb.Inlines.Add(new LineBreak());
+            tb.Inlines.Add(new Run(n.Short ? "[" + n.Time + "]" : "(" + n.Cat + ")") { Foreground = B2("#7d93a5"), FontSize = 10 });
+            GraphCanvas.Children.Add(tb);
         }
-        
-        private void FormSave_Click(object sender, RoutedEventArgs e)
+    }
+
+    // ── мышь: вращение + зум + hover ──
+    private void OnDown(object s, MouseButtonEventArgs e) { _dragging = true; _lastMouse = e.GetPosition(GraphCanvas); GraphCanvas.CaptureMouse(); }
+    private void OnUp(object s, MouseButtonEventArgs e) { _dragging = false; GraphCanvas.ReleaseMouseCapture(); }
+    private void OnMove(object s, MouseEventArgs e)
+    {
+        var p = e.GetPosition(GraphCanvas);
+        if (_dragging)
         {
-            try
-            {
-                var cat = (FormCat.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "notes";
-                var title = FormTitleBox.Text?.Trim() ?? "";
-                var text = FormTextBox.Text?.Trim() ?? "";
-                
-                if (string.IsNullOrWhiteSpace(title))
-                {
-                    MessageBox.Show("Заголовок не может быть пустым", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    MessageBox.Show("Текст не может быть пустым", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-                
-                if (_isEditing && _selectedId != null)
-                {
-                    MemoryStore.Upsert(_root, _selectedId, cat, title, text, null);
-                }
-                else
-                {
-                    MemoryStore.Upsert(_root, null, cat, title, text, null);
-                }
-                
-                FormOverlay.Visibility = Visibility.Collapsed;
-                Refresh();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Ошибка сохранения: " + ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            _yaw += (p.X - _lastMouse.X) * 0.005;
+            _pitch = Clamp(_pitch + (p.Y - _lastMouse.Y) * 0.005, -1.2, 1.2);
+            _lastMouse = p;
         }
-        
-        private void BtnForgetAll_Click(object sender, RoutedEventArgs e)
+        _hover = null; double best = 1e9;
+        foreach (var n in _nodes)
         {
-            var result = MessageBox.Show("Удалить ВСЮ память проекта?\n\nЭто действие нельзя отменить.", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (result == MessageBoxResult.Yes)
-            {
-                MemoryStore.ForgetAll(_root);
-                InspectorPanel.Visibility = Visibility.Collapsed;
-                _selectedId = null;
-                Refresh();
-            }
+            double d = Math.Sqrt((p.X - n.SX) * (p.X - n.SX) + (p.Y - n.SY) * (p.Y - n.SY));
+            if (d < n.ScreenR + 4 && d < best) { best = d; _hover = n; }
         }
-        
-        private void BtnExport_Click(object sender, RoutedEventArgs e)
+        if (_hover != null && !_dragging)
         {
-            try
-            {
-                var dlg = new Microsoft.Win32.SaveFileDialog
-                {
-                    Filter = "LERON Memory (*.leronmem)|*.leronmem|All files (*.*)|*.*",
-                    FileName = $"{System.IO.Path.GetFileName(_root)}_memory.leronmem",
-                    DefaultExt = ".leronmem"
-                };
-                
-                if (dlg.ShowDialog() == true)
-                {
-                    var mem = MemoryStore.Load(_root);
-                    var export = new JsonObject
-                    {
-                        ["project"] = System.IO.Path.GetFileName(_root),
-                        ["exported"] = DateTime.UtcNow.ToString("o"),
-                        ["memory"] = JsonNode.Parse(mem.ToJsonString())
-                    };
-                    
-                    var opts = new JsonSerializerOptions { WriteIndented = true };
-                    System.IO.File.WriteAllText(dlg.FileName, export.ToJsonString(opts), System.Text.Encoding.UTF8);
-                    StatusText.Text = $"экспортировано: {dlg.FileName}";
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Ошибка экспорта: " + ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            TooltipCard.Visibility = Visibility.Visible;
+            TooltipCard.Margin = new Thickness(Clamp(_hover.SX + 18, 0, _w - 220), Clamp(_hover.SY - 10, 0, _h - 90), 0, 0);
+            TipTitle.Text = _hover.Short ? "[" + _hover.Time + "]" : _hover.Title;
+            TipMeta.Text = _hover.Short ? "краткосрочная память" : "(" + _hover.Cat + ") — " + _hover.Updated;
+            TipLinks.Text = "связей: " + _hover.Degree;
         }
-        
-        private void BtnImport_Click(object sender, RoutedEventArgs e)
+        else TooltipCard.Visibility = Visibility.Collapsed;
+    }
+    private void OnWheel(object s, MouseWheelEventArgs e) { _zoom = Clamp(_zoom * (e.Delta > 0 ? 1.1 : 0.9), 0.4, 3); }
+    private void OnZoomIn(object s, RoutedEventArgs e) => _zoom = Clamp(_zoom * 1.2, 0.4, 3);
+    private void OnZoomOut(object s, RoutedEventArgs e) => _zoom = Clamp(_zoom / 1.2, 0.4, 3);
+    private void OnReset(object s, RoutedEventArgs e) { _yaw = -0.5; _pitch = 0.35; _zoom = 1; }
+    private void On3D(object s, RoutedEventArgs e)
+    {
+        _3d = !_3d;
+        Btn3D.Background = _3d ? B2("#00d9ff") : B2("#0d2530");
+        Btn3D.Foreground = _3d ? B2("#062028") : B2("#00d9ff");
+    }
+
+    // ── сайдбар / легенда ──
+    private void AddCatRow(string cat, string name, Color c, int count)
+    {
+        var row = new Border { Padding = new Thickness(8, 6, 8, 6), CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 0, 2),
+            Background = _filter == cat ? B2("#0d2530") : Brushes.Transparent, Cursor = Cursors.Hand };
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        sp.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = B(c), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = name, Foreground = B2("#c8dce8"), FontFamily = Mon, FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = " (" + count + ")", Foreground = B2("#7d93a5"), FontFamily = Mon, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+        row.Child = sp;
+        row.MouseLeftButtonDown += (_, _) => { _filter = cat; UpdateSidebar(); };
+        SidePanel.Children.Add(row);
+    }
+
+    private void AddStatRow(string label, string val)
+    {
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
+        sp.Children.Add(new TextBlock { Text = label, Foreground = B2("#7d93a5"), FontFamily = Mon, FontSize = 11, Width = 110 });
+        sp.Children.Add(new TextBlock { Text = val, Foreground = B2("#e8f6ff"), FontFamily = Mon, FontSize = 11 });
+        SidePanel.Children.Add(sp);
+    }
+
+    private void UpdateSidebar()
+    {
+        SidePanel.Children.Clear();
+        var longs = _nodes.Where(n => !n.Short).ToList();
+        AddCatRow("", "все", AllColor, longs.Count);
+        AddCatRow("choices", "выборы", CatColors["choices"], longs.Count(n => n.Cat == "choices"));
+        AddCatRow("facts", "факты", CatColors["facts"], longs.Count(n => n.Cat == "facts"));
+        AddCatRow("files", "файлы", CatColors["files"], longs.Count(n => n.Cat == "files"));
+        AddCatRow("notes", "заметки", CatColors["notes"], longs.Count(n => n.Cat == "notes"));
+        SidePanel.Children.Add(new Border { Height = 1, Background = B2("#12303f"), Margin = new Thickness(0, 12, 0, 12) });
+        AddStatRow("узлов:", _nodes.Count.ToString());
+        AddStatRow("связей:", _edges.Count.ToString());
+        AddStatRow("категорий:", CatColors.Count.ToString());
+        LegendPanel.Children.Clear();
+        foreach (var kv in CatColors)
         {
-            try
-            {
-                var dlg = new Microsoft.Win32.OpenFileDialog
-                {
-                    Filter = "LERON Memory (*.leronmem)|*.leronmem|All files (*.*)|*.*",
-                    DefaultExt = ".leronmem"
-                };
-                
-                if (dlg.ShowDialog() == true)
-                {
-                    var json = System.IO.File.ReadAllText(dlg.FileName, System.Text.Encoding.UTF8);
-                    var export = JsonNode.Parse(json) as JsonObject;
-                    if (export == null || export["memory"] == null)
-                    {
-                        MessageBox.Show("Неверный формат файла", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                        return;
-                    }
-                    
-                    var result = MessageBox.Show($"Импортировать память из:\n{dlg.FileName}\n\nТекущая память будет заменена.", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                    if (result == MessageBoxResult.Yes)
-                    {
-                        var mem = export["memory"] as JsonObject ?? new JsonObject();
-                        MemoryStore.Save(_root, mem);
-                        InspectorPanel.Visibility = Visibility.Collapsed;
-                        _selectedId = null;
-                        Refresh();
-                        StatusText.Text = $"импортировано: {dlg.FileName}";
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Ошибка импорта: " + ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+            sp.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = B(kv.Value), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+            sp.Children.Add(new TextBlock { Text = kv.Key, Foreground = B2("#c8dce8"), FontFamily = Mon, FontSize = 11 });
+            LegendPanel.Children.Add(sp);
         }
+        GraphStat.Text = "узлов: " + _nodes.Count + "   связей: " + _edges.Count;
+    }
 
-    private void Filter_Click(object sender, RoutedEventArgs e)
+    // ── списки памяти ──
+    private void BuildLists()
+    {
+        LongPanel.Children.Clear(); ShortPanel.Children.Clear();
+        foreach (var n in _nodes.Where(n => !n.Short).OrderByDescending(n => n.Updated))
         {
-            if (sender is Button b && b.Tag is string tag)
-            {
-                _currentFilter = tag;
-                Refresh();
-            }
+            var card = new Border { Background = B2("#0c1e29"), BorderBrush = B2("#12303f"), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(12, 10, 12, 10) };
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var bar = new Rectangle { Fill = B(n.Color), RadiusX = 2, RadiusY = 2 };
+            Grid.SetColumn(bar, 0); grid.Children.Add(bar);
+            var sp = new StackPanel { Margin = new Thickness(10, 0, 0, 0) };
+            var head = new StackPanel { Orientation = Orientation.Horizontal };
+            head.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = B(n.Color), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+            head.Children.Add(new TextBlock { Text = n.Title, Foreground = B2("#e8f6ff"), FontWeight = FontWeights.Bold, FontFamily = Mon, FontSize = 13 });
+            sp.Children.Add(head);
+            if (!string.IsNullOrWhiteSpace(n.Text))
+                sp.Children.Add(new TextBlock { Text = n.Text, Foreground = B2("#9fb8c8"), FontFamily = Mon, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(16, 4, 0, 4) });
+            sp.Children.Add(new TextBlock { Text = "[" + n.Id + "] (" + n.Cat + ") — " + n.Updated, Foreground = B2("#547082"), FontFamily = Mon, FontSize = 10, Margin = new Thickness(16, 0, 0, 0) });
+            Grid.SetColumn(sp, 1); grid.Children.Add(sp);
+            var badge = new TextBlock { Text = "связей: " + n.Degree, Foreground = B2("#9fb8c8"), FontFamily = Mon, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+            Grid.SetColumn(badge, 2); grid.Children.Add(badge);
+            card.Child = grid;
+            LongPanel.Children.Add(card);
         }
-
-        private void BtnBack_Click(object sender, RoutedEventArgs e)
+        foreach (var n in _nodes.Where(n => n.Short))
         {
-            BackRequested?.Invoke();
+            var card = new Border { Background = B2("#0c1e29"), BorderBrush = B2("#12303f"), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(12, 10, 12, 10) };
+            var sp = new StackPanel();
+            sp.Children.Add(new TextBlock { Text = "[" + n.Time + "]", Foreground = B2("#00d9ff"), FontFamily = Mon, FontSize = 11, FontWeight = FontWeights.Bold });
+            sp.Children.Add(new TextBlock { Text = "👤 " + n.Title, Foreground = B2("#e8f6ff"), FontFamily = Mon, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 2) });
+            if (!string.IsNullOrWhiteSpace(n.Text))
+                sp.Children.Add(new TextBlock { Text = "🤖 " + n.Text, Foreground = B2("#9fb8c8"), FontFamily = Mon, FontSize = 11, TextWrapping = TextWrapping.Wrap });
+            card.Child = sp;
+            ShortPanel.Children.Add(card);
         }
+        StatusLeft.Text = "всего: " + _nodes.Count(n => !n.Short) + " карточек, " + _nodes.Count(n => n.Short) + " краткосрочных";
+    }
 
-        private void OnKeyDown(object sender, KeyEventArgs e)
+    // ── действия ──
+    private void OnAdd(object s, RoutedEventArgs e)
+    {
+        var dlg = new Window { Title = "Новая карточка", Width = 440, Height = 320, Background = B2("#07141d"), WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var ownerWin = System.Windows.Window.GetWindow(this); if (ownerWin != null) dlg.Owner = ownerWin;
+        var sp = new StackPanel { Margin = new Thickness(16) };
+        sp.Children.Add(new TextBlock { Text = "категория", Foreground = B2("#7d93a5"), FontFamily = Mon, FontSize = 11 });
+        var cat = new ComboBox { Margin = new Thickness(0, 4, 0, 10) };
+        foreach (var k in CatColors.Keys) cat.Items.Add(k);
+        cat.SelectedIndex = 0;
+        sp.Children.Add(cat);
+        sp.Children.Add(new TextBlock { Text = "заголовок", Foreground = B2("#7d93a5"), FontFamily = Mon, FontSize = 11 });
+        var title = new TextBox { Margin = new Thickness(0, 4, 0, 10), Background = B2("#0c1e29"), Foreground = B2("#e8f6ff"), FontFamily = Mon, BorderBrush = B2("#12303f") };
+        sp.Children.Add(title);
+        sp.Children.Add(new TextBlock { Text = "текст", Foreground = B2("#7d93a5"), FontFamily = Mon, FontSize = 11 });
+        var text = new TextBox { AcceptsReturn = true, Height = 90, Margin = new Thickness(0, 4, 0, 10), Background = B2("#0c1e29"), Foreground = B2("#e8f6ff"), FontFamily = Mon, BorderBrush = B2("#12303f") };
+        sp.Children.Add(text);
+        var save = new Button { Content = "сохранить", HorizontalAlignment = HorizontalAlignment.Left };
+        save.Click += (_, _) =>
         {
-            if (e.Key == Key.Escape) BackRequested?.Invoke();
-        }
+            if (string.IsNullOrWhiteSpace(title.Text)) return;
+            MemoryStore.Upsert(_root, null, cat.SelectedItem?.ToString() ?? "notes", title.Text.Trim(), text.Text.Trim(), null);
+            dlg.Close(); Refresh();
+        };
+        sp.Children.Add(save);
+        dlg.Content = sp;
+        dlg.ShowDialog();
+    }
 
-        // === ROUND 6: Management & Export/Import ===
-        private string GetRoot() {
-            try {
-                var field = this.GetType().GetField("_root", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
-                if (field != null) return field.GetValue(this) as string;
-                var prop = this.GetType().GetProperty("Root", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                if (prop != null) return prop.GetValue(this) as string;
-                return System.IO.Directory.GetCurrentDirectory();
-            } catch { return System.IO.Directory.GetCurrentDirectory(); }
-        }
+    private void OnExport(object s, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog { FileName = "memory.json", Filter = "JSON|*.json" };
+        if (dlg.ShowDialog() == true && File.Exists(MemoryPath())) File.Copy(MemoryPath(), dlg.FileName, true);
+    }
 
-        private void SafeRefresh() {
-            try {
-                foreach (var mName in new[] { "RefreshAll", "LoadData", "Refresh", "UpdateGraph", "LoadMemory" }) {
-                    var method = this.GetType().GetMethod(mName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                    if (method != null) { method.Invoke(this, null); return; }
-                }
-            } catch {}
-        }
-
-        private void BtnAdd_Click(object sender, RoutedEventArgs e) => OpenEditor(null);
-        private void BtnEdit_Click(object sender, RoutedEventArgs e)
+    private void OnImport(object s, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "JSON|*.json" };
+        if (dlg.ShowDialog() == true && File.Exists(dlg.FileName))
         {
-            dynamic ctx = null;
-            var lb = FindVisualChild<System.Windows.Controls.ListBox>(this);
-            if (lb?.SelectedItem != null) ctx = lb.SelectedItem;
-            OpenEditor(ctx);
+            Directory.CreateDirectory(IOPath.GetDirectoryName(MemoryPath())!);
+            File.Copy(dlg.FileName, MemoryPath(), true);
+            Refresh();
         }
-        private void BtnDelete_Click(object sender, RoutedEventArgs e)
+    }
+
+    private void OnForget(object s, RoutedEventArgs e)
+    {
+        if (MessageBox.Show("Забыть всю память проекта?", "ПАМЯТЬ", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
         {
-            dynamic ctx = null;
-            var lb = FindVisualChild<System.Windows.Controls.ListBox>(this);
-            if (lb?.SelectedItem != null) ctx = lb.SelectedItem;
-            if (ctx != null) {
-                string id = ctx.Id;
-                MemoryStore.Forget(GetRoot(), id);
-                SafeRefresh();
-            }
+            MemoryStore.ForgetAll(_root);
+            Refresh();
         }
-
-        private T FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
-        {
-            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
-            {
-                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
-                if (child is T t) return t;
-                var result = FindVisualChild<T>(child);
-                if (result != null) return result;
-            }
-            return null;
-        }
-
-        private void OpenEditor(dynamic existing)
-        {
-            var win = new Window { Title = existing == null ? "Новая карточка" : "Редактировать", Width = 400, Height = 350, WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Window.GetWindow(this) };
-            var panel = new StackPanel { Margin = new Thickness(15) };
-            var cbCat = new System.Windows.Controls.ComboBox { Margin = new Thickness(0,0,0,10) };
-            cbCat.Items.Add("choices"); cbCat.Items.Add("facts"); cbCat.Items.Add("files"); cbCat.Items.Add("notes");
-            try { cbCat.SelectedItem = existing?.Cat ?? "notes"; } catch { cbCat.SelectedItem = "notes"; }
-            var tbTitle = new System.Windows.Controls.TextBox { Margin = new Thickness(0,0,0,10), Text = existing?.Title ?? "" };
-            var tbText = new System.Windows.Controls.TextBox { Margin = new Thickness(0,0,0,10), Text = existing?.Text ?? "", AcceptsReturn = true, Height = 120, TextWrapping = TextWrapping.Wrap };
-            var btnSave = new System.Windows.Controls.Button { Content = "Сохранить", Height = 30 };
-            btnSave.Click += (s, ev) => {
-                string id = existing?.Id;
-                System.Collections.Generic.List<string> links = null;
-                try { links = new System.Collections.Generic.List<string>(existing?.Links); } catch {}
-                MemoryStore.Upsert(GetRoot(), id, cbCat.SelectedItem.ToString(), tbTitle.Text, tbText.Text, links);
-                win.DialogResult = true;
-                win.Close();
-            };
-            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "Категория:" }); panel.Children.Add(cbCat);
-            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "Заголовок:" }); panel.Children.Add(tbTitle);
-            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = "Текст:" }); panel.Children.Add(tbText);
-            panel.Children.Add(btnSave);
-            win.Content = panel;
-            if (win.ShowDialog() == true) SafeRefresh();
-        }
-
-
-}
-
-
-
+    }
 }
