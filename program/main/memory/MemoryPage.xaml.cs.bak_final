@@ -51,11 +51,8 @@ public partial class MemoryPage : UserControl
     private GNode? _hover;
     private long _frames; private DateTime _fpsT = DateTime.Now;
     private double _w, _h;
-    private bool _dirty = true;
-    private readonly List<(Ellipse el, double ph)> _starEls = new();
-    private DispatcherTimer _twinkle = null!;
 
-    public MemoryPage() : this(System.Environment.CurrentDirectory) { }
+    public MemoryPage() { InitializeComponent(); _root = string.Empty; }
 
 
     public MemoryPage(string root)
@@ -73,20 +70,14 @@ public partial class MemoryPage : UserControl
             Render();
         };
         _timer.Start();
-        _twinkle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
-        _twinkle.Tick += (_, _) => Twinkle();
-        _twinkle.Start();
-        Unloaded += (_, _) => { _timer.Stop(); _twinkle.Stop(); };
-        SizeChanged += (_, _) => { _dirty = true; };
-        Loaded += (_, _) => { if (string.IsNullOrEmpty(_root)) Visibility = Visibility.Collapsed; Refresh(); };
+        Loaded += (_, _) => { Refresh(); };
         KeyDown += (_, e) => { if (e.Key == Key.Escape) GoBack(); };
     }
 
-    private void GoBack() { BackRequested?.Invoke(); }
+    private void GoBack() { BackRequested?.Invoke(); var win = System.Windows.Window.GetWindow(this); if (win != null) win.Close(); else Visibility = Visibility.Collapsed; }
     private void OnBack(object s, RoutedEventArgs e) => GoBack();
     public void Load(string root)
     {
-        Visibility = Visibility.Visible;
         _root = root;
         ProjectNameText.Text = IOPath.GetFileName(IOPath.GetFullPath(_root).TrimEnd('\\', '/'));
         Refresh();
@@ -145,7 +136,6 @@ public partial class MemoryPage : UserControl
         catch { }
         UpdateSidebar();
         BuildLists();
-        _dirty = true;
     }
 
     private static GNode? BestMatch(GNode s, List<GNode> longs)
@@ -222,29 +212,20 @@ public partial class MemoryPage : UserControl
         return b;
     }
 
-    private void Twinkle()
-    {
-        var t = DateTime.Now.TimeOfDay.TotalSeconds;
-        foreach (var (el, ph) in _starEls) el.Opacity = 0.15 + 0.25 * (1 + Math.Sin(t * 1.5 + ph)) / 2;
-    }
-
     private void Render()
     {
         if (GraphCanvas == null) return;
         _w = GraphCanvas.ActualWidth; _h = GraphCanvas.ActualHeight;
         if (_w < 10 || _h < 10) return;
-        if (!_dirty) return;
-        _dirty = false;
         GraphCanvas.Children.Clear();
         var t = DateTime.Now;
-        _starEls.Clear();
         foreach (var (sx, sy, ph) in _stars)
         {
-            var el = new Ellipse { Width = 2, Height = 2, Fill = B(Color.FromRgb(0x66, 0xd9, 0xff), 0.3),
+            var op = 0.2 + 0.25 * (1 + Math.Sin(t.TimeOfDay.TotalSeconds * 1.5 + ph)) / 2;
+            var el = new Ellipse { Width = 2, Height = 2, Fill = B(Color.FromRgb(0x66, 0xd9, 0xff), op),
                 HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(sx * _w, sy * _h, 0, 0), IsHitTestVisible = false };
             GraphCanvas.Children.Add(el);
-            _starEls.Add((el, ph));
         }
         if (_3d)
         {
@@ -293,7 +274,6 @@ public partial class MemoryPage : UserControl
             _yaw += (p.X - _lastMouse.X) * 0.005;
             _pitch = Clamp(_pitch + (p.Y - _lastMouse.Y) * 0.005, -1.2, 1.2);
             _lastMouse = p;
-            _dirty = true;
         }
         _hover = null; double best = 1e9;
         foreach (var n in _nodes)
@@ -311,16 +291,15 @@ public partial class MemoryPage : UserControl
         }
         else TooltipCard.Visibility = Visibility.Collapsed;
     }
-    private void OnWheel(object s, MouseWheelEventArgs e) { _zoom = Clamp(_zoom * (e.Delta > 0 ? 1.1 : 0.9), 0.4, 3); _dirty = true; }
-    private void OnZoomIn(object s, RoutedEventArgs e) { _zoom = Clamp(_zoom * 1.2, 0.4, 3); _dirty = true; }
-    private void OnZoomOut(object s, RoutedEventArgs e) { _zoom = Clamp(_zoom / 1.2, 0.4, 3); _dirty = true; }
-    private void OnReset(object s, RoutedEventArgs e) { _yaw = -0.5; _pitch = 0.35; _zoom = 1; _dirty = true; }
+    private void OnWheel(object s, MouseWheelEventArgs e) { _zoom = Clamp(_zoom * (e.Delta > 0 ? 1.1 : 0.9), 0.4, 3); }
+    private void OnZoomIn(object s, RoutedEventArgs e) => _zoom = Clamp(_zoom * 1.2, 0.4, 3);
+    private void OnZoomOut(object s, RoutedEventArgs e) => _zoom = Clamp(_zoom / 1.2, 0.4, 3);
+    private void OnReset(object s, RoutedEventArgs e) { _yaw = -0.5; _pitch = 0.35; _zoom = 1; }
     private void On3D(object s, RoutedEventArgs e)
     {
         _3d = !_3d;
         Btn3D.Background = _3d ? B2("#00d9ff") : B2("#0d2530");
         Btn3D.Foreground = _3d ? B2("#062028") : B2("#00d9ff");
-        _dirty = true;
     }
 
     // ── сайдбар / легенда ──
@@ -333,7 +312,7 @@ public partial class MemoryPage : UserControl
         sp.Children.Add(new TextBlock { Text = name, Foreground = B2("#c8dce8"), FontFamily = Mon, FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
         sp.Children.Add(new TextBlock { Text = " (" + count + ")", Foreground = B2("#7d93a5"), FontFamily = Mon, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
         row.Child = sp;
-        row.MouseLeftButtonDown += (_, _) => { _filter = cat; UpdateSidebar(); _dirty = true; };
+        row.MouseLeftButtonDown += (_, _) => { _filter = cat; UpdateSidebar(); };
         SidePanel.Children.Add(row);
     }
 

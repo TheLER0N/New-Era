@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -76,6 +76,7 @@ public class ChromeWindow : Window
         IsEnabled = false;
 
         var root = Content as Grid ?? (Content as Border)?.Child as Grid;
+            if (root == null) { try { Application.Current?.Shutdown(); } catch { System.Environment.Exit(0); } return; }
         if (root != null)
         {
             var black = new Rectangle { Fill = Brushes.Black, Opacity = 0 };
